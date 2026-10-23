@@ -239,36 +239,35 @@ def test_degradation_rejects_invalid_scene_and_optical_probabilities():
         BlurConfig(motion_probability=0.8, defocus_probability=0.8)
 
 
-def test_strong_branch_uses_configured_maximum_scale_and_correlated_damage(monkeypatch):
+def test_scale_sampling_is_uniform_without_favoring_the_largest_factor(monkeypatch):
+    from collections import Counter
+
     from unitunner.data.degradation import pipeline
 
-    encoded = []
-    original = pipeline._compress
+    counts = Counter()
+    scales = (2, 3, 4, 8)
+    shapes = {(64 // scale, 96 // scale): scale for scale in scales}
 
     def capture(image, settings, rng, severity):
-        encoded.append((image.shape[:2], severity))
-        return original(image, settings, rng, severity)
+        counts[shapes[image.shape[:2]]] += 1
+        assert 0 <= severity <= 0.5
+        return image
 
     monkeypatch.setattr(pipeline, "_compress", capture)
+    settings = DegradationConfig(
+        scales=scales,
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        processing_probabilities=(1.0, 0.0, 0.0),
+        first=StageConfig(blur_probability=0.0, noise_probability=0.0),
+        second=SecondStageConfig(blur_probability=0.0, noise_probability=0.0, compression_probability=1.0),
+    )
     high = torch.full((3, 64, 96), 0.5)
-    for strong in (0.0, 1.0):
-        settings = DegradationConfig(
-            scales=(2, 3),
-            processing_probabilities=(1.0, 0.0, 0.0),
-            scenario_probabilities=(1.0, 0.0, 0.0),
-            strong_probability=strong,
-            second=SecondStageConfig(compression_probability=1.0),
-        )
-        for seed in range(8):
-            low = degrade_image(high, settings, seed)
-            shape, severity = encoded[-1]
-            assert low.shape == high.shape
-            if strong:
-                assert shape == (21, 32)  # Honor configured 3x; do not force a hidden 4x/8x factor.
-                assert 0.5625 <= severity <= 0.75
-            else:
-                assert shape in ((32, 48), (21, 32))
-                assert 0 <= severity <= 0.5
+    for seed in range(1024):
+        low = degrade_image(high, settings, seed)
+        assert low.shape == high.shape
+    assert set(counts) == set(scales)
+    for count in counts.values():
+        assert count == pytest.approx(256, rel=0.2)
 
 
 def test_phone_processing_retains_grain_or_suppresses_texture_without_flattening_edges():

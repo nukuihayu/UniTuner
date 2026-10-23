@@ -402,8 +402,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `saturation` | [number, number] | `[0.0, 1.5]` | Saturation multiplier range [lower, upper]. |
 | `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
 | `scenario_probabilities` | [number, number, number] | `[0.55, 0.3, 0.15]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
-| `strong_probability` | number | `0.15` | Strong-branch probability: severity 0.75–1.0, largest configured scale, stronger photo/low-light encoding; 0 leaves only the base distribution. |
-| `processing_probabilities` | [number, number, number] | `[0.65, 0.2, 0.15]` | Standard / residual camera grain / texture smoothing + sharpening probabilities, summing to 1. Independent of scene and strong-branch selection. |
+| `processing_probabilities` | [number, number, number] | `[0.65, 0.2, 0.15]` | Standard / residual camera grain / texture smoothing + sharpening probabilities, summing to 1. Independent of scene selection. |
 
 ## `StageConfig`
 
@@ -504,7 +503,7 @@ JPEG/WebP/JPEG2000 order. Used only for intermediate web encoding. JPEG2000 is o
 
 ## `SecondCompressionConfig`
 
-Final encoding for all scenes. Web samples use the full severity distribution; photo/low-light scenes multiply codec severity by 0.5 in the base branch and 0.75 in the strong branch.
+Final encoding for all scenes. Web samples use the full severity distribution; photo/low-light scenes multiply codec severity by 0.5.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |

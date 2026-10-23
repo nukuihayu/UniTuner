@@ -402,8 +402,7 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `saturation` | [number, number] | `[0.0, 1.5]` | 饱和度倍率范围 [下界, 上界]。 |
 | `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
 | `scenario_probabilities` | [number, number, number] | `[0.55, 0.3, 0.15]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
-| `strong_probability` | number | `0.15` | 强退化分支概率：强度 0.75–1.0、候选中最大倍率，普通/低照度压缩增强；0 仅保留基础分布。 |
-| `processing_probabilities` | [number, number, number] | `[0.65, 0.2, 0.15]` | 常规 / 残留相机颗粒 / 纹理涂抹后锐化的概率，和为 1；独立于场景与强退化分支。 |
+| `processing_probabilities` | [number, number, number] | `[0.65, 0.2, 0.15]` | 常规 / 残留相机颗粒 / 纹理涂抹后锐化的概率，和为 1；独立于场景选择。 |
 
 ## `StageConfig`
 
@@ -504,7 +503,7 @@ LQ 网格上的微弱残差噪声，沿用采集阶段的场景强度倍率。
 
 ## `SecondCompressionConfig`
 
-所有场景的最终编码。网络转载使用完整强度分布；普通/低照度基础分支将压缩强度减半，强分支乘以 0.75。
+所有场景的最终编码。网络转载使用完整强度分布；普通/低照度场景将压缩强度减半。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |

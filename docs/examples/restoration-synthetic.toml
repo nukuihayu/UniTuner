@@ -68,9 +68,6 @@ scales = [2, 3, 4]
 # 普通照片 / 网络转载 / 低照度，非负且和为 1。
 # Photo / web repost / low-light; nonnegative and summing to one.
 scenario_probabilities = [0.55, 0.30, 0.15]
-# 强退化占比；使用候选中的最大倍率，增强关联损伤。0 仅使用基础分布。
-# Strong branch share; uses the largest configured scale and stronger related damage. 0 uses only the base distribution.
-strong_probability = 0.15
 # 常规 / 残留颗粒 / 纹理涂抹后锐化，可与来源场景组合。
 # Standard / residual grain / texture smoothing + sharpening; combines with source scenes.
 processing_probabilities = [0.65, 0.20, 0.15]

@@ -151,7 +151,7 @@ Synthetic degradation preserves the HQ framing, brightness and color as supervis
 | Web repost | 30% | Intermediate encoding, resizing, stronger final compression and more frequent mild sharpening |
 | Low-light photo | 15% | Linear-light signal-dependent shot/read noise, edge-preserving denoising and chroma smoothing before downsampling/encoding; no target exposure change |
 
-The base branch samples `scales = [2, 3, 4]` uniformly. Default `strong_probability = 0.15` sends 15% of samples to a strong branch: it uses the largest configured factor and maps the shared Beta(2,3) severity into 0.75–1.0. About 43% of default samples consequently use 4x, with the rest split between 2x and 3x. Blur, noise and compression vary slightly around that shared draw. Strong photo/low-light samples also receive stronger compression while retaining scene differences. Setting this probability to 0 disables the extra branch; the base distribution still has a small heavy tail. Scene proportions are adjustable training priors, not measured real-world frequencies.
+Factors in `scales = [2, 3, 4]` are sampled uniformly, about 33.33% each; `[2, 3, 4, 8]` gives 25% each with no preference for the largest factor. Shared severity follows Beta(2,3), favoring mild/moderate damage while retaining stronger samples. Blur, noise and compression vary slightly around that shared draw. Factor selection does not determine severity. Scene proportions are adjustable training priors, not measured real-world frequencies.
 
 ```toml
 [dataset.groups.main.degradation]
@@ -159,7 +159,6 @@ enabled = true
 scales = [2, 3, 4]
 # Photo / web repost / low-light; use [0.0, 1.0, 0.0] for web-only data.
 scenario_probabilities = [0.55, 0.30, 0.15]
-strong_probability = 0.15
 processing_probabilities = [0.65, 0.20, 0.15]
 ```
 

@@ -303,14 +303,9 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     scene = str(rng.choice(("photo", "web", "low-light"), p=settings.scenario_probabilities))
     # Most samples are mild/moderate; the same draw links blur, noise and codec damage.
     severity = float(rng.beta(2, 3))
-    strong = rng.random() < settings.strong_probability
-    if strong:
-        severity = 0.75 + 0.25 * severity
     noise_strength = {"photo": 0.35, "web": 0.5, "low-light": 1.0}[scene]
-    codec_severity = severity if scene == "web" else severity * (0.75 if strong else 0.5)
+    codec_severity = severity if scene == "web" else severity * 0.5
     scale = int(rng.choice(settings.scales))
-    if strong:
-        scale = max(settings.scales)
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
         # Acquisition blur precedes resampling. Delivery blur acts on the LQ grid.

@@ -165,7 +165,6 @@ class DegradationConfig(DistributionConfig, frozen=True):
     enabled: bool = False
     scales: tuple[Annotated[int, Field(ge=1, le=16)], ...] = (2, 3, 4)
     scenario_probabilities: Probabilities = (0.55, 0.30, 0.15)
-    strong_probability: Probability = 0.15
     processing_probabilities: Probabilities = (0.65, 0.20, 0.15)
     resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (
         "area",
