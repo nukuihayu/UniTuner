@@ -80,7 +80,7 @@ def index_restoration_pairs(
                 else (caption_path.read_text(encoding="utf-8") if caption_path.is_file() else "")
             )
             content: dict[str, JsonValue] = {
-                "image": file_sha256(path),
+                "image": file_sha256(path, release_cache=True),
                 "caption_utf8": hashlib.sha256(caption.encode()).hexdigest(),
             }
             if manifest.family in ("flux2", "flux3"):
@@ -97,11 +97,15 @@ def index_restoration_pairs(
             if manifest.family == "qwen-image-2-1":
                 content = {"target": content["image"], "caption_utf8": content["caption_utf8"], "references": []}
             source = canonical_sha256(content)
-            identity = validate_latent_entry(cache, manifest, entry)
+            identity = validate_latent_entry(cache, manifest, entry, release_cache=True)
             if identity.source_sha256 != source:
                 raise ValueError("Restoration source/caption contents differ from their cache identity; rebuild cache")
             pairs.append(AlignedImagePair(None if synthetic else low[path.stem], path, entry, cache, degradation))
-            yield {"high": source, "low": None if synthetic else file_sha256(low[path.stem]), "cache": entry.sha256}
+            yield {
+                "high": source,
+                "low": None if synthetic else file_sha256(low[path.stem], release_cache=True),
+                "cache": entry.sha256,
+            }
 
     digest = canonical_sequence_sha256(
         records(),

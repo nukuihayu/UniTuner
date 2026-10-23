@@ -2,16 +2,30 @@
 
 import hashlib
 import json
+import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from pydantic import JsonValue
 
 
-def file_sha256(path: Path) -> str:
-    """Return a bounded-memory content digest; mtime is not a content identity."""
+def file_sha256(path: Path, *, release_cache: bool = False) -> str:
+    """Hash content, optionally asking the OS to release scanned file pages.
+
+    Dataset preflight reads files once and can otherwise fill Linux container
+    RAM with page cache. Advice is best effort and never changes validation.
+    """
     with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        advise = getattr(os, "posix_fadvise", None)
+        dontneed = getattr(os, "POSIX_FADV_DONTNEED", None)
+        if release_cache and advise is not None and dontneed is not None:
+            try:
+                advise(stream.fileno(), 0, 0, dontneed)
+            except OSError:
+                # Some filesystems do not implement this optional hint.
+                pass
+        return digest
 
 
 def canonical_sha256(value: JsonValue) -> str:

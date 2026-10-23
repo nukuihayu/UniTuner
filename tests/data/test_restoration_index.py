@@ -45,6 +45,12 @@ def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(
         records = [{**row, "low": None} for row in records]
     reader = storage.TensorReader
     opened = []
+    scanned = []
+
+    def scan(path, *, release_cache=False):
+        assert release_cache, "Restoration preflight must release scanned file pages"
+        scanned.append(path)
+        return file_sha256(path, release_cache=release_cache)
 
     def open_header(path):
         opened.append(path)
@@ -55,10 +61,13 @@ def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(
 
     monkeypatch.setattr(storage, "TensorReader", open_header)
     monkeypatch.setattr(reader, "read", no_payload)
+    monkeypatch.setattr(storage, "file_sha256", scan)
+    monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
     pairs, digest = index_restoration_pairs(
         high, None if synthetic else low, cache, family="z-image", degradation=degradation
     )
     assert len(opened) == len(high)
+    assert len(scanned) == len(high) * (2 if synthetic else 3)
     assert [pair.high for pair in pairs] == list(high)
     assert [pair.low for pair in pairs] == ([None] * len(high) if synthetic else list(low))
     assert digest == canonical_sha256(

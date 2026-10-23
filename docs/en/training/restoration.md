@@ -56,6 +56,8 @@ These are schema defaults, not a universal recommended recipe. Explicitly zero u
 
 For large datasets, startup indexing validates source images, captions, and cache files one record at a time, reading only cache header metadata rather than latent/text tensors. Dataset fingerprints stream individual records instead of retaining extra identity dictionaries and a complete JSON copy; the necessary file-pair index still scales with image count. Cache formats and resume fingerprints remain unchanged, so caches need not be rebuilt. The terminal displays per-image validation progress.
 
+Linux system/container RAM counters may also include file page cache. After fully hashing each HQ, LQ, and cache file, restoration indexing automatically requests release of its scanned pages with `POSIX_FADV_DONTNEED`, reducing cache buildup from the one-time scan. No configuration or administrator privileges are required. This is a best-effort kernel/filesystem hint; mapped, active, or dirty pages may remain. Unsupported platforms continue validation normally. Global caches are never flushed and content validation is never skipped. Later training reads may need to fetch these files from disk again.
+
 ## Local periodic residual constraint
 
 `losses.phase` is a supplementary loss, disabled by default, for repeated phase bias relative to HQ. The implementation protects both local lighting planes and target-texture contrast instead of treating all such errors as grid artifacts.

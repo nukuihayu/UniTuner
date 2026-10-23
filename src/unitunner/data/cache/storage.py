@@ -249,10 +249,12 @@ def read_latent_manifest(directory: Path) -> LatentManifest:
     return LatentManifest.model_validate_json((directory / "manifest.json").read_bytes())
 
 
-def validate_latent_entry(directory: Path, manifest: LatentManifest, entry: CacheEntry) -> CacheIdentity:
+def validate_latent_entry(
+    directory: Path, manifest: LatentManifest, entry: CacheEntry, *, release_cache: bool = False
+) -> CacheIdentity:
     """Validate file content and native headers without loading tensor payloads."""
     path = directory / entry.file
-    if file_sha256(path) != entry.sha256:
+    if file_sha256(path, release_cache=release_cache) != entry.sha256:
         raise ValueError("Latent cache file differs from its manifest digest")
     with TensorReader(path) as reader:
         encoded = reader.metadata().get("unitunner.cache.identity")
