@@ -30,7 +30,7 @@ def load_dino_convnext(
     with torch.device("meta"):
         model = DinoConvNeXt(widths, depths)
     expected = model.state_dict()
-    tensors = dict(checkpoint_tensors(path, label="Feature"))
+    tensors = dict(checkpoint_tensors(path, label="Feature", memory_map=device.type != "cpu"))
     if tensors.keys() != expected.keys():
         raise ValueError("DINO ConvNeXt artifact keys differ from explicit topology")
     for name, value in tensors.items():
@@ -68,7 +68,7 @@ def load_vgg19_features(
     with torch.device("meta"):
         model = Vgg19Features(widths)
     expected = model.state_dict()
-    tensors = dict(checkpoint_tensors(path, label="Feature"))
+    tensors = dict(checkpoint_tensors(path, label="Feature", memory_map=device.type != "cpu"))
     classifier = {f"classifier.{index}.{suffix}" for index in (0, 3, 6) for suffix in ("weight", "bias")}
     if tensors.keys() - expected.keys() == classifier:
         tensors = {name: value for name, value in tensors.items() if name not in classifier}
@@ -95,7 +95,7 @@ def load_dino_vit(path: Path, *, device: torch.device) -> DinoViT:
     SwiGLU geometries fail. Strictly validate every key, shape and finite value
     before returning an owned frozen FP32 evaluation encoder.
     """
-    tensors = dict(checkpoint_tensors(path, label="Feature"))
+    tensors = dict(checkpoint_tensors(path, label="Feature", memory_map=device.type != "cpu"))
     metadata = {}
     if not is_pytorch_checkpoint(path):
         with TensorReader(path) as reader:

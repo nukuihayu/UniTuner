@@ -142,6 +142,61 @@ def test_restoration_rejects_invalid_time(sigma):
         one_step(torch.ones(1, 2), torch.ones(1, 2), sigma, flow_sign=-1)
 
 
+def test_generator_temporaries_are_released_before_discriminator_forward():
+    import weakref
+    from types import SimpleNamespace
+
+    from unitunner.training.methods.restoration import RestorationMethod
+
+    method = object.__new__(RestorationMethod)
+    method._first_step = False
+    method.compute_precision = "fp32"
+    method.weights = RestorationLossWeights(lrr=3, dv3d=5, l1=0.5, gan=0.5, fdl=0, phase=4)
+    method.encoder = SimpleNamespace(unadapted=torch.no_grad)
+    method.state = nn.Module()
+    method.state.register_buffer("sigma", torch.tensor(0.244, dtype=torch.float64))
+    method.histogram_bins, method.phase_period, method.phase_cycles, method.phase_epsilon = 32, 16, 8, 0.001
+    method.posterior = "mean"
+    method.wavelet = method.frequency = None
+    scale = nn.Parameter(torch.tensor(0.8))
+    refs = {}
+
+    def track(name, value):
+        refs[name] = weakref.ref(value)
+        return value
+
+    method.encode = lambda pixels, **kwargs: track("low" if pixels.requires_grad else "high", pixels * scale)
+    method.restore = lambda latent, captions: track("restored", latent * scale)
+    method.decode = lambda latent: latent + 0
+    method.perceptual = lambda generated, high: F.mse_loss(generated, high)
+
+    class Discriminator(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.head = nn.Conv2d(3, 1, 1)
+            self.calls = 0
+
+        def forward(self, pixels):
+            self.calls += 1
+            if self.calls > 1:
+                assert all(reference() is None for reference in refs.values())
+            return (self.head(pixels),)
+
+    method.discriminator = Discriminator()
+    low = torch.randn(1, 3, 128, 128, requires_grad=True)
+    high = torch.randn_like(low)
+    steps = method.steps(low, high, None)
+    generator = next(steps)
+    generator.loss.backward()
+    assert scale.grad is not None and scale.grad.abs() > 0
+    assert low.grad is not None and torch.isfinite(low.grad).all()
+    assert all(p.grad is None for p in method.discriminator.parameters())
+    discriminator = next(steps)
+    discriminator.loss.backward()
+    assert all(p.grad is not None for p in method.discriminator.parameters())
+    assert next(steps, None) is None
+
+
 @pytest.mark.parametrize("family", ["z-image", "flux"])
 @pytest.mark.parametrize("channels_last", [False, True])
 def test_sampled_restoration_matches_trainer_draw_order_and_gradients(tmp_path, family, channels_last):

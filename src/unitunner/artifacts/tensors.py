@@ -277,7 +277,7 @@ def resolve_weight_path(path: Path) -> Path:
     raise ValueError(f"Select one weight file or component directory; ambiguous or absent weights in {path}")
 
 
-def weight_artifact_sha256(path: Path) -> str:
+def weight_artifact_sha256(path: Path, *, release_cache: bool = False) -> str:
     """Hash all resolved weight shards, retaining single-file digest semantics.
 
     A numbered shard selects the complete ordered set. Hash a versioned list of
@@ -287,8 +287,10 @@ def weight_artifact_sha256(path: Path) -> str:
     """
     shards = resolve_shards(path)
     if len(shards) == 1:
-        return file_sha256(shards[0])
-    return canonical_sha256({"schema": "weight-shards/1", "sha256": [file_sha256(shard) for shard in shards]})
+        return file_sha256(shards[0], release_cache=release_cache)
+    return canonical_sha256(
+        {"schema": "weight-shards/1", "sha256": [file_sha256(shard, release_cache=release_cache) for shard in shards]}
+    )
 
 
 def iter_tensors(path: Path) -> Iterator[tuple[str, Tensor]]:

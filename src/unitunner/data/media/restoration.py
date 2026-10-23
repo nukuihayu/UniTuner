@@ -6,12 +6,23 @@ from typing import Literal
 
 import numpy as np
 import torch
+from numpy.typing import NDArray
 from PIL import Image, ImageOps
 from torch import Tensor
 
 from unitunner.data.datasets.restoration import AlignedImagePair
 from unitunner.data.degradation.config import DegradationConfig
 from unitunner.data.degradation.pipeline import degrade_image
+
+
+def _read_rgb(path: Path) -> NDArray[np.uint8]:
+    """Own one RGB array without extra full-image PIL orientation/conversion copies."""
+    with Image.open(path) as image:
+        ImageOps.exif_transpose(image, in_place=True)
+        if image.mode == "RGB":
+            return np.array(image, copy=True)
+        with image.convert("RGB") as rgb:
+            return np.array(rgb, copy=True)
 
 
 def read_restoration_pair(
@@ -80,8 +91,7 @@ def iter_aligned_images(
         raise ValueError("Calibration sampling requires random or tiles")
     arrays = []
     for path in (high_path,) if low_path is None else (low_path, high_path):
-        with Image.open(path) as image, ImageOps.exif_transpose(image) as oriented, oriented.convert("RGB") as rgb:
-            arrays.append(np.array(rgb, copy=True))
+        arrays.append(_read_rgb(path))
     synthetic = low_path is None
     low, high = (arrays[0], arrays[0]) if synthetic else arrays
     if low.shape != high.shape:
@@ -90,7 +100,10 @@ def iter_aligned_images(
     if min(width, height) < 1 or not 0 <= flip_probability <= 1:
         raise ValueError("Restoration crop requires positive geometry and flip probability in [0,1]")
     padding = ((0, max(0, height - high.shape[0])), (0, max(0, width - high.shape[1])), (0, 0))
-    low, high = (np.pad(value, padding, mode="reflect") for value in (low, high))
+    if padding[0][1] or padding[1][1]:
+        high = np.pad(high, padding, mode="reflect")
+        low = high if synthetic else np.pad(low, padding, mode="reflect")
+    del arrays
     generator = torch.Generator().manual_seed(seed)
     if sampling == "random":
         if high.shape[:2] == (height, width):
@@ -113,7 +126,7 @@ def iter_aligned_images(
             generator.manual_seed(seed + index * 1_000_003)
         flip = float(torch.rand((), generator=generator)) < flip_probability
         tensors = []
-        for value in (low, high):
+        for value in (high,) if synthetic else (low, high):
             pixels = (
                 torch.from_numpy(value[top : top + height, left : left + width].copy()).permute(2, 0, 1).float() / 255
             )
@@ -121,8 +134,12 @@ def iter_aligned_images(
         if synthetic:
             if degradation is None or not degradation.enabled:
                 raise ValueError("Missing low-quality image requires enabled synthetic degradation")
-            tensors[0] = degrade_image(tensors[1], degradation, generator.initial_seed())
-        yield tensors[0] * 2 - 1, tensors[1] * 2 - 1
+            high_tensor = tensors[0]
+            low_tensor = degrade_image(high_tensor, degradation, generator.initial_seed())
+        else:
+            low_tensor, high_tensor = tensors
+        yield low_tensor * 2 - 1, high_tensor * 2 - 1
+        del tensors, pixels, low_tensor, high_tensor
 
 
 def read_restoration_image(path: Path, *, granularity: int) -> tuple[Tensor, tuple[int, int]]:
@@ -134,8 +151,8 @@ def read_restoration_image(path: Path, *, granularity: int) -> tuple[Tensor, tup
     """
     if granularity < 1:
         raise ValueError("Restoration image granularity must be positive")
-    with Image.open(path) as image, ImageOps.exif_transpose(image) as oriented, oriented.convert("RGB") as rgb:
-        pixels = np.array(rgb, copy=True)
+    pixels = _read_rgb(path)
     height, width = pixels.shape[:2]
-    pixels = np.pad(pixels, ((0, -height % granularity), (0, -width % granularity), (0, 0)), mode="reflect")
+    if height % granularity or width % granularity:
+        pixels = np.pad(pixels, ((0, -height % granularity), (0, -width % granularity), (0, 0)), mode="reflect")
     return torch.from_numpy(pixels).permute(2, 0, 1).contiguous().float() / 127.5 - 1, (width, height)

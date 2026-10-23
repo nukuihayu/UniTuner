@@ -10,7 +10,7 @@ from torch import Tensor, nn
 from unitunner.adapters.encoder import EncoderAdapters
 from unitunner.artifacts.formats.precision import FloatingPrecision
 from unitunner.config.training import TrainingConfig
-from unitunner.data.cache.storage import read_latent_record
+from unitunner.data.cache.storage import read_caption_record
 from unitunner.data.datasets.restoration import AlignedImagePair, RestorationDataset
 from unitunner.inference.restoration.vae import (
     decode_restoration_latents,
@@ -24,7 +24,6 @@ from unitunner.models.flux.conditioning import FluxTextFeatures
 from unitunner.models.flux2.vae import Flux2VAE
 from unitunner.models.krea2.conditioning import Krea2TextFeatures, batch_text
 from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record
 from unitunner.precision import compute_context
 from unitunner.progress import status
 from unitunner.training.contracts import StepResult
@@ -214,11 +213,7 @@ class RestorationMethod:
     def captions(self, pairs: Sequence[AlignedImagePair]) -> Caption | Krea2TextFeatures | FluxTextFeatures:
         """Read immutable caption records and preserve each native text representation."""
         device = next(self.vae.parameters()).device
-        if isinstance(self.binding, QwenImage21Binding):
-            return batch_captions(
-                [read_qwen_image_21_record(pair.cache_directory, pair.caption, device=device).caption for pair in pairs]
-            )
-        records = [read_latent_record(pair.cache_directory, pair.caption, device=device) for pair in pairs]
+        records = [read_caption_record(pair.cache_directory, pair.caption, device=device) for pair in pairs]
         if isinstance(self.binding, FluxBinding):
             pooled = []
             for record in records:
@@ -353,12 +348,14 @@ class RestorationMethod:
                 total = total + wavelet
                 loss.metrics["wavelet"] = wavelet.detach()
             self._trace("generator loss ready; backward next", low.device)
+            del clean, noise, low_latent, restored, logits
             yield StepResult(total, low.shape[0], "generator", loss.metrics)
+            fake = generated.detach()
+            del generated, total, loss
             if self.discriminator is not None:
                 self._trace("generator backward complete; discriminator forward", low.device)
                 discriminator_loss = self.weights.gan * (
-                    gan_loss(self.discriminator(generated.detach()), False)
-                    + gan_loss(self.discriminator(high.detach()), True)
+                    gan_loss(self.discriminator(fake), False) + gan_loss(self.discriminator(high.detach()), True)
                 )
                 yield StepResult(discriminator_loss, low.shape[0], "discriminator")
             self._trace("microbatch backward complete", low.device)

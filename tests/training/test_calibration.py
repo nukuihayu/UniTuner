@@ -33,12 +33,16 @@ def test_toml_calibration_preprocessing_limit_and_rng(tmp_path, capsys, sampling
         source = tmp_path / "hq"
         source.mkdir()
         Image.fromarray(np.random.default_rng(12).integers(0, 256, (67, 81, 3), dtype=np.uint8)).save(source / "a.png")
-        inputs = "degradation = { enabled = true, scales = [2] }" if synthetic else f'low_quality_source = "{source}"'
+        inputs = (
+            "degradation = { enabled = true, scales = [2] }"
+            if synthetic
+            else f'low_quality_source = "{source.as_posix()}"'
+        )
         document = tmp_path / "train.toml"
         document.write_text(f'''
 [model]
 family = "z-image"
-vae = "{tmp_path / "vae.safetensors"}"
+vae = "{(tmp_path / "vae.safetensors").as_posix()}"
 weights = "absent-denoiser.safetensors"
 [train]
 seed = 17
@@ -50,7 +54,7 @@ posterior = "sample"
 [dataset.defaults]
 resolution = [32, 32]
 [dataset.groups.main]
-source = "{source}"
+source = "{source.as_posix()}"
 cache_directory = "absent-cache"
 kind = "restoration"
 {inputs}

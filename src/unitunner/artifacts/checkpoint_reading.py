@@ -25,10 +25,16 @@ def is_pytorch_checkpoint(path: Path) -> bool:
     return path.suffix.lower() in (".pt", ".pth", ".bin") or signature.startswith((b"PK\x03\x04", b"\x80"))
 
 
-def checkpoint_tensors(path: Path, *, label: str = "Checkpoint") -> Iterator[tuple[str, Tensor]]:
-    """Read safe PyTorch state dictionaries or stream safetensors shards on CPU."""
+def checkpoint_tensors(
+    path: Path, *, label: str = "Checkpoint", memory_map: bool = False
+) -> Iterator[tuple[str, Tensor]]:
+    """Read safe CPU tensors, optionally mapping ZIP storage for accelerator loading."""
     if is_pytorch_checkpoint(path):
-        state = torch.load(path, map_location="cpu", weights_only=True)
+        with path.open("rb") as stream:
+            mapped = memory_map and stream.read(4) == b"PK\x03\x04"
+        # Legacy pickle serialization cannot be mapped. Select by content so
+        # renamed official DINO/VGG checkpoints keep working.
+        state = torch.load(path, map_location="cpu", weights_only=True, mmap=mapped)
         if not isinstance(state, dict) or any(
             not isinstance(name, str) or not isinstance(value, Tensor) for name, value in state.items()
         ):

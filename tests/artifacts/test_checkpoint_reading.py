@@ -38,3 +38,22 @@ def test_rejects_non_tensor_state_before_yielding(tmp_path, state):
     torch.save(state, path)
     with pytest.raises(ValueError, match="tensor state dict"):
         next(checkpoint_tensors(path))
+
+
+@pytest.mark.parametrize("legacy", (False, True))
+def test_checkpoint_mmap_selected_by_file_content(tmp_path, monkeypatch, legacy):
+    path = tmp_path / "renamed.safetensors"
+    value = torch.randn(3, 4)
+    torch.save({"weight": value}, path, _use_new_zipfile_serialization=not legacy)
+    original = torch.load
+    calls = []
+
+    def load(*args, **kwargs):
+        assert kwargs["weights_only"] is True
+        calls.append(kwargs["mmap"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "load", load)
+    actual = dict(checkpoint_tensors(path, memory_map=True))
+    assert calls == [not legacy]
+    torch.testing.assert_close(actual["weight"], value, rtol=0, atol=0)

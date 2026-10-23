@@ -294,6 +294,39 @@ def load_latent_manifest(directory: Path) -> LatentManifest:
     return manifest
 
 
+@dataclass(frozen=True, slots=True)
+class CaptionCacheRecord:
+    """Borrow only the text conditions of an already preflighted immutable image record."""
+
+    caption: Tensor
+    pooled: Tensor | None = None
+
+
+def read_caption_record(directory: Path, entry: CacheEntry, *, device: torch.device) -> CaptionCacheRecord:
+    """Read restoration text without faulting or transferring unused image payloads.
+
+    Indexing must validate the immutable record first. Native key inventories
+    and text geometry are checked here; latents/references remain on disk.
+    """
+    with TensorReader(directory / entry.file) as reader:
+        encoded = reader.metadata().get("unitunner.cache.identity")
+        if encoded is None:
+            raise ValueError("Caption cache record is missing its content identity")
+        identity = CacheIdentity.model_validate_json(encoded)
+        if identity.digest() + ".safetensors" != entry.file or set(reader.keys()) != _record_keys(identity.layout):
+            raise ValueError("Caption cache identity differs from its keys or filename")
+        caption = reader.read("caption")
+        krea2 = identity.layout == "krea2/C1HW+SLD"
+        if caption.ndim != (3 if krea2 else 2) or min(caption.shape) < 1 or not caption.is_floating_point():
+            raise ValueError("Invalid cached caption dimensions/dtype")
+        if (krea2 or identity.layout.startswith("qwen-image-2-1/")) and (
+            caption.dtype != torch.float32 or not torch.isfinite(caption).all()
+        ):
+            raise ValueError("Krea2/Qwen Image2.1 caption requires finite FP32 values")
+        pooled = reader.read("pooled", device=device, dtype=torch.float32) if "pooled" in reader.keys() else None
+        return CaptionCacheRecord(caption.to(device=device, dtype=torch.float32), pooled)
+
+
 def read_latent_record(directory: Path, entry: CacheEntry, *, device: torch.device) -> ImageCacheRecord:
     """Read native FP32 tensors on the explicit training device after manifest preflight.
 

@@ -169,7 +169,7 @@ def train(
         )
     )
     status("[train] Hashing model artifacts for checkpoint identity (large files may take a while)")
-    artifact_digest = weight_artifact_sha256(Path(config.model.weights))
+    artifact_digest = weight_artifact_sha256(Path(config.model.weights), release_cache=restoration)
     if restoration:
         paths: dict[str, JsonValue] = {"transformer": artifact_digest}
         if config.model.vae is None or config.method.restoration is None:
@@ -180,7 +180,7 @@ def train(
             ("vgg", config.method.restoration.vgg_weights),
         ):
             if path is not None:
-                paths[name] = weight_artifact_sha256(Path(path))
+                paths[name] = weight_artifact_sha256(Path(path), release_cache=True)
         artifact_digest = canonical_sha256(paths)
     representation_targets = None if config.method.repa is None else RepaTargets(config.method.repa)
     if representation_targets is not None:
@@ -323,11 +323,19 @@ def train(
                         selected_pairs.append(pair)
                     microbatch += 1
                     consumed += len(pairs)
+                    low_batch = (
+                        pairs[0][0].unsqueeze(0) if len(pairs) == 1 else torch.stack([p[0] for p in pairs])
+                    ).to(device)
+                    high_batch = (
+                        pairs[0][1].unsqueeze(0) if len(pairs) == 1 else torch.stack([p[1] for p in pairs])
+                    ).to(device)
+                    del pairs
                     yield from method.steps(
-                        torch.stack([pair[0] for pair in pairs]).to(device),
-                        torch.stack([pair[1] for pair in pairs]).to(device),
+                        low_batch,
+                        high_batch,
                         method.captions(selected_pairs),
                     )
+                    del low_batch, high_batch
                     continue
                 if cached_plan is None:
                     raise RuntimeError("Image flow requires its batch schedule")
