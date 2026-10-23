@@ -111,7 +111,13 @@ def test_native_artifact_import_sequence_padding_and_geometry(tmp_path):
     grids = (((1, 1, 2), (1, 3, 1), (1, 2, 3)), ((1, 2, 1), (1, 1, 3), (1, 3, 2)))
     options = {"text_lengths": (3, 5), "references": refs, "image_slots": ((0, 2), (2, 2))}
     times = torch.tensor([0.244, 0.751])
-    assert torch.equal(model(target, text, times, grids, **options), restored(target, text, times, grids, **options))
+    # Reloaded tensor storage can change CPU kernel rounding despite identical weights.
+    torch.testing.assert_close(
+        model(target, text, times, grids, **options),
+        restored(target, text, times, grids, **options),
+        atol=1e-6,
+        rtol=1e-5,
+    )
     batched = model(target, text, times, grids, **options)
     for index in range(2):
         independent = model(
