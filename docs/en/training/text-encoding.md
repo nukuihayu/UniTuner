@@ -107,7 +107,7 @@ File conversion also supports `--precision bf16`, `fp16`, and `fp32`, reconstruc
 
 FLUX online settings apply to both T5 and CLIP. Convert each offline for different layouts, retaining the existing auxiliary asset structure. Sharded conversion merges output; do not leave old shards or stale indexes in the destination directory.
 
-MiniMaxH3 uses language layers 0–49. Online preparation protects layers 0 and 49 automatically. When converting a complete, untruncated Qwen3-VL source offline, also pass `--exclude '*layers.49.*'`; a file matching the native truncated topology is preferable. Text loaders reject packed protected paths; reconvert those from a floating source.
+MiniMaxH3 uses language layers 0–49. Online preparation protects layers 0 and 49 automatically. When converting a complete, untruncated Qwen3-VL source offline, also pass `--exclude '*layers.49.*'`; a file matching the native truncated topology is preferable. Text loaders accept artifacts with already quantized first/last layers or other protected paths and preserve their packed storage without requiring reconversion. Keys, shapes, layouts, and explicit quantization parameters must still pass validation.
 
 ## Safeguards and cache identity
 

@@ -115,17 +115,11 @@ def _adapt_text_modules(model: nn.Module) -> None:
 
 
 def prepare_text_model(model: nn.Module, config: TextEncodingConfig, *, family: str, device: torch.device) -> None:
-    """Quantize CPU projections on the chosen GPU, then place the frozen encoder."""
-    from unitunner.artifacts.formats.precision_policy import language_boundaries, protection_reason
+    """Preserve packed source layers, optionally quantize dense ones, then place the encoder."""
     from unitunner.models.components.quantized import QuantizedLinear
 
     precision = canonical_quantization(config.quantization)
-    boundaries = language_boundaries(model.state_dict())
     for name, layer in model.named_modules():
-        if isinstance(layer, QuantizedLinear) and (reason := protection_reason(family, name + ".weight", boundaries)):
-            raise ValueError(
-                f"{name}: quantized text artifact violates precision protection ({reason}); reconvert from floating weights"
-            )
         if not isinstance(layer, QuantizedLinear):
             continue
         if precision != "none":

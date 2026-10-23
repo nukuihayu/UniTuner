@@ -259,21 +259,36 @@ def test_t5_feed_forward_uses_logical_dtype_for_packed_output_projection(gated):
     assert forward(model).dtype == torch.bfloat16
 
 
-def test_prepacked_protected_text_layer_is_rejected():
+@pytest.mark.parametrize("index", (0, 2))
+@pytest.mark.parametrize("precision", ("float8_e4m3fn", "int8_convrot"))
+@torch.no_grad()
+def test_prepacked_boundary_text_layer_preserves_storage_and_outputs(index, precision):
     from unitunner.artifacts.quantization import quantize_weight, serialize_weight
 
     kitchen = pytest.importorskip("comfy_kitchen")
     model = text_model("qwen3").eval().requires_grad_(False)
-    projection = model.get_submodule("layers.0.self_attn.q_proj")
+    name = f"layers.{index}.self_attn.q_proj"
+    projection = model.get_submodule(name)
     assert isinstance(projection, nn.Linear)
     with kitchen.use_backend("eager"):
-        packed = quantize_weight(projection.weight, "float8_e4m3fn")
+        packed = quantize_weight(projection.weight, precision, rotation_size=16)
     model.set_submodule(
-        "layers.0.self_attn.q_proj",
-        QuantizedLinear(serialize_weight("weight", packed, "float8_e4m3fn"), dtype=torch.float32),
+        name,
+        QuantizedLinear(serialize_weight("weight", packed, precision), dtype=torch.float32),
     )
-    with pytest.raises(ValueError, match="precision protection"):
+    state = {key: value.clone() for key, value in model.state_dict().items()}
+    with kitchen.use_backend("eager"):
+        expected = forward(model)
+        restored = text_model("qwen3")
+        load_text_state(restored, state, dtype=torch.float32, label="Qwen3")
+        restored.train()
+        prepare_text_model(restored, TextEncodingConfig(), family="qwen3", device=torch.device("cpu"))
         prepare_text_model(model, TextEncodingConfig(), family="qwen3", device=torch.device("cpu"))
+        validate_cache_text(restored)
+        assert isinstance(restored.get_submodule(name), QuantizedLinear)
+        for key, value in state.items():
+            torch.testing.assert_close(restored.state_dict()[key], value, atol=0, rtol=0)
+        torch.testing.assert_close(forward(restored), expected, atol=1e-6, rtol=1e-5)
 
 
 @pytest.mark.parametrize("format", ("int8_convrot", "asym_w4a8_int8", "w6a8_int8"))
