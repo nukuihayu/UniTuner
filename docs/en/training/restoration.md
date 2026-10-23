@@ -54,6 +54,8 @@ Both `dino_weights` and `vgg_weights` accept `.pt`, `.pth`, and `.safetensors` w
 
 These are schema defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, or `histogram`) must be nonzero. Neither LRR nor phase alone can supervise the complete decoded result.
 
+For large datasets, startup indexing validates source images, captions, and cache files one record at a time, reading only cache header metadata rather than latent/text tensors. Dataset fingerprints stream individual records instead of retaining extra identity dictionaries and a complete JSON copy; the necessary file-pair index still scales with image count. Cache formats and resume fingerprints remain unchanged, so caches need not be rebuilt. The terminal displays per-image validation progress.
+
 ## Local periodic residual constraint
 
 `losses.phase` is a supplementary loss, disabled by default, for repeated phase bias relative to HQ. The implementation protects both local lighting planes and target-texture contrast instead of treating all such errors as grid artifacts.

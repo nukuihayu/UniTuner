@@ -244,40 +244,51 @@ def save_latent_manifest(manifest: LatentManifest, directory: Path) -> Path:
     return path
 
 
+def read_latent_manifest(directory: Path) -> LatentManifest:
+    """Parse the manifest only; callers must validate each record before use."""
+    return LatentManifest.model_validate_json((directory / "manifest.json").read_bytes())
+
+
+def validate_latent_entry(directory: Path, manifest: LatentManifest, entry: CacheEntry) -> CacheIdentity:
+    """Validate file content and native headers without loading tensor payloads."""
+    path = directory / entry.file
+    if file_sha256(path) != entry.sha256:
+        raise ValueError("Latent cache file differs from its manifest digest")
+    with TensorReader(path) as reader:
+        encoded = reader.metadata().get("unitunner.cache.identity")
+        if encoded is None:
+            raise ValueError("Latent cache record is missing its content identity")
+        identity = CacheIdentity.model_validate_json(encoded)
+        layout = f"flux/{manifest.variant}/CHW+LD+V" if manifest.family == "flux" else f"{manifest.family}/CHW+LD"
+        if manifest.family == "krea2":
+            layout = "krea2/C1HW+SLD"
+        if manifest.family == "moss-image" and manifest.variant == "edit":
+            count = sum(key.startswith("reference.") for key in reader.keys())
+            layout = f"moss-image/edit/CHW+LD+R{count}"
+        if manifest.family == "flux2":
+            count = sum(key.startswith("reference.") for key in reader.keys())
+            layout = f"flux2/{manifest.version}/{manifest.variant}/CHW+LD+R{count}"
+        if manifest.family == "flux3":
+            count = sum(key.startswith("reference.") for key in reader.keys())
+            layout = f"flux3/{manifest.variant}/CHW+LD+R{count}"
+        if manifest.family == "qwen-image":
+            count = sum(key.startswith("reference.") for key in reader.keys())
+            layout = f"qwen-image/{manifest.variant}/CLHW+LD+R{count}"
+        if manifest.family == "qwen-image-2-1":
+            count = sum(key.startswith("reference.") for key in reader.keys())
+            layout = f"qwen-image-2-1/C1HW+LD+R{count}"
+        if set(reader.keys()) != _record_keys(layout):
+            raise ValueError("Latent cache record keys differ from native family layout")
+        if identity.layout != layout or identity.digest() + ".safetensors" != entry.file:
+            raise ValueError("Latent cache identity differs from its layout or filename")
+    return identity
+
+
 def load_latent_manifest(directory: Path) -> LatentManifest:
     """Preflight immutable cache files once before entering the training hot loop."""
-    manifest = LatentManifest.model_validate_json((directory / "manifest.json").read_text())
+    manifest = read_latent_manifest(directory)
     for entry in manifest.entries:
-        path = directory / entry.file
-        if file_sha256(path) != entry.sha256:
-            raise ValueError("Latent cache file differs from its manifest digest")
-        with TensorReader(path) as reader:
-            encoded = reader.metadata().get("unitunner.cache.identity")
-            if encoded is None:
-                raise ValueError("Latent cache record is missing its content identity")
-            identity = CacheIdentity.model_validate_json(encoded)
-            layout = f"flux/{manifest.variant}/CHW+LD+V" if manifest.family == "flux" else f"{manifest.family}/CHW+LD"
-            if manifest.family == "krea2":
-                layout = "krea2/C1HW+SLD"
-            if manifest.family == "moss-image" and manifest.variant == "edit":
-                count = sum(key.startswith("reference.") for key in reader.keys())
-                layout = f"moss-image/edit/CHW+LD+R{count}"
-            if manifest.family == "flux2":
-                count = sum(key.startswith("reference.") for key in reader.keys())
-                layout = f"flux2/{manifest.version}/{manifest.variant}/CHW+LD+R{count}"
-            if manifest.family == "flux3":
-                count = sum(key.startswith("reference.") for key in reader.keys())
-                layout = f"flux3/{manifest.variant}/CHW+LD+R{count}"
-            if manifest.family == "qwen-image":
-                count = sum(key.startswith("reference.") for key in reader.keys())
-                layout = f"qwen-image/{manifest.variant}/CLHW+LD+R{count}"
-            if manifest.family == "qwen-image-2-1":
-                count = sum(key.startswith("reference.") for key in reader.keys())
-                layout = f"qwen-image-2-1/C1HW+LD+R{count}"
-            if set(reader.keys()) != _record_keys(layout):
-                raise ValueError("Latent cache record keys differ from native family layout")
-            if identity.layout != layout or identity.digest() + ".safetensors" != entry.file:
-                raise ValueError("Latent cache identity differs from its layout or filename")
+        validate_latent_entry(directory, manifest, entry)
     return manifest
 
 

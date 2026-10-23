@@ -71,10 +71,13 @@ def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
                 caption_extension=source.caption_extension,
                 prompt=source.prompt,
             )
-            pairs.extend(indexed * source.repeats)
+            for _ in range(source.repeats):
+                pairs.extend(indexed)
+            del indexed
             identities.append({"group": name, "digest": digest, "repeats": source.repeats})
         restoration_data = RestorationDataset(tuple(pairs), canonical_sha256({"sources": identities}), read)
         status(f"[train] Indexed {len(pairs)} restoration pairs (including repeats)")
+        del pairs
     preview_writer = None
     if config.preview is not None:
         required = ("PIL", "cv2", "transformers") if config.method.kind == "flow-matching" else ("PIL", "cv2")
