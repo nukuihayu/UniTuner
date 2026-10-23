@@ -52,6 +52,8 @@ uv run unitunner weights convert models/z_image_turbo_bf16.safetensors models/z_
 
 训练可直接把 ComfyUI 单文件或 Diffusers 目录填入 `model.weights`，无需先执行 `weights import`。发布模型使用默认结构，本地 `config.json` 可提供结构参数；`model.variant` 和 `model.version` 仍用于选择训练变体。支持 Z-Image、FLUX、FLUX.2、FLUX3、MOSS、Qwen Image、Qwen Image 2.1、Krea2、Wan 和 MiniMaxH3 各自发布的布局。
 
+Qwen Image 2.1 可直接读取 ComfyUI 的独立 `gate_layer`／`proj` 或融合 `gate_up` 权重，以及常用组件前缀和索引分片。无拓扑元数据时，从权重头识别层数、通道、注意力头数与 MLP 比例；RoPE 轴分配和 epsilon 无法从权重推断，自定义值需在 `config.json` 或显式拓扑中提供。融合权重按 `[gate; up]` 拆分。INT8 ConvRot 等量化文件仅将融合 MLP 输入投影还原为浮点后拆分，其余已量化投影保留原始存储；因此载入后的内存占用会高于全量化文件大小。ComfyUI 保存的 `comfy_attention.config` 作为推理后端偏好校验后过滤，训练使用自身的注意力设置。缺失权重、冲突布局或不一致的结构会报错，不会随机补齐参数。
+
 `weights import --kind transformer` 也默认导出 ComfyUI 布局；自定义结构可提供 `--topology`，需要原生布局时指定 `--output-format native`。
 
 ## 支持的精度

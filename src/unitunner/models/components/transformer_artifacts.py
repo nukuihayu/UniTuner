@@ -201,6 +201,7 @@ def published_config[ConfigT: BaseModel](
         if isinstance(heads, int) and isinstance(head_dim, int):
             values["hidden_size"] = heads * head_dim
     shapes: dict[str, tuple[int, ...]] = {}
+    logical_shapes: dict[str, tuple[int, ...]] = {}
     for shard in resolve_shards(path):
         with TensorReader(shard) as reader:
             for key in reader.keys():
@@ -211,6 +212,22 @@ def published_config[ConfigT: BaseModel](
                         break
                 # Only header dimensions; no weight payload or network access.
                 shapes[key] = reader.shape(original)
+                if name == "QwenImage21Config" and key.endswith(".comfy_quant"):
+                    from unitunner.artifacts.quantization import tensor_json
+
+                    # Packed storage can pad rows or pack several columns into a
+                    # byte. Only this small JSON tensor is needed for topology.
+                    quantization = tensor_json(reader.read(original))
+                    shape = quantization.get("orig_shape")
+                    if shape is not None:
+                        if (
+                            not isinstance(shape, list)
+                            or len(shape) != 2
+                            or any(type(n) is not int or n < 1 for n in shape)
+                        ):
+                            raise ValueError(f"Invalid Qwen Image 2.1 logical shape: {key}")
+                        logical_shapes[key.removesuffix("comfy_quant") + "weight"] = tuple(shape)
+    shapes.update(logical_shapes)
     if name == "Flux2Config":
         width = shapes.get("txt_in.weight", shapes.get("context_embedder.weight", (0, 0)))[1]
         detected = {7680: "klein-4b", 12288: "klein-9b", 15360: "dev"}.get(width, "dev")
@@ -259,6 +276,58 @@ def published_config[ConfigT: BaseModel](
     elif name == "MiniMaxH3Config" and "adaln_basis" in shapes:
         values.setdefault("time_embed_dim", shapes["adaln_basis"][0])
         values.setdefault("adaln_rank", shapes["adaln_basis"][1])
+    elif name == "QwenImage21Config":
+        required = (
+            "img_in.weight",
+            "proj_out.weight",
+            "txt_in.text_norm.weight",
+            "transformer_blocks.0.attn.norm_q.weight",
+        )
+        if any(key not in shapes for key in required):
+            raise ValueError("Qwen Image 2.1 checkpoint is missing architecture tensors")
+        image, output, text, norm = (shapes[key] for key in required)
+        if len(image) != 2 or len(output) != 2 or len(text) != 1 or len(norm) != 1:
+            raise ValueError("Invalid Qwen Image 2.1 architecture tensor dimensions")
+        width, channels = image
+        head_dim = norm[0]
+        fused = "transformer_blocks.0.img_mlp.gate_up.weight" in shapes
+        mlp = shapes.get(
+            "transformer_blocks.0.img_mlp.gate_up.weight" if fused else "transformer_blocks.0.img_mlp.proj.weight"
+        )
+        factor = 2 if fused else 1
+        if (
+            min(width, channels, head_dim, *output, *text) < 1
+            or width % head_dim
+            or output[1] != width
+            or mlp is None
+            or len(mlp) != 2
+            or mlp[1] != width
+            or mlp[0] < factor * width
+            or mlp[0] % (factor * width)
+        ):
+            raise ValueError("Inconsistent Qwen Image 2.1 attention or MLP dimensions")
+        blocks = {
+            int(key.split(".")[1])
+            for key in shapes
+            if key.startswith("transformer_blocks.") and key.split(".")[1].isdecimal()
+        }
+        if blocks != set(range(len(blocks))):
+            raise ValueError("Qwen Image 2.1 transformer blocks must be contiguous from zero")
+        detected = {
+            "in_channels": channels,
+            "out_channels": output[0],
+            "context_in_dim": text[0],
+            "attention_head_dim": head_dim,
+            "num_attention_heads": width // head_dim,
+            "num_layers": len(blocks),
+            "mlp_ratio": mlp[0] // (factor * width),
+        }
+        for field, value in detected.items():
+            if field in values and values[field] != value:
+                raise ValueError(f"Qwen Image 2.1 configuration disagrees with checkpoint: {field}")
+            values[field] = value
+        # RoPE axis allocation and epsilon are not encoded in the weights:
+        # retain the published defaults, or the caller's explicit sidecar.
     elif name == "QwenImageConfig":
         if "__index_timestep_zero__" in shapes or raw.get("zero_cond_t") is True:
             values.setdefault("variant", "edit-2511")

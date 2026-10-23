@@ -52,6 +52,8 @@ uv run unitunner weights convert models/z_image_turbo_bf16.safetensors models/z_
 
 Training accepts ComfyUI files and Diffusers directories directly in `model.weights`. Released architectures have defaults; a local `config.json` can supply topology. Select semantic variants through `model.variant` and `model.version`. Supported families are Z-Image, FLUX, FLUX.2, FLUX3, MOSS, Qwen Image, Qwen Image 2.1, Krea2, Wan, and MiniMaxH3, using their published layouts.
 
+Qwen Image 2.1 accepts ComfyUI weights with separate `gate_layer` / `proj` or fused `gate_up`, standard component prefixes, and indexed shards. Without topology metadata, tensor headers determine layer count, channels, attention heads, and MLP ratio. RoPE axis allocation and epsilon are not encoded in weights; custom values require `config.json` or explicit topology. Fused weights split in `[gate; up]` order. For INT8 ConvRot and other quantized files, only fused MLP input projections are decoded before splitting; other quantized projections retain their original storage. Loaded memory therefore exceeds the fully quantized file size. Saved `comfy_attention.config` entries are validated and filtered as inference-backend preferences; training uses its own attention settings. Missing weights, conflicting layouts, or inconsistent topology fail explicitly rather than initializing replacement parameters.
+
 `weights import --kind transformer` also exports ComfyUI layout by default. Custom architectures can supply `--topology`; use `--output-format native` for native layout.
 
 ## Supported precisions

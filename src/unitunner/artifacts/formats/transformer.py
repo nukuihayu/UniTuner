@@ -4,6 +4,7 @@ Mappings follow the upstream Diffusers single-file converters and ComfyUI
 loaders. Conversion never imports either runtime or discards unknown weights.
 """
 
+import json
 import re
 from collections.abc import Iterable, Mapping
 
@@ -304,17 +305,43 @@ def convert_transformer(
                 converted[target] = tensor
         return converted
     if family == "qwen_image_2_1":
-        if any(".img_mlp.gate_up." in key for key in source):
-            source = dequantize_transformer(source)
         for key in tuple(source):
-            if key.endswith(".img_mlp.gate_up.weight"):
+            if re.fullmatch(r"transformer_blocks\.\d+\.attn\.comfy_attention\.config", key):
                 value = source.pop(key)
-                if value.shape[0] % 2 or not value.is_floating_point():
+                projection = key.removesuffix("comfy_attention.config") + "to_q.weight"
+                if projection not in source or value.dtype != torch.uint8 or value.ndim != 1 or value.numel() > 65536:
+                    raise ValueError(f"Invalid ComfyUI attention configuration: {key}")
+                try:
+                    settings = json.loads(value.cpu().numpy().tobytes())
+                except (ValueError, UnicodeDecodeError) as error:
+                    raise ValueError(f"Invalid ComfyUI attention configuration: {key}") from error
+                choices = settings if isinstance(settings, list) else [settings]
+                if not choices or any(
+                    not isinstance(item, dict) or not isinstance(item.get("attention"), str) for item in choices
+                ):
+                    raise ValueError(f"Invalid ComfyUI attention configuration: {key}")
+                # Backend preferences (including quantized inference attention)
+                # carry no model weights. Training owns its attention backend.
+                continue
+            if key.endswith(".img_mlp.gate_up.weight"):
+                prefix = key.removesuffix("weight")
+                if prefix + "comfy_quant" in source:
+                    # Only the fused projection changes layout. Keep unrelated
+                    # attention/MLP weights in their original packed storage.
+                    local = {name: value for name, value in source.items() if name.startswith(prefix)}
+                    decoded = dequantize_transformer(local)
+                    for name in local:
+                        del source[name]
+                    source.update(decoded)
+                value = source.pop(key)
+                if value.ndim != 2 or value.shape[0] % 2 or not value.is_floating_point():
                     raise ValueError(f"Invalid fused Qwen Image 2.1 MLP: {key}")
                 for name, chunk in zip(("gate_layer", "proj"), value.chunk(2, dim=0), strict=True):
                     target = key.replace("gate_up", name)
-                    if target in source:
+                    if any(existing.startswith(target.removesuffix("weight")) for existing in source):
                         raise ValueError(f"Duplicate converted transformer tensor: {target}")
+                    if target in expected and chunk.shape != expected[target].shape:
+                        raise ValueError(f"Invalid fused Qwen Image 2.1 MLP shape: {key}")
                     source[target] = chunk
         return source
     if family not in {"flux", "flux2", "flux3", "wan", "krea2", "minimax_h3"}:
