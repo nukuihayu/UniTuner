@@ -94,6 +94,7 @@ def iter_aligned_images(
         arrays.append(_read_rgb(path))
     synthetic = low_path is None
     low, high = (arrays[0], arrays[0]) if synthetic else arrays
+    del arrays
     if low.shape != high.shape:
         raise ValueError("Aligned LQ/HQ images must have equal sizes after EXIF orientation")
     width, height = resolution
@@ -103,7 +104,6 @@ def iter_aligned_images(
     if padding[0][1] or padding[1][1]:
         high = np.pad(high, padding, mode="reflect")
         low = high if synthetic else np.pad(low, padding, mode="reflect")
-    del arrays
     generator = torch.Generator().manual_seed(seed)
     if sampling == "random":
         if high.shape[:2] == (height, width):

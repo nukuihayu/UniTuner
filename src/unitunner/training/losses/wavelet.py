@@ -132,5 +132,5 @@ class WaveletLoss(nn.Module):
 
 def image_flow_loss(prediction: Tensor, target: Tensor, sigma: Tensor, wavelet: WaveletLoss | None) -> Tensor:
     """Preserve native element-mean velocity MSE and optionally add DWT supervision."""
-    loss = (prediction.float() - target.float()).square().mean()
+    loss = F.mse_loss(prediction.float(), target.float())
     return loss if wavelet is None else loss + wavelet(prediction, target, sigma)

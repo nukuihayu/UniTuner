@@ -50,7 +50,9 @@ class SpatialAttention(nn.Module):
     def attend(self, x: Tensor) -> Tensor:
         """Normalize BCHW pixels and return residual spatial attention in BCHW."""
         tokens = self.group_norm(x).flatten(2).transpose(1, 2)
-        values = F.scaled_dot_product_attention(self.to_q(tokens), self.to_k(tokens), self.to_v(tokens), dropout_p=0.0)
+        # Fused CUDA SDPA needs an explicit head dimension, including for one head.
+        query, key, value = [projection(tokens).unsqueeze(1) for projection in (self.to_q, self.to_k, self.to_v)]
+        values = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0).squeeze(1)
         return x + self.to_out[0](values).transpose(1, 2).reshape_as(x)
 
     forward = attend

@@ -2,6 +2,7 @@
 
 import torch
 from torch import Tensor
+from torch.nn import functional as F
 
 
 def flow_matching_loss(prediction: Tensor, target: Tensor, weights: Tensor | None = None) -> Tensor:
@@ -29,9 +30,11 @@ def flow_matching_loss(prediction: Tensor, target: Tensor, weights: Tensor | Non
     if prediction.device != target.device:
         raise ValueError("Flow predictions and targets must share a device")
     dtype = torch.float64 if torch.float64 in (prediction.dtype, target.dtype) else torch.float32
+    if weights is None:
+        # Equal-sized samples: a native mean avoids materializing squared errors.
+        return F.mse_loss(prediction.to(dtype), target.to(dtype))
     per_sample = (prediction.to(dtype) - target.to(dtype)).square().flatten(1).mean(1)
-    if weights is not None:
-        if weights.shape != per_sample.shape or weights.device != prediction.device:
-            raise ValueError("Flow weights must be [B] on the prediction device")
-        per_sample = per_sample * weights.to(dtype)
+    if weights.shape != per_sample.shape or weights.device != prediction.device:
+        raise ValueError("Flow weights must be [B] on the prediction device")
+    per_sample = per_sample * weights.to(dtype)
     return per_sample.mean()

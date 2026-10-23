@@ -15,6 +15,23 @@ from unitunner.training.session import TrainingSession
 from unitunner.training.state import RunState
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("weighted", [False, True])
+def test_flow_loss_matches_elementwise_reference_and_input_gradients(dtype, weighted):
+    torch.manual_seed(83)
+    prediction = torch.randn(3, 2, 5, 7, dtype=dtype, requires_grad=True)
+    target = torch.randn_like(prediction).requires_grad_()
+    weights = torch.rand(3, requires_grad=True) if weighted else None
+    compute_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+    errors = (prediction.to(compute_dtype) - target.to(compute_dtype)).square().flatten(1).mean(1)
+    expected = errors.mean() if weights is None else (errors * weights.to(compute_dtype)).mean()
+    actual = flow_matching_loss(prediction, target, weights)
+    torch.testing.assert_close(actual, expected)
+    inputs = (prediction, target) if weights is None else (prediction, target, weights)
+    for a, b in zip(torch.autograd.grad(actual, inputs), torch.autograd.grad(expected, inputs), strict=True):
+        torch.testing.assert_close(a, b)
+
+
 @pytest.mark.parametrize("adapter", [False, True])
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_uneven_accumulation_matches_three_dense_updates(adapter, device):

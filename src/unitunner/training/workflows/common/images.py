@@ -245,11 +245,16 @@ def train(
         status(
             f"[train] Creating optimizer; generator trainable parameters={sum(p.numel() for group in generator_groups for p in group.parameters):,}"
         )
+        optimizer_started = monotonic()
+        set_context(stage="creating generator optimizer")
         optimizer = create_adamw(
             generator_groups,
             lr=config.train.learning_rate,
             weight_decay=config.train.weight_decay,
             config=config.train.optimizer,
+        )
+        status(
+            f"[train] Generator optimizer ready in {monotonic() - optimizer_started:.2f}s; Adam states allocate on first update"
         )
         optimizers = {"generator" if restoration else "main": optimizer}
         modules: dict[str, nn.Module] = {"model": model, "adapter": installation.branches}
@@ -258,12 +263,15 @@ def train(
         if method is not None:
             modules.update(method.modules)
             if method.discriminator is not None:
+                status("[train] Creating discriminator optimizer")
                 optimizers["discriminator"] = create_adamw(
                     (ParameterGroup("heads", tuple(method.discriminator.heads.parameters())),),
                     lr=config.train.learning_rate,
                     weight_decay=config.train.weight_decay,
                     config=config.train.optimizer,
                 )
+        status("[train] Recording training context")
+        set_context(stage="recording training context")
         record_context(
             config,
             installation.plan.target_names,

@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from time import monotonic
 from typing import Literal
 
 import torch
@@ -18,6 +19,7 @@ from unitunner.inference.restoration.vae import (
     load_restoration_vae,
     restoration_posterior,
 )
+from unitunner.logging import clear_context, set_context
 from unitunner.models.components.conditioning import Caption, batch_captions
 from unitunner.models.features.loading import load_dino_convnext, load_vgg19_features
 from unitunner.models.flux.conditioning import FluxTextFeatures
@@ -239,14 +241,21 @@ class RestorationMethod:
         if options is None or not options.calibrate:
             raise ValueError("SNR calibration requires calibrate = true")
         device = next(self.vae.parameters()).device
+        started = monotonic()
+        status(
+            f"[train] SNR calibration: up to {options.calibration_pairs} pairs, two VAE encodes per pair; "
+            f"sampling={options.calibration_sampling}, compute={self.vae.compute_precision}; training starts afterward"
+        )
 
         def latent_pairs() -> Iterator[tuple[Tensor, Tensor]]:
             seen: set[AlignedImagePair] = set()
             count = 0
+            last_report = started
             for index, pair in enumerate(dataset.pairs):
                 if pair in seen:
                     continue
                 seen.add(pair)
+                set_context(stage="calibration image loading/degradation", source=pair.high)
                 data = next(
                     group
                     for group in config.dataset.groups.values()
@@ -276,11 +285,24 @@ class RestorationMethod:
                         sampling=options.calibration_sampling,
                     )
                 for low, high in pixels:
+                    set_context(stage="calibration VAE encoding", calibration_pair=count + 1)
                     yield (
                         self.encode(low.unsqueeze(0).to(device), posterior=self.posterior),
                         self.encode(high.unsqueeze(0).to(device), posterior=self.posterior),
                     )
                     count += 1
+                    now = monotonic()
+                    if count == 1 or count == options.calibration_pairs or now - last_report >= 5:
+                        memory = (
+                            f", CUDA allocated={torch.cuda.memory_allocated(device) / 2**30:.2f}GiB"
+                            if device.type == "cuda"
+                            else ""
+                        )
+                        status(
+                            f"[train] SNR calibration: {count}/{options.calibration_pairs} pairs, {now - started:.1f}s{memory}"
+                        )
+                        last_report = now
+                    set_context(stage="calibration image loading/degradation")
                     if count == options.calibration_pairs:
                         return
 
@@ -295,6 +317,11 @@ class RestorationMethod:
                     resolution=next(iter(config.dataset.groups.values())).resolution,
                 )
         self.state.get_buffer("sigma").fill_(estimate.sigma)
+        status(
+            f"[train] SNR calibration complete: {estimate.pairs} pairs in {monotonic() - started:.1f}s; sigma={estimate.sigma:.8g}"
+        )
+        clear_context("calibration_pair", "source")
+        set_context(stage="calibration complete")
 
     def steps(
         self, low: Tensor, high: Tensor, captions: Caption | Krea2TextFeatures | FluxTextFeatures

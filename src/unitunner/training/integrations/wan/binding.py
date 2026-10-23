@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from unitunner.execution.regions import ModelRegion, ModelRegions
 from unitunner.models.wan.data.cache.storage import WanCacheRecord
@@ -172,4 +173,4 @@ class WanBinding:
     def step(self, request: WanFlowRequest) -> StepResult:
         """Return FP32 element-mean native flow MSE and actual batch sample count."""
         result = self.predict(request)
-        return StepResult((result.prediction.float() - result.target.float()).square().mean(), request.latents.shape[0])
+        return StepResult(F.mse_loss(result.prediction.float(), result.target.float()), request.latents.shape[0])

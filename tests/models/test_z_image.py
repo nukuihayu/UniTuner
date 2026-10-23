@@ -20,7 +20,7 @@ from unitunner.models.z_image.inference.sampling import build_schedule, sample_l
 from unitunner.models.z_image.layers import ZImageAttention, apply_rotary_embedding
 from unitunner.models.z_image.loading import load_z_image, load_z_image_vae, save_z_image, save_z_image_vae
 from unitunner.models.z_image.transformer import ZImageTransformer
-from unitunner.models.z_image.vae import ZImageVAE
+from unitunner.models.z_image.vae import SpatialAttention, ZImageVAE
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.common.image_flow import ImageFlowRequest
 from unitunner.training.integrations.z_image.binding import ZImageBinding
@@ -200,6 +200,30 @@ def test_native_training_resume_is_exact(tmp_path, adapter):
         for name, module in modules.items():
             for key, value in module.state_dict().items():
                 torch.testing.assert_close(value, fresh_modules[name].state_dict()[key], atol=0, rtol=0)
+
+
+def test_vae_attention_preserves_single_head_outputs_and_gradients(monkeypatch):
+    attention = SpatialAttention(16, 4).double()
+    pixels = torch.randn(2, 16, 3, 5, dtype=torch.float64, requires_grad=True)
+    tokens = attention.group_norm(pixels).flatten(2).transpose(1, 2)
+    query, key, value = [projection(tokens) for projection in (attention.to_q, attention.to_k, attention.to_v)]
+    probabilities = (query @ key.transpose(-1, -2) / 4).softmax(-1)
+    expected = pixels + attention.to_out[0](probabilities @ value).transpose(1, 2).reshape_as(pixels)
+    original = torch.nn.functional.scaled_dot_product_attention
+
+    def explicit_head_sdpa(query, key, value, **kwargs):
+        assert query.shape == key.shape == value.shape == (2, 1, 15, 16)
+        return original(query, key, value, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", explicit_head_sdpa)
+    actual = attention(pixels)
+    torch.testing.assert_close(actual, expected)
+    targets = (pixels, *attention.parameters())
+    upstream = torch.randn_like(actual)
+    expected_gradients = torch.autograd.grad(expected, targets, upstream)
+    actual_gradients = torch.autograd.grad(actual, targets, upstream)
+    for actual_gradient, expected_gradient in zip(actual_gradients, expected_gradients, strict=True):
+        torch.testing.assert_close(actual_gradient, expected_gradient)
 
 
 def test_vae_explicit_posterior_and_artifact_roundtrip(tmp_path):
