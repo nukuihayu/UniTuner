@@ -42,6 +42,53 @@ def _packed_mean(vae: Flux2VAE, pixels: Tensor) -> Tensor:
     return vae.encode(pixels)[0]
 
 
+def _cache_z_image_batch(
+    items: list[tuple[Path, tuple[int, int], str, CacheIdentity]],
+    destination: Path,
+    vae: ZImageVAE,
+    text: ZImageTextEncoder,
+    reusable: dict[str, CacheEntry],
+    repa: RepaCacheWriter | None,
+) -> list[CacheEntry]:
+    """Encode a stable batch, retaining per-image records and native caption masks."""
+    sources = [identity.source_sha256 for _, _, _, identity in items]
+    identities = [
+        identity.model_copy(
+            update={"transform_sha256": canonical_sha256({"item": identity.transform_sha256, "batch_sources": sources})}
+        )
+        for _, _, _, identity in items
+    ]
+    cached = [reusable.get(identity.digest() + ".safetensors") for identity in identities]
+    if all(entry is not None for entry in cached):
+        entries = [entry for entry in cached if entry is not None]
+        if repa is not None:
+            for entry, (path, resolution, _, _) in zip(entries, items, strict=True):
+                repa.publish_normalized(entry, read_image(path, resolution).unsqueeze(1))
+        return entries
+    # Encode the complete original batch even on partial reuse: changing peers
+    # can change kernel rounding, so retries must retain the same inputs/order.
+    pixels = torch.stack([read_image(path, resolution) for path, resolution, _, _ in items]).to(
+        next(vae.parameters()).device
+    )
+    with ExitStack() as stack:
+        for device_type in {pixels.device.type, next(text.model.parameters()).device.type}:
+            stack.enter_context(torch.autocast(device_type, enabled=False))
+        latents = vae.normalize(vae.encode(pixels).mean)
+        captions = text.encode([prompt for _, _, prompt, _ in items])
+    entries = []
+    for index, identity in enumerate(identities):
+        features = captions.features[index]
+        if captions.mask is not None:
+            features = features[captions.mask[index]]
+        entry = cached[index]
+        if entry is None:
+            entry = save_latent_record(destination, identity, latents[index], features.float())
+        entries.append(entry)
+        if repa is not None:
+            repa.publish_normalized(entry, pixels[index].unsqueeze(1))
+    return entries
+
+
 @torch.no_grad()
 def cache_images(
     source: Path,
@@ -57,6 +104,7 @@ def cache_images(
     version: str | None = None,
     seed: int = 42,
     repa: RepaCacheWriter | None = None,
+    batch_size: int = 1,
 ) -> LatentManifest:
     """Encode ordered images and optional UTF-8 .txt sidecars into native caches.
 
@@ -79,6 +127,10 @@ def cache_images(
     if isinstance(vae, Flux2VAE) != (moss or flux2 or flux3) or isinstance(vae, FluxVAE) != flux:
         raise ValueError("Cache vae/text families must match")
     family = "flux2" if flux2 else "flux3" if flux3 else "flux" if flux else "moss-image" if moss else "z-image"
+    if type(batch_size) is not int or batch_size < 1:
+        raise ValueError("Cache batch_size must be a positive integer")
+    if batch_size > 1 and (not isinstance(text, ZImageTextEncoder) or not isinstance(vae, ZImageVAE)):
+        raise ValueError("Batched caching currently supports Z-Image only")
     if flux2:
         if variant not in ("base", "distilled") or version not in ("dev", "klein-4b", "klein-9b"):
             raise ValueError("FLUX.2 cache requires explicit version and base/distilled variant")
@@ -142,6 +194,7 @@ def cache_images(
                 else {}
             ),
             "schema": f"{family}/image-text-1",
+            **({"batch_size": batch_size} if batch_size > 1 else {}),
             "resolution_width_height": list(resolution),
             "resize": "lanczos-up/area-down/half-up/center-crop",
             "pixels": "RGB/drop-alpha/no-exif/float32/127.5-1",
@@ -220,6 +273,14 @@ def cache_images(
     previous = load_latent_manifest(destination) if (destination / "manifest.json").exists() else None
     reusable = {} if previous is None else {entry.file: entry for entry in previous.entries}
     entries: list[CacheEntry] = []
+    pending: list[tuple[Path, tuple[int, int], str, CacheIdentity]] = []
+
+    def flush() -> None:
+        if pending:
+            assert isinstance(vae, ZImageVAE) and isinstance(text, ZImageTextEncoder)
+            entries.extend(_cache_z_image_batch(pending, destination, vae, text, reusable, repa))
+            pending.clear()
+
     for path in progress(files, f"[cache] {family} images"):
         resolution = resolution if buckets is None else buckets.for_image(path)
         prompt = (buckets or ImageBuckets(resolution)).caption(path)
@@ -250,6 +311,13 @@ def cache_images(
             if moss_edit
             else f"{family}/CHW+LD",
         )
+        if batch_size > 1:
+            if pending and pending[0][1] != resolution:
+                flush()
+            pending.append((path, resolution, prompt, identity))
+            if len(pending) == batch_size:
+                flush()
+            continue
         filename = identity.digest() + ".safetensors"
         if filename in reusable:
             entries.append(reusable[filename])
@@ -329,6 +397,7 @@ def cache_images(
         )
         if repa is not None:
             repa.publish_normalized(entries[-1], pixels[0].unsqueeze(1))
+    flush()
     manifest = LatentManifest.model_validate(
         {
             "family": family,

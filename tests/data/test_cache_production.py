@@ -11,6 +11,7 @@ import pytest
 import torch
 
 from unitunner.artifacts.hashing import canonical_sha256
+from unitunner.config.cache_options import CacheOptions
 from unitunner.config.datasets import CacheDatasetConfig
 from unitunner.config.model import EncoderModelConfig
 from unitunner.config.text import TextEncodingConfig, TokenizerSourceConfig
@@ -120,6 +121,7 @@ def test_group_loop_preserves_identity_options_and_order(monkeypatch, tmp_path, 
         dataset=SimpleNamespace(groups=groups),
         runtime=SimpleNamespace(model_dump=lambda **_: {}),
         seed=123,
+        cache=CacheOptions(batch_size=16 if family == "z-image" else 1),
     )
     vae, text, repa = object(), object(), object()
     seen = []
@@ -154,6 +156,7 @@ def test_group_loop_preserves_identity_options_and_order(monkeypatch, tmp_path, 
         if module != "krea2":
             assert options["data"] is data
         if module not in providers:
+            assert options["batch_size"] == config.cache.batch_size
             assert options["seed"] == 123
             assert options["variant"] == (variant if module in ("flux", "flux2", "flux3") else None)
             assert options["version"] == version

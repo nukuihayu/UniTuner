@@ -13,6 +13,33 @@ from unitunner.config.loading import ConfigError, load_cache_config, load_calibr
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs/examples"
 
 
+def test_cache_batch_size_is_independent_of_training_and_calibration():
+    path = EXAMPLES / "restoration.toml"
+    overrides = {"cache": {"batch_size": 16}}
+    cache = load_cache_config(path, overrides=overrides)
+    training = load_training_config(path, overrides=overrides)
+    assert cache.cache.batch_size == training.cache.batch_size == 16
+    assert training.dataset.groups["main"].batch_size == 1
+    assert load_calibration_config(path, overrides=overrides).calibration_pairs > 0
+    for value in (0, -1, True, 1.5):
+        with pytest.raises(ConfigError, match=r"cache\.batch_size"):
+            load_cache_config(path, overrides={"cache": {"batch_size": value}})
+    with pytest.raises(ConfigError, match="Z-Image only"):
+        load_cache_config(EXAMPLES / "flux-restoration.toml", overrides=overrides)
+
+
+def test_cache_batch_size_cli_and_shared_training_config(monkeypatch):
+    received = []
+
+    def run(config, *, device):
+        received.append((config.cache.batch_size, device))
+        return 0
+
+    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    assert main(["cache", str(EXAMPLES / "restoration.toml"), "--cache.batch-size", "16", "--device", "cpu"]) == 0
+    assert received == [(16, "cpu")]
+
+
 @pytest.mark.parametrize("loader", [load_training_config, load_cache_config, load_calibration_config])
 def test_vae_field_is_shared_and_old_codec_field_is_rejected(loader):
     config = loader(EXAMPLES / "restoration.toml", overrides={"model": {"vae": "models/vae.safetensors"}})

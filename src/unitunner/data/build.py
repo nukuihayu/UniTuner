@@ -16,7 +16,10 @@ from unitunner.progress import status
 @runtime_scope
 def run(config: CacheConfig, *, device: str) -> int:
     """Publish native caches and optional real encoder targets from identical target crops."""
-    status(f"[cache] Starting {config.model.family} on {device}; mode=rebuild (existing records will not be reused)")
+    status(
+        f"[cache] Starting {config.model.family} on {device}; batch_size={config.cache.batch_size}; "
+        "mode=rebuild (existing records will not be reused)"
+    )
     with fresh_cache_config(config) as staged:
         result = _produce(staged, device=device)
     status("[cache] Complete; all cache directories replaced successfully")

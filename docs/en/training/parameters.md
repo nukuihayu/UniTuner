@@ -125,6 +125,19 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `target_fps` | number；> 0 | `16.0` | Cache target frame rate; H3 requires 24.0. |
 | `fps_resampling` | "fractional", "timestamps" | `"fractional"` | fractional uses fractional indices; timestamps uses decoded timestamps and is required by H3. |
 
+## `cache`
+
+| Field | Type / choices | Default | Purpose |
+| --- | --- | --- | --- |
+| `batch_size` | integer; > 0 | `1` | Encoder batch size, independent of dataset training batch_size. Values above 1 currently support Z-Image only: consecutive same-resolution images share VAE/text forwards, with a smaller final batch. Other families require 1. |
+
+```toml
+[cache]
+batch_size = 16
+```
+
+Alternatively pass `--cache.batch-size 16` to the cache command. Shared training TOML files can retain this table without changing training microbatches. Batch size and peer source contents participate in cache identity because batching can change floating-point rounding; rebuild after changes. Reduce the value if device memory is insufficient.
+
 ## `train`
 
 | Parameter | Type / choices | Default | How to fill |

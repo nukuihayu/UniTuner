@@ -21,6 +21,11 @@ vae = "/models/vae.safetensors"
 # Local text encoder file or directory; tokenizer assets are configured separately.
 text_encoder = "/models/qwen3"
 
+[cache]
+# 缓存 VAE/文本编码批大小，独立于训练 batch_size；目前仅 Z-Image 支持大于 1。
+# Cache VAE/text batch size, independent of training batch_size; values above 1 currently require Z-Image.
+batch_size = 1
+
 [dataset.groups.main]
 # 本组输入类型：image/video/restoration。
 # Input kind for this group: image/video/restoration.

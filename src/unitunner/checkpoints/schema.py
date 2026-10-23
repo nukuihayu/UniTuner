@@ -43,7 +43,8 @@ def build_resume_identity(
     if config.execution.quantization == "none":
         # Inactive quantization geometry cannot change an unquantized trajectory.
         fields["execution"].update(("quantization_rotation_size", "quantization_group_size"))
-    exclusions: dict[str, bool | set[str]] = {"output": True, "preview": True, **fields}
+    # Cache execution is already pinned by dataset records, not training policy.
+    exclusions: dict[str, bool | set[str]] = {"output": True, "preview": True, "cache": True, **fields}
     values = config.model_dump(mode="json", exclude=exclusions)
     values["dataset_sampling_policy"] = "named-groups/independent-buckets/repeat-before-chunk/short-tail/2"
     values["dataset_group_order"] = list(config.dataset.groups)

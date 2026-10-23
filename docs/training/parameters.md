@@ -125,6 +125,19 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `target_fps` | number；> 0 | `16.0` | 缓存重采样目标帧率；H3 必须 24.0。 |
 | `fps_resampling` | "fractional", "timestamps" | `"fractional"` | fractional 使用分数索引；timestamps 使用解码时间戳，H3 要求后者。 |
 
+## `cache`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `batch_size` | integer；> 0 | `1` | 缓存编码批大小，独立于 dataset 的训练 batch_size。目前仅 Z-Image 支持大于 1：连续同尺寸图片批量编码 VAE 与文本，尾批可少于此值。其他家族保持 1。 |
+
+```toml
+[cache]
+batch_size = 16
+```
+
+也可仅在缓存命令中设置 `--cache.batch-size 16`。共享训练 TOML 可保留此表，不改变训练 microbatch。批大小和批次源内容计入缓存身份，批量结果可能有浮点舍入差异；修改后重建缓存。显存不足时降低该值。
+
 ## `train`
 
 | 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |

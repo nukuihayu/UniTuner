@@ -150,6 +150,7 @@ def produce_images(
                 data=source,
                 seed=config.seed,
                 version=config.model.version if config.model.version in ("dev", "klein-4b", "klein-9b") else None,
+                batch_size=config.cache.batch_size,
             )
         count += len(manifest.entries)
     return count

@@ -65,3 +65,9 @@ def test_omitted_and_disabled_optional_execution_flags_keep_identity():
     disabled = load_training_config(EXAMPLE, overrides={"execution": {"use_pinned_memory_for_block_swap": False}})
     assert baseline.execution.use_pinned_memory_for_block_swap is None
     assert identity(baseline) == identity(disabled)
+
+
+def test_cache_batch_size_does_not_change_training_resume_identity():
+    baseline = load_training_config(EXAMPLE)
+    batched = load_training_config(EXAMPLE, overrides={"cache": {"batch_size": 16}})
+    assert identity(baseline) == identity(batched)

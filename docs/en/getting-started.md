@@ -174,6 +174,8 @@ validate checks fields and combinations without loading weights. cache loads the
 
 Each cache invocation re-encodes all inputs and replaces the previous cache after success; failures preserve it. Do not train against a cache while rebuilding it.
 
+Z-Image can batch VAE and text encoding with `uv run --no-dev unitunner cache train.toml --device cuda --cache.batch-size 16`, or `[cache] batch_size = 16` in TOML. This does not change the training batch size. The default is 1; reduce it if device memory is insufficient. Other families currently require 1.
+
 Terminals refresh progress and metrics in place. Background/redirected runs summarize every 60 seconds, including the first/final updates. Usually omit log_every_seconds. JSONL and enabled TensorBoard retain every component loss, gradient norm, learning rate, timing and memory metric.
 
 ## 7. Inspect outputs and resume

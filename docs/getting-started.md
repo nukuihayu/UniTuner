@@ -176,6 +176,8 @@ uv run --no-dev unitunner train train.toml --device cuda
 
 每次执行 `cache` 都重新编码，成功后替换旧缓存；失败保留旧缓存。重建期间不要启动读取同一缓存的训练。
 
+Z-Image 可用 `uv run --no-dev unitunner cache train.toml --device cuda --cache.batch-size 16` 批量编码 VAE 和文本；也可在 TOML 的 `[cache]` 中设置 `batch_size = 16`。这不改变训练批大小。默认 1；显存不足时降低缓存批大小，其他模型目前保持 1。
+
 终端原位显示进度和指标。后台或重定向默认每 60 秒输出摘要，首步和末步必报；通常无需设置 `log_every_seconds`。完整分损失、梯度范数、学习率、耗时和显存写入 JSONL 与已启用的 TensorBoard。
 
 ## 7. 查看结果和恢复

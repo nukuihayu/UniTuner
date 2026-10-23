@@ -5,6 +5,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from unitunner.config.cache_options import CacheOptions
 from unitunner.config.datasets import CacheDataConfig, CacheDatasetConfig, DatasetConfig
 from unitunner.config.diagnostics import ConfigRuleError
 from unitunner.config.features import RepaConfig
@@ -20,6 +21,7 @@ class CacheConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     model: EncoderModelConfig
     dataset: CacheDataConfig
+    cache: CacheOptions = Field(default_factory=CacheOptions)
     seed: int = 42
     repa: RepaConfig | None = None
 
@@ -27,6 +29,12 @@ class CacheConfig(BaseModel):
     def validate_inputs(self) -> Self:
         """Reject model/data combinations before loading any encoder."""
         model = self.model
+        if self.cache.batch_size > 1 and model.family != ModelFamily.Z_IMAGE:
+            raise ConfigRuleError(
+                "cache.batch_size",
+                "Batched caching currently supports Z-Image only",
+                "Use cache.batch_size=1 for this family.",
+            )
         if model.vae is None or model.text_encoder is None:
             raise ConfigRuleError(
                 "model",

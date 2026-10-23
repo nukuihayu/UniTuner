@@ -4,6 +4,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from unitunner.config.cache_options import CacheOptions
 from unitunner.config.datasets import DataConfig
 from unitunner.config.diagnostics import ConfigRuleError
 from unitunner.config.execution import ExecutionConfig
@@ -27,6 +28,7 @@ class TrainingConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     model: ModelConfig
     dataset: DataConfig
+    cache: CacheOptions = Field(default_factory=CacheOptions)
     train: TrainConfig = Field(default_factory=TrainConfig)
     method: MethodConfig = Field(default_factory=MethodConfig)
     losses: RestorationLossWeights | None = None
