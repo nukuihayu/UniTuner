@@ -1,0 +1,111 @@
+# 用途 / Task: minimax-h3 · cache
+# 命令 / Command: uv run unitunner cache docs/examples/minimax-h3-cache.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "minimax-h3"
+# 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。
+# Checkpoint variant, such as base/turbo, dev or original; use matching weights.
+variant = "ref2va"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "/models/h3/video-vae.safetensors"
+# 本地文本编码器文件或目录；分词器来源单独配置。
+# Local text encoder file or directory; tokenizer assets are configured separately.
+text_encoder = "/models/h3/text.safetensors"
+
+[model.minimax_h3]
+# H3 本地音频 VAE 权重。
+# Local H3 audio VAE weights.
+audio_vae = "/models/h3/audio-vae.safetensors"
+# H3 文本编码器结构配置文件，需与权重匹配。
+# H3 text encoder configuration matching its weights.
+text_config = "/models/h3/text-config"
+# H3 文本编码设备；仅在需要单独放置编码器时设置。
+# H3 text encoding device; set when placing the encoder separately.
+text_device = "cpu"
+
+# Processor defaults to MiniMaxAI/MiniMax-H3/processor.
+
+[model.text.tokenizer]
+# true 仅读取本地目录/缓存；false 允许下载分词器文件，不自动下载编码器权重。
+# true reads local files/cache only; false allows tokenizer downloads, never automatic encoder-weight downloads.
+offline = false
+# source = "/models/h3/processor" # Optional local directory
+# revision = "commit-sha"         # Optional pinned Hub revision
+
+[dataset.groups.main]
+# 本组输入类型：image/video/restoration。
+# Input kind for this group: image/video/restoration.
+kind = "video"
+# 数据源目录或该模型要求的记录文件；改动内容后重建缓存。
+# Dataset directory or family-specific record file; rebuild caches after editing inputs.
+source = "/data/h3/records.jsonl"
+# 该组独立的缓存目录；不同组不能指向同一路径。
+# Dedicated cache directory for this group; never share it with another group.
+cache_directory = "/data/h3/cache"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [768, 768]
+# 每个 microbatch 的样本数；显存不足先减此项。
+# Samples per microbatch; reduce this first when activations exceed GPU memory.
+batch_size = 1
+
+# 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。
+# Repeat each item per data pass; increases a group's relative frequency, not max_updates.
+repeats = 1
+# 按宽高比分桶；关闭时使用固定 resolution 裁剪。
+# Group by aspect ratio; disable for fixed-resolution crops.
+enable_bucket = true
+# 避免将小图放大到较大 bucket；小图可能落入更小的桶。
+# Avoid upscaling small images into larger buckets.
+bucket_no_upscale = false
+# 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。
+# Caption sidecar extension including the dot, e.g. .txt; used when prompt is omitted.
+caption_extension = ".txt"
+# 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。
+# In a dataset group, overrides every caption sidecar, including with an empty string; in sampling, the generation prompt.
+# prompt = ""
+
+[dataset.groups.main.video]
+# 训练窗口目标帧数列表；Wan 为 1+4k，H3 为 17n+5。
+# Target training frame counts; Wan requires 1+4k, H3 requires 17n+5.
+target_frames = [124]
+# 缓存重采样目标帧率；H3 必须 24.0。
+# Cache target frame rate; H3 requires 24.0.
+target_fps = 24.0
+# fractional 使用分数索引；timestamps 使用解码时间戳，H3 要求后者。
+# fractional uses fractional indices; timestamps uses decoded timestamps and is required by H3.
+fps_resampling = "timestamps"
+# 视频窗口提取 head/chunk/slide/uniform/full；决定从同一视频生成哪些窗口。
+# Video-window extraction head/chunk/slide/uniform/full; selects windows from each source video.
+extraction = "head"
+# 视频处理帧数上限；Wan 仍须 1+4k，H3 至少 5。
+# Video processing frame limit; Wan still requires 1+4k and H3 at least 5.
+max_frames = 345
+
+[dataset.groups.main.minimax_h3]
+# H3 缓存生成种子，固定缓存随机条件。
+# H3 cache-generation seed for repeatable random conditions.
+cache_seed = 0
+# 允许 H3 实验性时长；常规训练保持 false。
+# Allow experimental H3 durations; keep false for standard recipes.
+allow_experimental_duration = false
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false

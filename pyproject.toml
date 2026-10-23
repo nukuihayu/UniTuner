@@ -1,0 +1,71 @@
+[project]
+name = "unitunner"
+version = "0.1.0.dev0"
+description = "Typed native model training and artifact tools"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.3,<3",
+    "pydantic>=2.12,<3",
+    "safetensors>=0.8,<1",
+    "torch>=2.13,<2.14",
+    "tensorboard>=2.20,<3",
+    "tqdm>=4.67,<5",
+    "plotly>=6.3,<7",
+    "kaleido>=1.5,<2",
+    "pypdf>=6,<7",
+]
+[project.scripts]
+unitunner = "unitunner.cli.main:main"
+
+[project.optional-dependencies]
+kitchen = ["comfy-kitchen==0.2.39"]
+vbar = ["comfy-aimdo==0.6.0"]
+text = [
+    "transformers>=5.3,<6",
+    "torchvision>=0.28,<0.29",
+    "sentencepiece>=0.2,<0.3",
+    "ftfy>=6.3,<7",
+]
+media = [
+    "av>=18,<19",
+    "opencv-python-headless>=4.13,<5",
+    "pillow>=12,<13",
+]
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "ruff>=0.17,<0.18",
+    "ty>=0.0.88",
+    "build>=1.6,<2",
+    "pyright>=1.1.414,<1.2",
+]
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+[tool.hatch.build]
+include = ["src/unitunner/**", "README.md", "pyproject.toml", "uv.lock"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/unitunner"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = ["--import-mode=importlib"]
+norecursedirs = ["tests/comparison", "tests/performance"]
+[tool.ruff]
+force-exclude = true
+extend-exclude = ["benchmarks"]
+line-length = 120
+target-version = "py312"
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "C4", "PIE", "RUF", "D200", "D205", "D212", "D400", "D415"]
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"

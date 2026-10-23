@@ -1,0 +1,269 @@
+# 用途 / Task: minimax-h3 · train
+# 命令 / Command: uv run unitunner train docs/examples/minimax-h3-train-preview.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "minimax-h3"
+# 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。
+# Checkpoint variant, such as base/turbo, dev or original; use matching weights.
+variant = "ref2va"
+# 本地权重文件、分片索引或支持的模型目录；替换为实际路径。
+# Local weight file, shard index or supported model directory; replace the example path.
+weights = "/models/h3/transformer.safetensors"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "/models/h3/video.safetensors"
+# 本地文本编码器文件或目录；分词器来源单独配置。
+# Local text encoder file or directory; tokenizer assets are configured separately.
+text_encoder = "/models/h3/text.safetensors"
+
+[model.minimax_h3]
+# H3 本地音频 VAE 权重。
+# Local H3 audio VAE weights.
+audio_vae = "/models/h3/audio.safetensors"
+# H3 文本编码器结构配置文件，需与权重匹配。
+# H3 text encoder configuration matching its weights.
+text_config = "/models/h3/text-config"
+# H3 本地 processor 目录；未填时可用该家族默认来源。
+# Local H3 processor directory; otherwise the family default source can be used.
+text_processor = "/models/h3/processor"
+# H3 文本编码设备；仅在需要单独放置编码器时设置。
+# H3 text encoding device; set when placing the encoder separately.
+text_device = "cpu"
+
+[dataset.groups.main]
+# 本组输入类型：image/video/restoration。
+# Input kind for this group: image/video/restoration.
+kind = "video"
+# 数据源目录或该模型要求的记录文件；改动内容后重建缓存。
+# Dataset directory or family-specific record file; rebuild caches after editing inputs.
+source = "/data/h3/records.jsonl"
+# 该组独立的缓存目录；不同组不能指向同一路径。
+# Dedicated cache directory for this group; never share it with another group.
+cache_directory = "/data/h3/cache"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [768, 768]
+# 每个 microbatch 的样本数；显存不足先减此项。
+# Samples per microbatch; reduce this first when activations exceed GPU memory.
+batch_size = 1
+# 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。
+# Repeat each item per data pass; increases a group's relative frequency, not max_updates.
+repeats = 1
+
+# 按宽高比分桶；关闭时使用固定 resolution 裁剪。
+# Group by aspect ratio; disable for fixed-resolution crops.
+enable_bucket = true
+# 避免将小图放大到较大 bucket；小图可能落入更小的桶。
+# Avoid upscaling small images into larger buckets.
+bucket_no_upscale = false
+# 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。
+# Caption sidecar extension including the dot, e.g. .txt; used when prompt is omitted.
+caption_extension = ".txt"
+# 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。
+# In a dataset group, overrides every caption sidecar, including with an empty string; in sampling, the generation prompt.
+# prompt = ""
+
+[dataset.groups.main.video]
+# 训练窗口目标帧数列表；Wan 为 1+4k，H3 为 17n+5。
+# Target training frame counts; Wan requires 1+4k, H3 requires 17n+5.
+target_frames = [124]
+# 缓存重采样目标帧率；H3 必须 24.0。
+# Cache target frame rate; H3 requires 24.0.
+target_fps = 24.0
+# fractional 使用分数索引；timestamps 使用解码时间戳，H3 要求后者。
+# fractional uses fractional indices; timestamps uses decoded timestamps and is required by H3.
+fps_resampling = "timestamps"
+
+[method.minimax_h3]
+# H3 视频时间表移位，默认 12.0；训练和采样使用匹配配方。
+# H3 video schedule shift, default 12.0; match the training/sampling recipe.
+video_shift = 12.0
+# H3 音频时间表移位，默认 3.0。
+# H3 audio schedule shift, default 3.0.
+audio_shift = 3.0
+# H3 视觉条件清洁度；默认 0.999。
+# H3 visual-condition cleanliness; default 0.999.
+visual_condition_clean = 0.999
+# H3 音频条件清洁度；默认 1.0。
+# H3 audio-condition cleanliness; default 1.0.
+audio_condition_clean = 1.0
+# H3 音频损失相对权重，默认 1.0。
+# Relative H3 audio loss coefficient; default 1.0.
+audio_loss_weight = 1.0
+
+[train]
+# 有效优化器更新总数；梯度累积的 microbatch 不单独计数。
+# Total effective optimizer updates; accumulated microbatches do not count as separate updates.
+max_updates = 1000
+# 每次有效更新累计的 microbatch 数；降低单批显存需求但会增加一次更新耗时。
+# Microbatches per optimizer update; trades more work per update for smaller individual batches.
+accumulation_steps = 4
+# AdamW 基础学习率；先固定数据与 rank，再根据预览和损失调整。
+# Base AdamW learning rate; tune against previews and losses while holding data/rank fixed.
+learning_rate = 0.0001
+# 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。
+# Random seed for recipe comparisons; resume restores RNG from its state file.
+seed = 42
+
+# AdamW 解耦权重衰减；0 关闭，不是学习率。
+# Decoupled AdamW weight decay; 0 disables it, independently of learning rate.
+weight_decay = 0.0001
+# 全局梯度范数裁剪阈值；0 关闭。
+# Global gradient-norm clipping threshold; 0 disables clipping.
+max_grad_norm = 1.0
+# constant 固定、linear 线性衰减、cosine 余弦衰减；均支持 warmup。
+# constant, linear decay or cosine decay; all support warmup.
+lr_schedule = "constant"
+# 学习率线性预热的有效更新数；必须小于 max_updates。
+# Effective updates for linear LR warmup; must be smaller than max_updates.
+warmup_updates = 0
+# 原生层/模块/参数 glob；空数组选择所有合格目标，不使用 ComfyUI 导出键。
+# Native layer/module/parameter globs; empty selects all eligible targets, not ComfyUI export keys.
+include_layers = []
+# 在 include_layers 之后排除匹配目标，排除规则优先。
+# Remove matching targets after include_layers; exclusions take precedence.
+exclude_layers = []
+
+[train.adapter]
+# 适配器算法 lora/loha/lokr；推理时与训练保持一致。
+# Adapter algorithm lora/loha/lokr; inference must use the same algorithm.
+algorithm = "lora"
+# 适配器容量，必须为正整数；增大会增加参数、优化器内存和文件体积。
+# Positive adapter capacity; higher ranks increase trainable parameters, optimizer memory and file size.
+rank = 32
+# 适配器缩放参数；普通 LoRA 使用 alpha/rank，常以 alpha=rank 起步。
+# Adapter scale; ordinary LoRA uses alpha/rank, commonly initialized with alpha=rank.
+alpha = 32.0
+
+[execution]
+# 计算精度；训练 auto 按底模解析，CUDA 可显式 bf16，CPU 流程用 fp32。
+# Compute precision; training auto follows base weights, CUDA can use bf16, CPU workflows use fp32.
+precision = "fp32"
+# resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
+# resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported.
+residency = "resident"
+# none 保存激活；block 按块重算以降低激活显存，增加计算量。
+# none retains activations; block recomputes blocks to reduce activation memory at extra compute cost.
+recompute = "block"
+
+# false 直接执行；true 使用 CUDA 编译，auto 按设备选择；首次编译额外耗时。
+# false uses eager execution; true compiles on CUDA, auto selects by device; compilation adds startup cost.
+compile = false
+# 将保存的注意力激活卸载到主机，节省显存但增加传输和内存需求。
+# Offload saved attention activations to host memory at extra transfer and RAM cost.
+# attention_activation_offload = false
+
+[output]
+# 产物目录；省略自动建立 runs/<name>_<时间戳>，显式路径会复用。
+# Output directory; omit for runs/<name>_<timestamp>, set an explicit path to reuse it.
+directory = "/runs/h3"
+# 正式权重文件的名称前缀，也是日志及 TensorBoard run 命名的基础。
+# Weight filename prefix and the basis for log/TensorBoard run names.
+name = "h3"
+# 每 N 次有效更新同时导出正式权重与独立续训状态；末步也保存。
+# Export weights and independent resume state every N effective updates, plus the final update.
+save_every_updates = 100
+
+# Conditions are encoded once at the first preview and reused for this run.
+# Each preview samples the current live adapter without advancing training RNG.
+# 正式权重导出精度 fp32/bf16/fp16；不改变续训状态的训练 dtype。
+# Export dtype fp32/bf16/fp16 for inference weights; resume retains training dtypes.
+save_precision = "fp32"
+# 事件根目录；只填目录，训练器自动建立带训练名的 run 子目录。
+# Event root directory; the trainer automatically creates a run subdirectory from the training name.
+# tensorboard = "runs/tensorboard"
+# 最多保留最近 N 份续训状态；默认 1，0 表示全部。
+# Keep the newest N resume snapshots; default 1, 0 keeps all.
+# max_resume_checkpoints = 1
+# 最多保留最近 N 组正式权重；默认 0 全保留，encoder 随组清理。
+# Keep the newest N weight sets; default 0 keeps all, including companion encoders.
+# max_weight_checkpoints = 0
+# complete 包含完整续训张量；frozen-reference 省略重复冻结参数，恢复需完全相同底模。
+# complete includes full training tensors; frozen-reference omits duplicate frozen parameters and requires the identical base.
+# checkpoint_storage = "complete"
+# 后台/重定向摘要间隔，默认 60 秒；终端原位刷新，完整指标仍逐步写入文件。
+# Noninteractive summary interval, default 60 seconds; terminals refresh in place and files retain every update.
+# log_every_seconds = 60.0
+
+[preview]
+# 每 N 次有效更新预览，末步也预览；只影响观察频率。
+# Preview every N effective updates and the final update; affects observation cadence only.
+every_updates = 100
+# 从头训练时先生成基线预览；续训不重复初始预览。
+# Render an initial baseline for fresh runs; resume does not replay it.
+at_start = true
+
+[[preview.audio_video]]
+[preview.audio_video.inputs]
+# 本次生成/修复的提示词；与训练任务保持一致。
+# Prompt for this generation/restoration request; match the training task.
+prompt = "A quiet street at sunset, with distant traffic and birdsong."
+# H3 有序图像/视频/音频参考记录列表。
+# Ordered H3 image/video/audio reference records.
+references = [{kind = "video", path = "/data/h3/reference.mp4", audio_enabled = false}]
+
+[preview.audio_video.sampling]
+# 输出宽度，像素；一般 16 对齐，Qwen2.1/H3 使用 32 对齐。
+# Output width in pixels; generally align to 16, or 32 for Qwen2.1/H3.
+width = 768
+# 输出高度，像素；与宽度一起决定采样显存需求。
+# Output height in pixels; together with width determines sampling memory use.
+height = 768
+# 生成帧数；遵守家族帧数约束并与 fps 一起决定时长。
+# Generated frame count; obey family constraints, with fps determining duration.
+frames = 124
+# 生成帧率；H3 使用原生 24 FPS。
+# Generation frame rate; H3 uses native 24 FPS.
+fps = 24
+# 采样迭代数；省略使用变体默认，Turbo 与非蒸馏模型不要套用同一数值。
+# Sampling iterations; omission uses variant defaults, do not reuse one value across Turbo and nondistilled models.
+steps = 30
+# 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。
+# Random seed for recipe comparisons; resume restores RNG from its state file.
+seed = 42
+
+[method]
+# 训练目标：flow-matching 或 restoration。
+# Training objective: flow-matching or restoration.
+kind = "flow-matching"
+
+[train.optimizer]
+# AdamW 一阶/二阶矩衰减系数，两个数均在 [0,1)。
+# AdamW first/second moment decay factors; each lies in [0,1).
+betas = [0.9, 0.999]
+# AdamW 分母稳定项，必须大于 0；通常保留 1e-8。
+# Positive AdamW denominator stabilizer; normally keep 1e-8.
+eps = 1e-08
+# auto 自动选择优化器实现；fused/foreach/single 显式指定后端。
+# auto chooses the optimizer implementation; fused/foreach/single select it explicitly.
+backend = "auto"
+
+[model.text.tokenizer]
+# true 仅读取本地目录/缓存；false 允许下载分词器文件，不自动下载编码器权重。
+# true reads local files/cache only; false allows tokenizer downloads, never automatic encoder-weight downloads.
+offline = false
+# 分词器本地目录或 Hub 仓库 ID；省略时使用家族默认来源。
+# Local tokenizer directory or Hub repository ID; omission uses the family default.
+# source = "/models/tokenizer"
+# Hub 来源的分支/标签/commit；正式实验可固定 commit，离线需本地已有该版本。
+# Hub branch/tag/commit; pin a commit for reproducibility and cache it before offline use.
+# revision = "commit-sha"
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false

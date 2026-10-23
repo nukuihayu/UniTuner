@@ -1,0 +1,17 @@
+{
+  "source_format": "minimax-h3-split/1",
+  "float_conversion": "exact-fp32",
+  "encoder_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "format": {"task": "t2va", "frame_layout": "single-frame"},
+  "entries": [
+    {
+      "latents": "target-latents.safetensors",
+      "text": "target-text.safetensors",
+      "latents_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "text_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "source": {"target_path": "target.png", "caption": "A quiet landscape", "target_index": 0},
+      "item": {"frame_count": 1, "audio_present": false, "target_index": 0},
+      "resolution": [1024, 1024]
+    }
+  ]
+}

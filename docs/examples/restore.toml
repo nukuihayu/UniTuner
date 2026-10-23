@@ -1,0 +1,80 @@
+# 用途 / Task: z-image · restore
+# 命令 / Command: uv run unitunner restore docs/examples/restore.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# 待修复图像文件；输出保留经过方向校正后的输入尺寸。
+# Input restoration image; output preserves its oriented dimensions.
+input = "/data/low-quality.png"
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "runs/restored.png"
+# 本次生成/修复的提示词；与训练任务保持一致。
+# Prompt for this generation/restoration request; match the training task.
+prompt = ""
+# sigma = 0.244 # Optional: by default, use the value recorded in trained artifacts.
+# 修复 encoder adapter 或 REPA 特征编码器路径，按所在表的任务选择。
+# Restoration encoder adapter or REPA feature-encoder path, according to the containing table.
+encoder_weights = "runs/z-image/weights/model.encoder.safetensors"
+
+# torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。
+# torch uses native attention; kitchen-int8 requires the relevant backend and supported inference paths.
+attention_backend = "torch"
+# 修复噪声水平，严格在 (0,1)；显式设置时不同时开启 calibrate。
+# Restoration noise level strictly within (0,1); do not enable calibrate simultaneously.
+# sigma = 0.244
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "z-image"
+# 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。
+# Checkpoint variant, such as base/turbo, dev or original; use matching weights.
+variant = "base"
+# 本地权重文件、分片索引或支持的模型目录；替换为实际路径。
+# Local weight file, shard index or supported model directory; replace the example path.
+weights = "/models/z-image.safetensors"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "/models/vae.safetensors"
+# 本地文本编码器文件或目录；分词器来源单独配置。
+# Local text encoder file or directory; tokenizer assets are configured separately.
+text_encoder = "/models/qwen3"
+
+[adapter]
+# 训练导出的正式适配器文件；不要填写 resume 状态。
+# Exported inference adapter file; do not use a resume snapshot.
+weights = "runs/z-image/weights/model.safetensors"
+
+[adapter.config]
+# 适配器算法 lora/loha/lokr；推理时与训练保持一致。
+# Adapter algorithm lora/loha/lokr; inference must use the same algorithm.
+algorithm = "lora"
+# 适配器容量，必须为正整数；增大会增加参数、优化器内存和文件体积。
+# Positive adapter capacity; higher ranks increase trainable parameters, optimizer memory and file size.
+rank = 32
+# 适配器缩放参数；普通 LoRA 使用 alpha/rank，常以 alpha=rank 起步。
+# Adapter scale; ordinary LoRA uses alpha/rank, commonly initialized with alpha=rank.
+alpha = 32.0
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# 省略 source 使用模型默认来源；填写本地目录后可开启 offline。
+# Omit source for the family default; use a local directory with offline mode if needed.
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

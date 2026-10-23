@@ -1,0 +1,28 @@
+# unitunner generate docs/examples/moss-edit-generate.toml --device cuda
+output = "/output/moss-edit/example.png"
+
+[model]
+family = "moss-image"
+variant = "edit"
+weights = "/models/moss-image-sft.safetensors"
+vae = "/models/flux2-vae.safetensors"
+text_encoder = "/models/qwen3.5"
+
+[adapter]
+weights = "/output/moss-edit/adapter.safetensors"
+
+[adapter.config]
+algorithm = "lora"
+rank = 64
+alpha = 64
+
+[sampling]
+prompt = "Change the jacket to red while preserving the person and background."
+negative_prompt = ""
+reference_images = ["/data/source-images/example.png"]
+width = 1024
+height = 1024
+steps = 50
+guidance = 4.0
+seed = 42
+

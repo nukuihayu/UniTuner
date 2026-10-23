@@ -1,0 +1,187 @@
+# 用途 / Task: flux · train
+# 命令 / Command: uv run unitunner train docs/examples/flux-fill-flow.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "flux"
+# 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。
+# Checkpoint variant, such as base/turbo, dev or original; use matching weights.
+variant = "fill"
+# 本地权重文件、分片索引或支持的模型目录；替换为实际路径。
+# Local weight file, shard index or supported model directory; replace the example path.
+weights = "artifacts/flux-fill.safetensors"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "artifacts/flux-vae.safetensors"
+# 本地文本编码器文件或目录；分词器来源单独配置。
+# Local text encoder file or directory; tokenizer assets are configured separately.
+text_encoder = "artifacts/t5"
+
+[dataset.groups.main]
+# 数据源目录或该模型要求的记录文件；改动内容后重建缓存。
+# Dataset directory or family-specific record file; rebuild caches after editing inputs.
+source = "images"
+# 该组独立的缓存目录；不同组不能指向同一路径。
+# Dedicated cache directory for this group; never share it with another group.
+cache_directory = "cache/flux-fill"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [1024, 1024]
+# 有序参考图目录列表；与目标同名主体匹配，仅供支持参考条件的变体使用。
+# Ordered reference directories, stem-matched to targets; only for variants supporting references.
+reference_sources = ["conditioning"]
+# FLUX Fill 掩码目录；文件主体需匹配目标。
+# FLUX Fill mask directory, stem-matched to targets.
+mask_source = "masks"
+# 每个 microbatch 的样本数；显存不足先减此项。
+# Samples per microbatch; reduce this first when activations exceed GPU memory.
+batch_size = 1
+
+# 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。
+# Repeat each item per data pass; increases a group's relative frequency, not max_updates.
+repeats = 1
+# 按宽高比分桶；关闭时使用固定 resolution 裁剪。
+# Group by aspect ratio; disable for fixed-resolution crops.
+enable_bucket = true
+# 避免将小图放大到较大 bucket；小图可能落入更小的桶。
+# Avoid upscaling small images into larger buckets.
+bucket_no_upscale = false
+# 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。
+# Caption sidecar extension including the dot, e.g. .txt; used when prompt is omitted.
+caption_extension = ".txt"
+# 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。
+# In a dataset group, overrides every caption sidecar, including with an empty string; in sampling, the generation prompt.
+# prompt = ""
+
+[train]
+# 有效优化器更新总数；梯度累积的 microbatch 不单独计数。
+# Total effective optimizer updates; accumulated microbatches do not count as separate updates.
+max_updates = 1000
+# AdamW 基础学习率；先固定数据与 rank，再根据预览和损失调整。
+# Base AdamW learning rate; tune against previews and losses while holding data/rank fixed.
+learning_rate = 0.0001
+
+# AdamW 解耦权重衰减；0 关闭，不是学习率。
+# Decoupled AdamW weight decay; 0 disables it, independently of learning rate.
+weight_decay = 0.0001
+# 全局梯度范数裁剪阈值；0 关闭。
+# Global gradient-norm clipping threshold; 0 disables clipping.
+max_grad_norm = 1.0
+# constant 固定、linear 线性衰减、cosine 余弦衰减；均支持 warmup。
+# constant, linear decay or cosine decay; all support warmup.
+lr_schedule = "constant"
+# 学习率线性预热的有效更新数；必须小于 max_updates。
+# Effective updates for linear LR warmup; must be smaller than max_updates.
+warmup_updates = 0
+# 原生层/模块/参数 glob；空数组选择所有合格目标，不使用 ComfyUI 导出键。
+# Native layer/module/parameter globs; empty selects all eligible targets, not ComfyUI export keys.
+include_layers = []
+# 在 include_layers 之后排除匹配目标，排除规则优先。
+# Remove matching targets after include_layers; exclusions take precedence.
+exclude_layers = []
+
+[train.adapter]
+# 适配器算法 lora/loha/lokr；推理时与训练保持一致。
+# Adapter algorithm lora/loha/lokr; inference must use the same algorithm.
+algorithm = "lora"
+# 适配器容量，必须为正整数；增大会增加参数、优化器内存和文件体积。
+# Positive adapter capacity; higher ranks increase trainable parameters, optimizer memory and file size.
+rank = 16
+# 适配器缩放参数；普通 LoRA 使用 alpha/rank，常以 alpha=rank 起步。
+# Adapter scale; ordinary LoRA uses alpha/rank, commonly initialized with alpha=rank.
+alpha = 16.0
+
+[method]
+# 训练目标：flow-matching 或 restoration。
+# Training objective: flow-matching or restoration.
+kind = "flow-matching"
+# 采样中为模型 guidance/CFG；method.guidance 为受支持模型的训练 embedding。
+# In sampling, model guidance/CFG; method.guidance is a training embedding for supported models.
+guidance = 3.5
+
+[execution]
+# 计算精度；训练 auto 按底模解析，CUDA 可显式 bf16，CPU 流程用 fp32。
+# Compute precision; training auto follows base weights, CUDA can use bf16, CPU workflows use fp32.
+precision = "fp32"
+# none 保存激活；block 按块重算以降低激活显存，增加计算量。
+# none retains activations; block recomputes blocks to reduce activation memory at extra compute cost.
+recompute = "block"
+
+# resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
+# resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported.
+residency = "resident"
+# false 直接执行；true 使用 CUDA 编译，auto 按设备选择；首次编译额外耗时。
+# false uses eager execution; true compiles on CUDA, auto selects by device; compilation adds startup cost.
+compile = false
+# 将保存的注意力激活卸载到主机，节省显存但增加传输和内存需求。
+# Offload saved attention activations to host memory at extra transfer and RAM cost.
+# attention_activation_offload = false
+
+[output]
+# 产物目录；省略自动建立 runs/<name>_<时间戳>，显式路径会复用。
+# Output directory; omit for runs/<name>_<timestamp>, set an explicit path to reuse it.
+directory = "runs/flux-fill"
+# 正式权重文件的名称前缀，也是日志及 TensorBoard run 命名的基础。
+# Weight filename prefix and the basis for log/TensorBoard run names.
+name = "model"
+# 每 N 次有效更新同时导出正式权重与独立续训状态；末步也保存。
+# Export weights and independent resume state every N effective updates, plus the final update.
+save_every_updates = 100
+# 正式权重导出精度 fp32/bf16/fp16；不改变续训状态的训练 dtype。
+# Export dtype fp32/bf16/fp16 for inference weights; resume retains training dtypes.
+save_precision = "fp32"
+# 事件根目录；只填目录，训练器自动建立带训练名的 run 子目录。
+# Event root directory; the trainer automatically creates a run subdirectory from the training name.
+# tensorboard = "runs/tensorboard"
+# 最多保留最近 N 份续训状态；默认 1，0 表示全部。
+# Keep the newest N resume snapshots; default 1, 0 keeps all.
+# max_resume_checkpoints = 1
+# 最多保留最近 N 组正式权重；默认 0 全保留，encoder 随组清理。
+# Keep the newest N weight sets; default 0 keeps all, including companion encoders.
+# max_weight_checkpoints = 0
+# complete 包含完整续训张量；frozen-reference 省略重复冻结参数，恢复需完全相同底模。
+# complete includes full training tensors; frozen-reference omits duplicate frozen parameters and requires the identical base.
+# checkpoint_storage = "complete"
+# 后台/重定向摘要间隔，默认 60 秒；终端原位刷新，完整指标仍逐步写入文件。
+# Noninteractive summary interval, default 60 seconds; terminals refresh in place and files retain every update.
+# log_every_seconds = 60.0
+
+[train.optimizer]
+# AdamW 一阶/二阶矩衰减系数，两个数均在 [0,1)。
+# AdamW first/second moment decay factors; each lies in [0,1).
+betas = [0.9, 0.999]
+# AdamW 分母稳定项，必须大于 0；通常保留 1e-8。
+# Positive AdamW denominator stabilizer; normally keep 1e-8.
+eps = 1e-08
+# auto 自动选择优化器实现；fused/foreach/single 显式指定后端。
+# auto chooses the optimizer implementation; fused/foreach/single select it explicitly.
+backend = "auto"
+
+[model.text.tokenizer]
+# true 仅读取本地目录/缓存；false 允许下载分词器文件，不自动下载编码器权重。
+# true reads local files/cache only; false allows tokenizer downloads, never automatic encoder-weight downloads.
+offline = false
+# 分词器本地目录或 Hub 仓库 ID；省略时使用家族默认来源。
+# Local tokenizer directory or Hub repository ID; omission uses the family default.
+# source = "/models/tokenizer"
+# Hub 来源的分支/标签/commit；正式实验可固定 commit，离线需本地已有该版本。
+# Hub branch/tag/commit; pin a commit for reproducibility and cache it before offline use.
+# revision = "commit-sha"
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false

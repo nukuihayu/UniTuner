@@ -1,0 +1,40 @@
+# Moss-Image-Edit / ComfyUI PR #17296: index_timestep_zero_text_start
+# 先缓存再训练 / Cache first, then train:
+# unitunner cache docs/examples/moss-edit-flow.toml --device cuda
+# unitunner train docs/examples/moss-edit-flow.toml --device cuda
+[model]
+family = "moss-image"
+variant = "edit"
+weights = "/models/moss-image-sft.safetensors"
+vae = "/models/flux2-vae.safetensors"
+text_encoder = "/models/qwen3.5"
+
+[dataset.groups.main]
+kind = "image"
+source = "/data/edited-targets"
+reference_sources = ["/data/source-images"]
+cache_directory = "/data/moss-edit-cache"
+resolution = [1024, 1024]
+batch_size = 1
+# 同名 .txt 是编辑指令；参考图按文件名 stem 匹配。
+# Matching .txt files contain edit instructions; references match target filename stems.
+
+[train]
+parameter_mode = "adapter"
+learning_rate = 0.0001
+max_updates = 1000
+
+[train.adapter]
+algorithm = "lora"
+rank = 64
+alpha = 64
+
+[execution]
+precision = "bf16"
+recompute = "block"
+
+[method]
+kind = "flow-matching"
+
+[output]
+directory = "/output/moss-edit"

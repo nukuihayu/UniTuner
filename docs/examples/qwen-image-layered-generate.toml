@@ -1,0 +1,91 @@
+# 用途 / Task: qwen-image · generate
+# 命令 / Command: uv run unitunner generate docs/examples/qwen-image-layered-generate.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "output/qwen-layered.png"
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "qwen-image"
+# 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。
+# Checkpoint variant, such as base/turbo, dev or original; use matching weights.
+variant = "layered"
+# 本地权重文件、分片索引或支持的模型目录；替换为实际路径。
+# Local weight file, shard index or supported model directory; replace the example path.
+weights = "artifacts/qwen-image-layered.safetensors"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "artifacts/qwen-image-rgba-vae.safetensors"
+# 本地文本编码器文件或目录；分词器来源单独配置。
+# Local text encoder file or directory; tokenizer assets are configured separately.
+text_encoder = "artifacts/qwen2.5-vl"
+# 文本权重键格式 transformers/qwen；仅支持该选项的家族使用。
+# Text weight key format transformers/qwen; use only with supported families.
+text_source_format = "qwen"
+
+[sampling]
+# 本次生成/修复的提示词；与训练任务保持一致。
+# Prompt for this generation/restoration request; match the training task.
+prompt = ""
+# Qwen layered 的图层描述语言 en/zh。
+# Layer-caption language en/zh for Qwen layered.
+caption_language = "en"
+# 推理参考图路径列表，顺序有意义；按模型变体要求填写。
+# Ordered inference reference-image paths; follow the selected variant's requirements.
+reference_images = ["input/source.png"]
+# 推理条件图缩放策略 preferred/original/output；output 仅支持对应 Qwen 模型。
+# Inference reference resize policy preferred/original/output; output is supported only by applicable Qwen models.
+conditioning_resize = "output"
+# Qwen layered 输出前景层数量；仅此变体使用。
+# Foreground layer count for Qwen layered only.
+output_layers = 4
+# 输出宽度，像素；一般 16 对齐，Qwen2.1/H3 使用 32 对齐。
+# Output width in pixels; generally align to 16, or 32 for Qwen2.1/H3.
+width = 1024
+# 输出高度，像素；与宽度一起决定采样显存需求。
+# Output height in pixels; together with width determines sampling memory use.
+height = 1024
+# 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。
+# Random seed for recipe comparisons; resume restores RNG from its state file.
+seed = 42
+# 采样迭代数；省略使用变体默认，Turbo 与非蒸馏模型不要套用同一数值。
+# Sampling iterations; omission uses variant defaults, do not reuse one value across Turbo and nondistilled models.
+steps = 25
+# 采样中为模型 guidance/CFG；method.guidance 为受支持模型的训练 embedding。
+# In sampling, model guidance/CFG; method.guidance is a training embedding for supported models.
+guidance = 4.0
+# torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。
+# torch uses native attention; kitchen-int8 requires the relevant backend and supported inference paths.
+attention_backend = "torch"
+# 采样时间表移位；含义因模型而异，省略用原生默认。
+# Sampling schedule shift; interpretation is model-specific, omit for native defaults.
+# shift = 1.0
+# 采样负提示词；是否支持以及 CFG 语义由模型变体决定。
+# Sampling negative prompt; support and CFG semantics depend on the model variant.
+# negative_prompt = ""
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# 省略 source 使用模型默认来源；填写本地目录后可开启 offline。
+# Omit source for the family default; use a local directory with offline mode if needed.
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

@@ -1,0 +1,80 @@
+# 用途 / Task: z-image · cache
+# 命令 / Command: uv run unitunner cache docs/examples/image-cache.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# unitunner cache docs/examples/image-cache.toml --device cuda
+# 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。
+# Random seed for recipe comparisons; resume restores RNG from its state file.
+seed = 42
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "z-image"
+# 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。
+# Checkpoint variant, such as base/turbo, dev or original; use matching weights.
+variant = "base"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "/models/z-image-vae.safetensors"
+# 本地文本编码器文件或目录；分词器来源单独配置。
+# Local text encoder file or directory; tokenizer assets are configured separately.
+text_encoder = "/models/qwen3"
+
+[dataset.defaults]
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [1024, 1024]
+# 覆盖该组全部 txt；留空字符串则使用空文本。
+# Override all caption sidecars in this group; an empty string selects empty captions.
+prompt = "a photo of sks person"
+
+[dataset.groups.portraits]
+# 数据源目录或该模型要求的记录文件；改动内容后重建缓存。
+# Dataset directory or family-specific record file; rebuild caches after editing inputs.
+source = "/data/portraits"
+# 该组独立的缓存目录；不同组不能指向同一路径。
+# Dedicated cache directory for this group; never share it with another group.
+cache_directory = "/data/cache/portraits"
+# 每个 microbatch 的样本数；显存不足先减此项。
+# Samples per microbatch; reduce this first when activations exceed GPU memory.
+batch_size = 1
+# 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。
+# Repeat each item per data pass; increases a group's relative frequency, not max_updates.
+repeats = 1
+# 按宽高比分桶；关闭时使用固定 resolution 裁剪。
+# Group by aspect ratio; disable for fixed-resolution crops.
+enable_bucket = true
+# 避免将小图放大到较大 bucket；小图可能落入更小的桶。
+# Avoid upscaling small images into larger buckets.
+bucket_no_upscale = false
+# 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。
+# Caption sidecar extension including the dot, e.g. .txt; used when prompt is omitted.
+caption_extension = ".txt"
+
+[model.text.tokenizer]
+# true 仅读取本地目录/缓存；false 允许下载分词器文件，不自动下载编码器权重。
+# true reads local files/cache only; false allows tokenizer downloads, never automatic encoder-weight downloads.
+offline = false
+# 分词器本地目录或 Hub 仓库 ID；省略时使用家族默认来源。
+# Local tokenizer directory or Hub repository ID; omission uses the family default.
+# source = "/models/tokenizer"
+# Hub 来源的分支/标签/commit；正式实验可固定 commit，离线需本地已有该版本。
+# Hub branch/tag/commit; pin a commit for reproducibility and cache it before offline use.
+# revision = "commit-sha"
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false

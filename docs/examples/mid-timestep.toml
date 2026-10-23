@@ -1,0 +1,58 @@
+# 用途 / Task: flux · mid-timestep
+# 命令 / Command: uv run unitunner mid-timestep docs/examples/mid-timestep.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# unitunner mid-timestep docs/examples/mid-timestep.toml --device cuda
+# 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。
+# Random seed for recipe comparisons; resume restores RNG from its state file.
+seed = 42
+# 最多编码的裁剪／分块对数。
+# Maximum encoded crop/tile pairs.
+calibration_pairs = 32
+# random: 每图随机裁剪；tiles: 按 resolution 分块。
+# random: one crop per image; tiles: full tiles at resolution.
+calibration_sampling = "random"
+# 训练 VAE 后验 mean/sample；省略遵循各家族策略，推理/预览使用均值。
+# Training VAE posterior mean/sample; omission uses the family's policy, inference/previews use means.
+posterior = "sample"
+
+[model]
+# 模型家族；先按实际权重选择，再填写对应 variant/version。
+# Model family; match the checkpoint before selecting variant/version.
+family = "flux"
+# 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。
+# Matching local VAE weights, required for caching, previews and inference.
+vae = "/models/flux-vae.safetensors"
+
+[dataset.defaults]
+# 固定裁剪／分块尺寸 [宽, 高]，不缩放原图。
+# Fixed crop/tile [width, height], without resizing the source.
+resolution = [1024, 1024]
+
+[dataset.groups.main]
+# 数据源目录或该模型要求的记录文件；改动内容后重建缓存。
+# Dataset directory or family-specific record file; rebuild caches after editing inputs.
+source = "/data/hq"
+# 修复输入 LQ 目录，与 source 的 HQ 按文件主体配对；不同时开启合成退化。
+# LQ restoration directory, stem-matched to HQ source; mutually exclusive with synthetic degradation.
+low_quality_source = "/data/lq"
+# 仅有 HQ：删除 low_quality_source，启用下列配方，可继续覆盖退化参数。
+# HQ only: remove low_quality_source and enable the recipe; degradation fields can be overridden.
+# [dataset.groups.main.degradation]
+# enabled = true
+
+[runtime]
+# 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。
+# Allow TF32 matrix operations on supported GPUs; may change numerical trajectories.
+# cuda_allow_tf32 = false
+# 启用 cuDNN 卷积后端；通常保持 true。
+# Enable cuDNN convolution kernels; normally keep true.
+# cudnn_enabled = true
+# 搜索卷积算法；固定尺寸可尝试 true，首次运行会有搜索开销。
+# Benchmark convolution algorithms; try true for stable shapes, with startup search overhead.
+# cudnn_benchmark = true
+# 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
+# Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
+# cudnn_deterministic = false
