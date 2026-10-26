@@ -45,7 +45,7 @@ def test_frequency_distribution_matches_full_sort_amplitude_and_phase_gradients(
     target = torch.randn_like(generated).requires_grad_()
     actual = loss(generated, target)
     x, y = loss.features(generated)[0], loss.features(target.detach())[0]
-    fx, fy = torch.fft.fft2(x), torch.fft.fft2(y)
+    fx, fy = torch.fft.fft2(x, norm="ortho"), torch.fft.fft2(y, norm="ortho")
     terms = []
     for a, b in ((fx.abs(), fy.abs()), (fx.angle(), fy.angle())):
         projected_a = F.conv2d(a, loss.projections[0]).flatten(2).sort(dim=-1).values
@@ -91,7 +91,8 @@ def test_frequency_chunks_recompute_sort_without_retaining_indices(monkeypatch, 
     loss.projections = nn.ParameterList([nn.Parameter(bank, requires_grad=False)])
     left = torch.randn(2, 2, 9, 11, requires_grad=True)
     right = torch.randn_like(left).requires_grad_()
-    fx, fy = torch.fft.fft2(left), torch.fft.fft2(right.detach())
+    fx = torch.fft.fft2(left, norm="ortho")
+    fy = torch.fft.fft2(right.detach(), norm="ortho")
     terms = []
     for a, b in ((fx.abs(), fy.abs()), (fx.angle(), fy.angle())):
         with torch.autocast("cpu", dtype=torch.bfloat16, enabled=bf16):
@@ -121,3 +122,31 @@ def test_frequency_chunks_recompute_sort_without_retaining_indices(monkeypatch, 
     assert target_grad is None
     torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
     torch.testing.assert_close(actual_grad, expected_grad, rtol=0.03 if bf16 else 1e-5, atol=1e-3 if bf16 else 1e-6)
+
+
+def test_frequency_white_noise_scale_does_not_grow_with_resolution():
+    """The same noise energy must not inflate FDL when spatial area grows 16x."""
+    loss = FrequencyDistributionLoss(nn.ModuleList([nn.Identity()]), (2,), seed=17)
+    loss.projections = nn.ParameterList([nn.Parameter(loss.projections[0][:8], requires_grad=False)])
+    generator = torch.Generator().manual_seed(817)
+    values = []
+    for height, width in ((24, 32), (96, 128)):
+        left = torch.randn(2, 2, height, width, generator=generator, requires_grad=True)
+        right = torch.zeros_like(left).requires_grad_()
+        value = loss.forward_features([left], [right])
+        gradient, target_gradient = torch.autograd.grad(value, (left, right), allow_unused=True)
+        assert torch.isfinite(value) and value > 0
+        assert torch.isfinite(gradient).all() and gradient.abs().sum() > 0
+        assert target_gradient is None
+        values.append(value.detach())
+    assert 0.7 < values[1] / values[0] < 1.4
+
+
+def test_frequency_identical_zero_features_have_zero_loss_and_finite_gradients():
+    loss = FrequencyDistributionLoss(nn.ModuleList([nn.Identity()]), (2,), seed=17)
+    left = torch.zeros(1, 2, 7, 9, requires_grad=True)
+    value = loss.forward_features([left], [left.detach()])
+    value.backward()
+    assert value == 0
+    assert left.grad is not None and torch.isfinite(left.grad).all()
+    assert torch.count_nonzero(left.grad) == 0

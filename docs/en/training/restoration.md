@@ -182,6 +182,8 @@ DDPM equation 7 uses alpha-bar reconstruction and cannot be replaced with the FM
 
 The project recipe keeps LRR/Dv3D/L1/GAN/FDL weights of 5/3/0.5/0.5/0.5, with histogram loss defaulting to zero. FDL, histogram, and phase are recipe extensions rather than original OMGSR losses or evidence of reproduced paper quality.
 
+FDL uses orthonormal FFTs (`norm="ortho"`) to normalize amplitude scaling for each feature-map size. Phase, all 256 projections, and the sum over levels are preserved. This is a variant of the original unnormalized FDL and is not bounded to [0,1]. Old FDL values are not directly comparable; reassess `losses.fdl` when continuing an older run.
+
 Calibration uses the unadapted VAE with the configured posterior. FLUX defaults to sample, matching the official implementation. Isolated seeded posterior RNG leaves training RNG unchanged. Explicit mean is a deterministic variant. Candidate grids exclude endpoints 0 and 1, where SNR is undefined. SNR errors are averaged per image rather than calculated over a mixed batch. Effective sigma is saved in checkpoints and publications; resume does not recalibrate and inference reads the saved value.
 
 ## Outputs and one-step inference

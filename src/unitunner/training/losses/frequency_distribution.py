@@ -1,7 +1,8 @@
 """Frequency Distribution Loss (Ni et al., CVPR 2024; github.com/eezkni/FDL).
 
-Official VGG19 stages, 256 normalized 5x5 projections and equal amplitude/phase
-weights. Sorting covers every spatial projection; no LPIPS term or extra scale.
+VGG19 stages, 256 normalized 5x5 projections and equal amplitude/phase weights.
+Sorting covers every spatial projection. Unlike the reference's unnormalized
+FFT, use orthonormal FFTs to avoid resolution-driven amplitude inflation.
 """
 
 import torch
@@ -105,7 +106,7 @@ class FrequencyDistributionLoss(nn.Module):
         return _SortedL1.apply(a, b)
 
     def forward_features(self, left: list[torch.Tensor], right: list[torch.Tensor]) -> torch.Tensor:
-        """Evaluate the official full-spatial amplitude/phase distribution distance.
+        """Evaluate the full-spatial distance with orthonormal frequency amplitudes.
 
         Feature pairs are same-shaped floating BCHW tensors, one per extractor stage.
         The target is detached. Returns a scalar, differentiable to left only.
@@ -117,7 +118,10 @@ class FrequencyDistributionLoss(nn.Module):
             if not x.is_floating_point() or not y.is_floating_point():
                 raise ValueError("FDL features must use floating point")
             x, y = x.float(), y.detach().float()
-            fft_x, fft_y = torch.fft.fftn(x, dim=(-2, -1)), torch.fft.fftn(y, dim=(-2, -1))
+            # Normalize spectral energy for each feature-map size. This changes
+            # amplitude scaling from the reference FDL while preserving phase.
+            fft_x = torch.fft.fftn(x, dim=(-2, -1), norm="ortho")
+            fft_y = torch.fft.fftn(y, dim=(-2, -1), norm="ortho")
             frequency = x.new_zeros(x.shape[0])
             for a, b, weight in (
                 (fft_x.abs(), fft_y.abs(), 1.0),
