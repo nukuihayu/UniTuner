@@ -111,7 +111,7 @@ def index_restoration_pairs(
         records(),
         field="entries",
         context={
-            "schema": "restoration-images-2",
+            "schema": "restoration-images-random-delivery-3" if synthetic else "restoration-images-2",
             "degradation": None if degradation is None else degradation.model_dump(mode="json"),
         },
     )

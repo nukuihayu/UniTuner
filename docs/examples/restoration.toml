@@ -210,3 +210,16 @@ offline = false
 # 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。
 # Restrict cuDNN to deterministic algorithms for reproducibility, potentially reducing speed.
 # cudnn_deterministic = false
+
+# 可选的小波频带 MSE；取消注释以启用，恢复训练不使用时间步衰减。
+# Optional wavelet band MSE; uncomment to enable, without timestep fade in restoration.
+# [method.wavelet]
+# weight = 0.5
+# wavelet = "haar"
+# levels = 3
+# ll = 0.1
+# lh = 0.01
+# hl = 0.01
+# hh = 0.05
+# ll_level_threshold = -1
+# normalize_bands = false

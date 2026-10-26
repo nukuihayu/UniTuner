@@ -324,6 +324,8 @@ Alternatively pass `--cache.batch-size 16` to the cache command. Shared training
 
 ## `method.wavelet`
 
+Weighted DWT band MSE. In restoration this compares decoded RGB output to detached HQ, with no timestep decay; see [restoration](restoration.md).
+
 | Parameter | Type / choices | Default | How to fill |
 | --- | --- | --- | --- |
 | `weight` | number；> 0 | `1.0` | Coefficient of this auxiliary objective in the total loss; 0 removes its contribution. |
@@ -434,7 +436,7 @@ Acquisition: blur → resize → optional noise/low-light denoising → optional
 
 ## `SecondStageConfig`
 
-Delivery: resize → optional local blur/noise → final resize/sinc/sharpening → optional final encoding.
+Delivery randomly orders resizing, local blur and noise, then applies the target LQ resize and optional sinc/sharpening. Noise may be deferred until after HQ enlargement; final encoding can precede or follow enlargement.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
@@ -444,8 +446,8 @@ Delivery: resize → optional local blur/noise → final resize/sinc/sharpening 
 | `resize_range` | [number, number] | `[0.9, 1.1]` | Positive resize-factor range spanning 1. |
 | `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
 | `compression` | object | `subtable` | JPEG/WebP/JPEG2000 compression distribution table. |
-| `noise_probability` | number | `0.1` | Probability of additional weak LQ residual noise. |
-| `compression_probability` | number | `0.9` | Final encoding probability after LQ filtering and sharpening, for all scenes. |
+| `noise_probability` | number | `0.1` | Additional residual noise probability; once selected, applied equally in delivery or after HQ enlargement, once per sample. |
+| `compression_probability` | number | `0.9` | Final encoding probability for all scenes; equally before/after any remaining HQ enlargement, or on HQ if already enlarged. |
 
 ## `BlurConfig`
 
@@ -491,7 +493,7 @@ Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/
 
 ## `SecondNoiseConfig`
 
-Weak residual noise on the LQ grid; uses the same scene strength multiplier as acquisition.
+Weak residual noise on the delivery or final HQ grid; uses the same scene strength multiplier as acquisition.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |

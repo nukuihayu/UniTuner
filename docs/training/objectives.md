@@ -123,7 +123,7 @@ LH 是高通 H／低通 W，HL 是低通 H／高通 W。负 LL 阈值按 `levels
 流匹配每个样本乘 `sigmoid((cutoff-sigma)*4/transition_width)`，sigma 是 `[0,1]`
 的噪声比例，绝不传模型原生 timestep。多层图像的各层分别变换后取均值。
 图像修复监督干净输出，不应用噪声时间衰减。所有频带运算在模型 autocast 外以 FP32
-执行；损失可对 prediction 和 target 求导，目标端未额外 detach。
+执行；独立调用和流匹配可对 prediction、target 求导；图像恢复会 detach HQ 目标，与其他图像监督损失一致。
 SWT、实验性的 QWT、SNR-aware Huber 与逐频带逐层覆盖权重未在此接口开放。
 附加目标会增加训练计算，不承诺收敛或图像质量必然提升。
 

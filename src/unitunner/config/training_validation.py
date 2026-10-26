@@ -87,11 +87,19 @@ def validate_training_policy(config: "TrainingConfig") -> None:
                 "Restoration requires losses and method.restoration settings",
                 "Supply both [method.restoration] and [losses] for restoration.",
             )
-        if not any((losses.dv3d, losses.l1, losses.gan, losses.fdl, losses.histogram)):
+        wavelet = config.method.wavelet
+        threshold = None if wavelet is None else wavelet.ll_level_threshold
+        if wavelet is not None and threshold is not None and threshold <= 0:
+            threshold += wavelet.levels
+        wavelet_objective = wavelet is not None and (
+            any((wavelet.lh, wavelet.hl, wavelet.hh))
+            or (wavelet.ll > 0 and (threshold is None or threshold < wavelet.levels))
+        )
+        if not any((losses.dv3d, losses.l1, losses.gan, losses.fdl, losses.histogram, wavelet_objective)):
             raise ConfigRuleError(
                 "losses",
                 "At least one image objective is required",
-                "Set at least one of dv3d, l1, gan, fdl or histogram above zero; lrr/phase alone are insufficient.",
+                "Enable dv3d, l1, gan, fdl, histogram or an active method.wavelet band; lrr/phase alone are insufficient.",
             )
         if (losses.dv3d or losses.gan) and not restoration.dino_weights:
             raise ConfigRuleError(

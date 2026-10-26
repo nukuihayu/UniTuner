@@ -54,7 +54,7 @@ Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间�
 | `histogram` | `0.0` | 归一化 Lab 颜色 CDF 匹配 | 无 |
 | `phase` | `0.0` | 保护目标纹理的局部周期残差约束，默认关闭 | 无 |
 
-这是 schema 默认值，不是适用于所有任务的推荐配方。未使用的损失要显式设为 0；仅省略 DINO／VGG 路径，却保留相应默认损失，会导致配置报错。至少启用一种图像输出损失（l1、dv3d、gan、fdl、histogram），LRR 与 phase 都不能单独监督完整解码结果。
+这是 schema 默认值，不是适用于所有任务的推荐配方。未使用的损失要显式设为 0；仅省略 DINO／VGG 路径，却保留相应默认损失，会导致配置报错。至少启用一种图像输出损失（l1、dv3d、gan、fdl、histogram，或启用有效频带的 `[method.wavelet]`），LRR 与 phase 都不能单独监督完整解码结果。
 
 大数据集启动索引时，源图片、caption 和缓存文件逐项校验，缓存只读取头部元数据，不载入 latent／文本张量。数据集摘要逐条计算，避免保留额外的逐图身份字典和完整 JSON 副本；必要的文件配对索引仍随图片数量增长。该优化不改变缓存格式或续训摘要，无需重建缓存。终端会显示逐图校验进度。
 
@@ -63,6 +63,35 @@ Linux 的系统／容器 RAM 统计也可能包含文件页缓存。修复索引
 以上策略也用于修复训练的模型／VAE／特征权重摘要扫描，包括分片权重，摘要和续训兼容性不变。DINO／VGG 的 ZIP 格式 PyTorch 权重在加载到 GPU 时采用只读源文件的私有内存映射，避免先把完整 checkpoint 复制到匿名 CPU 内存；旧版 pickle 文件保留普通读取方式。映射触及的文件页面仍可能计入容器 RAM。
 
 八个图像家族（Z-Image、FLUX.1、FLUX.2、FLUX3、MOSS、Qwen Image、Qwen Image2.1、Krea2）共用以下内存优化：训练／预览只读取缓存中的文本条件，FLUX.1 额外读取 pooled 特征，保留 Krea2 的选层文本布局，不搬运未使用的缓存 latent／参考图；RGB 解码避免额外的整图 PIL 副本，只在确实需要时做反射填充，合成退化只创建一份 HQ 裁剪；batch=1 不额外堆叠图像，CPU 裁剪在设备搬运后及时释放；生成器反向结束后，清理其临时 latent 和计算图引用，再进入判别器阶段。这些优化无需修改配置，不改变裁剪／退化随机数、损失权重或模型公式；不会降低模型、优化器和必要激活本身的存储需求。
+
+## 小波 MSE
+
+小波 MSE 使用 `[method.wavelet]`：递归分解输出和 HQ，对每个启用的层与频带计算元素均值 MSE，再按频带系数求和并乘 `weight`，不是把全部系数放在一起取一次均值。`normalize_bands = false` 保留频带的绝对幅度。恢复训练不应用时间步衰减，`timestep_cutoff` 和 `timestep_transition_width` 仅用于流匹配。小波损失不需要外部特征权重。
+
+```toml
+[losses]
+lrr = 0.0
+l1 = 0.0
+dv3d = 0.0
+gan = 0.0
+fdl = 0.0
+histogram = 0.0
+phase = 0.0
+
+# 小波监督配置。
+[method.wavelet]
+weight = 0.5
+wavelet = "haar"
+levels = 3
+ll = 0.1
+lh = 0.01
+hl = 0.01
+hh = 0.05
+ll_level_threshold = -1
+normalize_bands = false
+```
+
+这只是配置示例，不是调优后的权重推荐。仅使用小波 MSE 时，必须保留至少一个有效频带。`ll_level_threshold = -1` 只在最后一级计入 LL，细节频带则在每级计入。`wavelet` 指标已包含总权重 `weight`。参见[全部小波参数](parameters.md#methodwavelet)。
 
 ## 局部周期残差约束
 
@@ -193,7 +222,6 @@ FDL 使用正交归一化 FFT（`norm="ortho"`），按特征图尺寸规范幅�
 ## 产物与修复推理
 
 最终输出包括 denoiser 的 full/adapter 文件、可选 encoder adapter 文件和完整训练 checkpoint。发布的模型/adapter 和 encoder 都记录 sigma/posterior；恢复推理检查各产物的 sigma 一致性。Full 推理把 `model.weights` 指向训练后的模型；LoRA 推理保留底模，设置 `[adapter]` 与 `[adapter.config]`。`encoder_weights` 指向训练导出的 encoder 文件。一步推理使用后验均值，保留输入原尺寸。
-
 
 ## 独立计算中间时间
 

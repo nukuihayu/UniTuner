@@ -120,6 +120,10 @@ l1 = 0.5
 dv3d = 0.0
 gan = 0.0
 fdl = 0.0
+[method.wavelet]
+wavelet = "haar"
+weight = 0.5
+levels = 2
 [execution]
 precision = "{precision}"
 [train]
@@ -153,7 +157,7 @@ parameter_mode = "full"
             layer = next(m for m in component.modules() if isinstance(m, (nn.Linear, nn.Conv2d, nn.Conv3d)))
             handles.append(layer.register_forward_hook(record))
         low = torch.randn(1, 3, 16, 16, device=device).requires_grad_()
-        high = torch.randn_like(low)
+        high = torch.randn_like(low).requires_grad_()
         parameters = [p for p in binding.model.parameters() if p.requires_grad]
         assert method.encoder is not None
         parameters += list(method.encoder.parameters())
@@ -168,6 +172,7 @@ parameter_mode = "full"
         )
         for handle in handles:
             handle.remove()
+        assert high.grad is None
         assert state.updates == 1 and torch.isfinite(result.mean_loss)
         assert (torch.bfloat16 if precision == "bf16" else torch.float16) in observed
         assert low.grad is not None and torch.isfinite(low.grad).all() and low.grad.abs().sum() > 0

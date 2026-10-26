@@ -52,7 +52,7 @@ Both `dino_weights` and `vgg_weights` accept `.pt`, `.pth`, and `.safetensors` w
 | `histogram` | `0.0` | Normalized Lab color CDF matching | None |
 | `phase` | `0.0` | Target-texture-protected periodic residual constraint; disabled by default | None |
 
-These are schema defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, or `histogram`) must be nonzero. Neither LRR nor phase alone can supervise the complete decoded result.
+These are schema defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, or `histogram`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
 
 For large datasets, startup indexing validates source images, captions, and cache files one record at a time, reading only cache header metadata rather than latent/text tensors. Dataset fingerprints stream individual records instead of retaining extra identity dictionaries and a complete JSON copy; the necessary file-pair index still scales with image count. Cache formats and resume fingerprints remain unchanged, so caches need not be rebuilt. The terminal displays per-image validation progress.
 
@@ -61,6 +61,35 @@ Linux system/container RAM counters may also include file page cache. After full
 Restoration training also applies this policy when hashing model, VAE, and feature artifacts, including sharded weights, without changing digests or resume compatibility. DINO/VGG ZIP-format PyTorch checkpoints use private source-file memory mappings when loading onto an accelerator, avoiding a complete anonymous CPU checkpoint copy. Legacy pickle files retain ordinary loading. Touched mapped pages may still count toward container RAM.
 
 All eight image families (Z-Image, FLUX.1, FLUX.2, FLUX3, MOSS, Qwen Image, Qwen Image2.1, and Krea2) share these optimizations: training/previews read only cached text conditions, plus FLUX.1 pooled features, preserving Krea2 selected-layer text without transferring unused image/reference latents; RGB decoding avoids extra full-image PIL copies, pads only when necessary, and creates a single HQ crop for synthetic degradation; batch size one avoids an extra image stack, and CPU crops are released after device transfer; generator latent/graph references are cleared before the discriminator phase once backward has completed. No configuration changes are needed. Crop/degradation RNG, loss weights, and model equations are preserved. Model, optimizer, and necessary activation storage are still required.
+
+## Wavelet MSE
+
+Wavelet MSE uses `[method.wavelet]`: decompose output and HQ recursively, compute element-mean MSE per enabled band and level, then sum band coefficients and multiply by `weight`. It is not a single MSE averaged across all coefficients. `normalize_bands = false` preserves absolute band amplitudes. Restoration applies no timestep fade; `timestep_cutoff` and `timestep_transition_width` apply only to flow matching. Wavelet loss requires no external feature weights.
+
+```toml
+[losses]
+lrr = 0.0
+l1 = 0.0
+dv3d = 0.0
+gan = 0.0
+fdl = 0.0
+histogram = 0.0
+phase = 0.0
+
+# Wavelet supervision settings.
+[method.wavelet]
+weight = 0.5
+wavelet = "haar"
+levels = 3
+ll = 0.1
+lh = 0.01
+hl = 0.01
+hh = 0.05
+ll_level_threshold = -1
+normalize_bands = false
+```
+
+This is a configuration example, not an optimized weight recommendation. For wavelet MSE alone, leave at least one effective band enabled. `ll_level_threshold = -1` includes LL only at the last level, while detail bands are supervised at every level. Wavelet metrics already include `weight`. See [all wavelet parameters](parameters.md#methodwavelet).
 
 ## Local periodic residual constraint
 
@@ -103,7 +132,6 @@ Real-photo comparisons used Z-Image Turbo, official DINOv3 ConvNeXt Large, 512 c
 All 20 validation photos improved in local phase error in both runs; mean smooth-region error fell by 26.4% and 11.2%. However, not every image or metric improved: edge error increased by about 1.3% in the second seed, whose mean SSIM was essentially unchanged; one source photo lost about 1 dB in mean PSNR. The earlier plane-only constraint lost about 0.39 dB in that seed, so only the target-texture-protected implementation is retained. Raising L1 from 0.5 to 1.0 also failed to consistently outperform each baseline; default L1 is unchanged.
 
 These are exploratory early-training comparisons with two seeds and synthetically degraded real photos. Validation data informed method selection; this is not an independent final test set or an official DIV2K benchmark. The results do not guarantee removal of all user artifacts or universally better converged quality. The loss remains disabled by default; 4.0 is only a tested starting point. Monitor repeated patterns, real details, edges, and colors together. Disabled phase preserves earlier resume identities; enabling or changing an effective loss parameter changes the identity and cannot silently resume the previous objective's full training state.
-
 
 ## Models and posterior policy
 

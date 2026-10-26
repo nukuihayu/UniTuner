@@ -72,7 +72,7 @@ def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(
     assert [pair.low for pair in pairs] == ([None] * len(high) if synthetic else list(low))
     assert digest == canonical_sha256(
         {
-            "schema": "restoration-images-2",
+            "schema": "restoration-images-random-delivery-3" if synthetic else "restoration-images-2",
             "entries": records,
             "degradation": None if degradation is None else degradation.model_dump(mode="json"),
         }

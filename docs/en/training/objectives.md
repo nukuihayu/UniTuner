@@ -118,7 +118,7 @@ It uses zero boundaries, full convolution followed by `1::2` subsampling, recurs
 
 Optional normalization shares the target mean/std between prediction and target, preserving prediction amplitude errors. Single-coefficient bands use zero variance to avoid undefined unbiased-std NaNs.
 
-Flow matching weights each sample by `sigmoid((cutoff-sigma)*4/transition_width)`, using the `[0,1]` noise fraction rather than native timestep units. Layered images are transformed individually and averaged. Restoration has no noise-time decay. All band operations run FP32 outside autocast, with gradients available to both prediction and target; the target is not additionally detached.
+Flow matching weights each sample by `sigmoid((cutoff-sigma)*4/transition_width)`, using the `[0,1]` noise fraction rather than native timestep units. Layered images are transformed individually and averaged. Restoration has no noise-time decay. All band operations run FP32 outside autocast, with gradients available to both prediction and target in standalone/flow use. Restoration detaches the HQ target, matching its other supervised image losses.
 
 SWT, experimental QWT, SNR-aware Huber, and per-band/per-level override weights are not exposed. Extra objectives add computation without guaranteeing convergence or quality improvements.
 

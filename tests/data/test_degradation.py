@@ -92,21 +92,26 @@ def test_fractional_resize_uses_integer_grid_coordinates():
 
 
 @pytest.mark.parametrize("vertical", [False, True])
-def test_fractional_resize_roundtrip_preserves_interior_coordinates(vertical):
+@pytest.mark.parametrize("scale", [4, 8])
+@pytest.mark.parametrize("factor", [0.83, 0.713])
+def test_fractional_resize_roundtrip_preserves_interior_coordinates(vertical, scale, factor):
     # A coordinate ramp detects geometric drift independently of texture blur.
-    ramp = np.broadcast_to(np.arange(1536, dtype=np.float32)[None, :, None], (32, 1536, 3)).copy()
+    ramp = np.broadcast_to(np.arange(1537, dtype=np.float32)[None, :, None], (32, 1537, 3)).copy()
     if vertical:
         ramp = ramp.transpose(1, 0, 2).copy()
     settings = DegradationConfig(resize_modes=("bilinear",))
     rng = np.random.default_rng(0)
     height, width = ramp.shape[:2]
-    first = _resize(ramp, int(height * 0.83), int(width * 0.83), rng, settings, factor=0.83)
-    low = _resize(first, height // 4, width // 4, rng, settings)
+    first = _resize(ramp, int(height * factor), int(width * factor), rng, settings, factor=factor)
+    low = _resize(first, height // scale, width // scale, rng, settings)
     restored = _resize(low, height, width, rng, settings)
     interior = (slice(8, -8), slice(64, -64))
     if vertical:
         interior = interior[::-1]
-    np.testing.assert_allclose(restored[interior], ramp[interior], rtol=0, atol=0.05)
+    # Discrete antialias weights introduce small local ripples, not cumulative
+    # geometric drift. Bound both the local error and its systematic bias.
+    np.testing.assert_allclose(restored[interior], ramp[interior], rtol=0, atol=0.075)
+    assert abs(float((restored[interior] - ramp[interior]).mean())) < 0.01
 
 
 def test_hue_matches_scalar_colorsys():
@@ -234,7 +239,7 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
         return original_compress(image, settings, rng, severity)
 
     def noise(image, settings, rng, **kwargs):
-        cameras.append(kwargs.get("camera"))
+        cameras.append(kwargs.get("camera", False))
         return original_noise(image, settings, rng, **kwargs)
 
     monkeypatch.setattr(pipeline, "_compress", encode)
@@ -248,7 +253,7 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
     )
     degrade_image(torch.full((3, 128, 192), 0.5), settings, 7)
     assert len(codecs) == (2 if scene == 1 else 1)
-    assert codecs[-1] == (32, 48)
+    assert codecs[-1] in ((32, 48), (128, 192))
     assert cameras == [scene == 2, False]
 
 
@@ -268,14 +273,14 @@ def test_scale_sampling_is_uniform_without_favoring_the_largest_factor(monkeypat
 
     counts = Counter()
     scales = (2, 3, 4, 8)
-    shapes = {(64 // scale, 96 // scale): scale for scale in scales}
+    original = pipeline._resize_scale
 
-    def capture(image, settings, rng, severity):
-        counts[shapes[image.shape[:2]]] += 1
-        assert 0 <= severity <= 0.5
-        return image
+    def capture(stage, rng, scale):
+        if stage is settings.first:
+            counts[scale] += 1
+        return original(stage, rng, scale)
 
-    monkeypatch.setattr(pipeline, "_compress", capture)
+    monkeypatch.setattr(pipeline, "_resize_scale", capture)
     settings = DegradationConfig(
         scales=scales,
         scenario_probabilities=(1.0, 0.0, 0.0),
@@ -308,7 +313,7 @@ def test_phone_processing_retains_grain_or_suppresses_texture_without_flattening
 
 
 @pytest.mark.parametrize("grainy", [False, True])
-def test_phone_processing_is_encoded_on_delivery_grid(monkeypatch, grainy):
+def test_phone_processing_supports_delivery_and_output_grid_encoding(monkeypatch, grainy):
     from unitunner.data.degradation import pipeline
 
     encoded = []
@@ -325,9 +330,11 @@ def test_phone_processing_is_encoded_on_delivery_grid(monkeypatch, grainy):
         processing_probabilities=(0.0, float(grainy), float(not grainy)),
         second=SecondStageConfig(compression_probability=1.0),
     )
-    low = degrade_image(torch.full((3, 128, 192), 0.4), cfg, 23)
-    assert encoded[-1].shape[:2] == ((64, 96) if grainy else (32, 48))
-    assert low.shape == (3, 128, 192)
+    for seed in range(32):
+        low = degrade_image(torch.full((3, 128, 192), 0.4), cfg, seed)
+        assert low.shape == (3, 128, 192)
+    expected = {(64, 96), (128, 192)} if grainy else {(32, 48), (128, 192)}
+    assert {image.shape[:2] for image in encoded} == expected
 
 
 @pytest.mark.parametrize("shape", [(45, 70), (9, 13)])
@@ -362,3 +369,108 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
         expected_low = degrade_image(expected, settings, 19 + index * 1_000_003) if settings else expected
         torch.testing.assert_close(low, expected_low * 2 - 1, atol=0, rtol=0)
     assert torch.equal(before, torch.get_rng_state())
+
+
+@pytest.mark.parametrize("scale", [4, 8])
+def test_output_grid_noise_retains_fine_grain_after_sr_resize(monkeypatch, scale):
+    from unitunner.data.degradation import pipeline
+
+    shapes = []
+    original = pipeline.add_noise
+
+    def capture(image, settings, rng, **kwargs):
+        shapes.append(image.shape[:2])
+        return original(image, settings, rng, **kwargs)
+
+    monkeypatch.setattr(pipeline, "add_noise", capture)
+    cfg = DegradationConfig(
+        scales=(scale,),
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        processing_probabilities=(1.0, 0.0, 0.0),
+        resize_modes=("bilinear",),
+        final_sinc_probability=0.0,
+        first=StageConfig(blur_probability=0.0, noise_probability=0.0),
+        second=SecondStageConfig(
+            blur_probability=0.0,
+            noise_probability=1.0,
+            compression_probability=0.0,
+            noise={"probabilities": (1.0, 0.0, 0.0), "gaussian_sigma": (8.0, 8.0)},
+        ),
+    )
+    fine, coarse = [], []
+    for seed in range(32):
+        shapes.clear()
+        low = degrade_image(torch.full((3, 128, 192), 0.5), cfg, seed)
+        assert len(shapes) == 1  # Deferring noise must not add it twice.
+        difference = (low[:, :, 1:] - low[:, :, :-1]).std().item()
+        (fine if shapes[0] == (128, 192) else coarse).append(difference)
+    assert len(fine) >= 8 and len(coarse) >= 8
+    assert np.mean(fine) > np.mean(coarse) * 2
+
+
+def test_disabling_noise_and_extra_processing_does_not_inject_noise(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Disabled noise must not run on either grid")
+
+    monkeypatch.setattr(pipeline, "add_noise", forbidden)
+    cfg = DegradationConfig(
+        scales=(4, 8),
+        processing_probabilities=(1.0, 0.0, 0.0),
+        first=StageConfig(noise_probability=0.0),
+        second=SecondStageConfig(noise_probability=0.0),
+    )
+    for seed in range(16):
+        low = degrade_image(torch.full((3, 128, 192), 0.5), cfg, seed)
+        assert low.std().item() < 1 / 255
+
+
+def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
+    from itertools import permutations
+
+    from unitunner.data.degradation import pipeline
+
+    cfg = DegradationConfig(
+        scales=(4,),
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        processing_probabilities=(1.0, 0.0, 0.0),
+        final_sinc_probability=0.0,
+        first=StageConfig(blur_probability=1.0, noise_probability=1.0),
+        second=SecondStageConfig(blur_probability=1.0, noise_probability=1.0, compression_probability=0.0),
+    )
+    active = 0
+    traces = [[], []]
+    original_scale, original_resize = pipeline._resize_scale, pipeline._resize
+    original_filter, original_noise = pipeline._filter, pipeline.add_noise
+
+    def scale(stage, rng, factor):
+        nonlocal active
+        active = 0 if stage is cfg.first else 1
+        return original_scale(stage, rng, factor)
+
+    def resize(*args, **kwargs):
+        if "resize" not in traces[active]:
+            traces[active].append("resize")
+        return original_resize(*args, **kwargs)
+
+    def blur(*args, **kwargs):
+        traces[active].append("blur")
+        return original_filter(*args, **kwargs)
+
+    def noise(*args, **kwargs):
+        traces[active].append("noise")
+        return original_noise(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_resize_scale", scale)
+    monkeypatch.setattr(pipeline, "_resize", resize)
+    monkeypatch.setattr(pipeline, "_filter", blur)
+    monkeypatch.setattr(pipeline, "add_noise", noise)
+    observed = [set(), set()]
+    for seed in range(128):
+        traces = [[], []]
+        degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
+        for index in range(2):
+            observed[index].add(tuple(traces[index]))
+    assert observed[0] == {("blur", "noise", "resize"), ("blur", "resize", "noise")}
+    assert observed[1] == set(permutations(("blur", "resize", "noise")))

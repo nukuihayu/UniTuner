@@ -236,3 +236,23 @@ def test_preview_configuration_requires_matching_inputs():
             load_training_config(EXAMPLES / "flow.toml", overrides={"preview": preview})
     with pytest.raises(ConfigError):
         load_training_config(EXAMPLES / "restoration.toml", overrides={"preview": valid})
+
+
+def test_restoration_wavelet_objective_needs_no_feature_models():
+    losses = dict.fromkeys(("lrr", "l1", "dv3d", "gan", "fdl", "histogram", "phase"), 0.0)
+    method = {"restoration": {"dino_weights": None, "vgg_weights": None}, "wavelet": {"wavelet": "haar"}}
+    config = load_training_config(EXAMPLES / "restoration.toml", overrides={"losses": losses, "method": method})
+    assert config.method.wavelet is not None and config.method.wavelet.wavelet == "haar"
+
+
+@pytest.mark.parametrize("bands", [{"ll": 0.0}, {"ll": 1.0, "ll_level_threshold": 3}])
+def test_restoration_rejects_ineffective_wavelet_only_objective(bands):
+    losses = dict.fromkeys(("lrr", "l1", "dv3d", "gan", "fdl", "histogram", "phase"), 0.0)
+    with pytest.raises(ConfigError, match="At least one image objective"):
+        load_training_config(
+            EXAMPLES / "restoration.toml",
+            overrides={
+                "losses": losses,
+                "method": {"wavelet": {"levels": 3, "lh": 0.0, "hl": 0.0, "hh": 0.0, **bands}},
+            },
+        )

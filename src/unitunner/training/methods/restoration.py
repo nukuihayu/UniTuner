@@ -371,7 +371,7 @@ class RestorationMethod:
             )
             total = loss.total
             if self.wavelet is not None:
-                wavelet = self.wavelet(generated, high)
+                wavelet = self.wavelet(generated, high.detach())
                 total = total + wavelet
                 loss.metrics["wavelet"] = wavelet.detach()
             self._trace("generator loss ready; backward next", low.device)

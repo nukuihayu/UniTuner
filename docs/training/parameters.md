@@ -324,6 +324,8 @@ batch_size = 16
 
 ## `method.wavelet`
 
+加权 DWT 频带 MSE。图像恢复时比较解码 RGB 输出与 detach 的 HQ，不应用时间步衰减；见[图像恢复](restoration.md)。
+
 | 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
 | --- | --- | --- | --- |
 | `weight` | number；> 0 | `1.0` | 该辅助目标在总目标中的权重；0 禁用其贡献。 |
@@ -434,7 +436,7 @@ batch_size = 16
 
 ## `SecondStageConfig`
 
-交付阶段：缩放 → 可选局部模糊/噪声 → 最终缩放/sinc/锐化 → 可选最终编码。
+交付阶段随机排列缩放、局部模糊与噪声，再执行目标 LQ 缩放及可选 sinc/锐化。噪声可推迟至放大回 HQ 后，最终编码可位于放大前或后。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
@@ -444,8 +446,8 @@ batch_size = 16
 | `resize_range` | [number, number] | `[0.9, 1.1]` | 缩放倍率范围，需为正且覆盖 1。 |
 | `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
 | `compression` | object | `子表` | JPEG/WebP/JPEG2000 压缩分布子表。 |
-| `noise_probability` | number | `0.1` | 额外添加微弱 LQ 残差噪声的概率。 |
-| `compression_probability` | number | `0.9` | 所有场景最终 LQ 滤波、锐化后的编码概率。 |
+| `noise_probability` | number | `0.1` | 额外残差噪声概率；触发后等概率在交付阶段或放大回 HQ 后添加一次。 |
+| `compression_probability` | number | `0.9` | 所有场景最终编码概率；仍需放大时等概率位于放大前或后，已到 HQ 网格时在该网格编码。 |
 
 ## `BlurConfig`
 
@@ -491,7 +493,7 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 
 ## `SecondNoiseConfig`
 
-LQ 网格上的微弱残差噪声，沿用采集阶段的场景强度倍率。
+交付网格或最终 HQ 尺寸上的微弱残差噪声，沿用采集阶段的场景强度倍率。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |

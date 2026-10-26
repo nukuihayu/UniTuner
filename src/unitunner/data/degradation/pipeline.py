@@ -133,6 +133,7 @@ def _resize(
             # down, rather than accumulating a position-dependent grid offset.
             recompute_scale_factor=True if factor is not None else None,
             mode=mode,
+            align_corners=False if mode in ("bilinear", "bicubic") else None,
             antialias=shrinking and mode in ("bilinear", "bicubic"),
         )[0]
         .permute(1, 2, 0)
@@ -309,10 +310,15 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     noise_strength = {"photo": 0.35, "web": 0.5, "low-light": 1.0}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
     scale = int(rng.choice(settings.scales))
+    late_noise = False
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
-        # Acquisition blur precedes resampling. Delivery blur acts on the LQ grid.
-        operations = ("blur", "resize", "noise") if index == 0 else ("resize", "blur", "noise")
+        # Optical blur stays first; sensor/processed noise can precede or follow
+        # acquisition resizing. Delivery operators can occur in any order.
+        if index == 0:
+            operations = ("blur", "noise", "resize") if rng.random() < 0.5 else ("blur", "resize", "noise")
+        else:
+            operations = rng.permutation(("resize", "blur", "noise"))
         for operation in operations:
             match operation:
                 case "blur":
@@ -327,6 +333,9 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                     ).clip(0, 1)
                 case "noise":
                     if rng.random() < stage.noise_probability:
+                        if index == 1 and rng.random() < 0.5:
+                            late_noise = True
+                            continue
                         image = add_noise(
                             image,
                             stage.noise,
@@ -345,18 +354,27 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
         image = _filter(image, sinc_kernel(size, float(rng.uniform(math.pi / 2, math.pi)))).clip(0, 1)
     processing = str(rng.choice(("standard", "grainy", "smoothed"), p=settings.processing_probabilities))
     if processing == "grainy":
-        # Previously enlarged phone photos retain finer grain than noise added
-        # before the SR downsample. Encode this delivery-size grain as well.
-        image = _resize(image, max(image.shape[0], height // 2), max(image.shape[1], width // 2), rng, settings).clip(
-            0, 1
-        )
+        # Grain may originate in an enlarged copy or on the final output grid.
+        # Full-size grain is not subsequently smoothed by SR resizing.
+        divisor = 1 if rng.random() < 0.5 else 2
+        h, w = max(image.shape[0], height // divisor), max(image.shape[1], width // divisor)
+        if image.shape[:2] != (h, w):
+            image = _resize(image, h, w, rng, settings).clip(0, 1)
     if processing != "standard":
         image = _processed_photo(image, settings.first.noise, rng, severity, grainy=processing == "grainy")
     if processing == "smoothed":
         image = _sharpen(image, float(rng.uniform(0.4, 0.8)))
     elif rng.random() < (0.6 if scene == "web" else 0.3):
         image = _sharpen(image, float(rng.uniform(0.1, 0.4)))
-    if rng.random() < settings.second.compression_probability:
+    encode = rng.random() < settings.second.compression_probability
+    encode_before_resize = rng.random() < 0.5
+    if encode and encode_before_resize:
+        image = _compress(image, settings.second.compression, rng, codec_severity)
+    if image.shape[:2] != (height, width):
+        image = _resize(image, height, width, rng, settings).clip(0, 1)
+    if late_noise:
+        image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
+    if encode and not encode_before_resize:
         image = _compress(image, settings.second.compression, rng, codec_severity)
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     if rng.random() < settings.gray_probability:
@@ -372,5 +390,5 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                     value = image_ops.adjust_saturation(value, float(rng.uniform(*settings.saturation)))
                 case 3:
                     value = image_ops.adjust_hue(value, float(rng.uniform(*settings.hue)))
-    image = _resize(value.permute(1, 2, 0).numpy(), height, width, rng, settings)
+    image = value.permute(1, 2, 0).numpy()
     return torch.from_numpy((image * 255).round().clip(0, 255).copy()).permute(2, 0, 1) / 255
