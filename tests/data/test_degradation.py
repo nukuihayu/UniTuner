@@ -82,12 +82,34 @@ def test_real_codecs_preserve_rgb_order_and_small_image_geometry(codec, quality)
     np.testing.assert_allclose(decoded.mean((0, 1)), image.mean((0, 1)), atol=0.025)
 
 
-def test_fractional_resize_uses_scale_coordinates_and_hue_matches_scalar_colorsys():
+def test_fractional_resize_uses_integer_grid_coordinates():
     ramp = np.broadcast_to(np.arange(7, dtype=np.float32)[None, :, None], (5, 7, 3)).copy()
     actual = _resize(ramp, 3, 4, np.random.default_rng(0), DegradationConfig(resize_modes=("bilinear",)), factor=0.6)
-    # Integrated triangle weights at fractional source coordinates, including boundaries.
-    expected = np.array([3 / 7, 2, 3.75, 5.25], dtype=np.float32)
+    # Triangle weights use the actual 7->4 grid rather than the requested 0.6.
+    expected = np.array([11 / 21, 52 / 25, 98 / 25, 115 / 21], dtype=np.float32)
+    assert actual.shape == (3, 4, 3)
     np.testing.assert_allclose(actual[1, :, 0], expected, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("vertical", [False, True])
+def test_fractional_resize_roundtrip_preserves_interior_coordinates(vertical):
+    # A coordinate ramp detects geometric drift independently of texture blur.
+    ramp = np.broadcast_to(np.arange(1536, dtype=np.float32)[None, :, None], (32, 1536, 3)).copy()
+    if vertical:
+        ramp = ramp.transpose(1, 0, 2).copy()
+    settings = DegradationConfig(resize_modes=("bilinear",))
+    rng = np.random.default_rng(0)
+    height, width = ramp.shape[:2]
+    first = _resize(ramp, int(height * 0.83), int(width * 0.83), rng, settings, factor=0.83)
+    low = _resize(first, height // 4, width // 4, rng, settings)
+    restored = _resize(low, height, width, rng, settings)
+    interior = (slice(8, -8), slice(64, -64))
+    if vertical:
+        interior = interior[::-1]
+    np.testing.assert_allclose(restored[interior], ramp[interior], rtol=0, atol=0.05)
+
+
+def test_hue_matches_scalar_colorsys():
     colors = [(0, 0, 0), (0.5, 0.5, 0.5), (1, 0, 0), (0, 1, 0), (0.2, 0.7, 0.4), (0.9, 0.2, 0.8)]
     image = torch.tensor(colors).T[:, None, :]
     for shift in (-0.5, -0.1, 0, 0.5):

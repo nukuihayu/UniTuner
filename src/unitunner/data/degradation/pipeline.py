@@ -117,7 +117,7 @@ def _resize(
     *,
     factor: float | None = None,
 ) -> Pixels:
-    """Antialias continuous downsampling; avoid area-based nearest-like enlargement."""
+    """Resize on the actual integer grid, antialiasing continuous downsampling."""
     shrinking = factor < 1 if factor is not None else height < image.shape[0] or width < image.shape[1]
     modes = settings.resize_modes
     if not shrinking:
@@ -129,6 +129,9 @@ def _resize(
             value,
             size=(max(1, height), max(1, width)) if factor is None else None,
             scale_factor=factor,
+            # Match later size-based resizes after fractional dimensions round
+            # down, rather than accumulating a position-dependent grid offset.
+            recompute_scale_factor=True if factor is not None else None,
             mode=mode,
             antialias=shrinking and mode in ("bilinear", "bicubic"),
         )[0]
