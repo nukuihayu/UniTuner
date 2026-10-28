@@ -225,6 +225,7 @@ Alternatively pass `--cache.batch-size 16` to the cache command. Shared training
 | `compile` | boolean / "auto" | `false` | false uses eager execution; true compiles on CUDA, auto selects by device; compilation adds startup cost. |
 | `recompute` | "none", "block" | `"none"` | none retains activations; block recomputes blocks to reduce activation memory at extra compute cost. |
 | `recompute_interval` | integer；> 0 | `1` | Block recomputation interval; keep 1 when the offload policy requires every block to be recomputed. |
+| `restoration_recompute` | "inherit", "none", "block" | `"inherit"` | Restoration VAE and DINO recomputation. inherit follows recompute; block keeps auxiliary networks checkpointed independently of recompute_interval while reducing DiT recomputation. |
 | `attention_activation_offload` | boolean | `false` | Offload saved attention activations to host memory at extra transfer and RAM cost. |
 | `residency` | "resident", "frozen-blocks", "vbar", "trainable-blocks" | `"resident"` | resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported. |
 | `use_pinned_memory_for_block_swap` | boolean / null | `null` | Pinned host memory for block swapping; omitted selects the policy default and can increase host RAM use. |

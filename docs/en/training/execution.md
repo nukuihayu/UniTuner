@@ -55,6 +55,8 @@ quantization = "none"
 
 The default uses eager execution without compilation startup cost. Use `compile` to compare compiled training. Explicit true enables CUDA Inductor; `"auto"` selects Inductor on CUDA and eager on CPU. Compilation covers training computations. Previews and standalone inference use native evaluation paths. Enable compilation after comparing steady-state throughput; compilation can change floating-point rounding and update trajectories.
 
+On CUDA, restoration training with both `compile` and block recomputation for the restoration networks also compiles supported stateless convolutional residual and upsampling blocks in the VAE decoder, fusing pointwise operations during forward and checkpoint replay to reduce intermediate activations. The decoder remains frozen and in eval mode while gradients flow to its latent input; encoder LoRA training continues normally. With `encoder_rank = 0` (and `losses.lrr = 0`), encoder checkpointing is omitted while decoder optimization remains active and pixel-loss gradients still flow through the frozen decoder to the DiT. Initial training and some size changes can trigger compilation. No-grad previews and calibration bypass this compiled path. Attention retains native execution, and stateful Qwen temporal blocks are excluded.
+
 The following blocks are **edits** to existing sections. Merge them into your `[execution]` section rather than appending duplicate headers.
 
 ## Weight quantization before training
@@ -84,7 +86,20 @@ recompute = "block"
 recompute_interval = 1
 ```
 
-Resident mode can increase `recompute_interval` to recompute selected blocks; frozen-weight offload requires interval 1.
+Resident mode can increase `recompute_interval` to checkpoint fewer DiT blocks: 1 selects every block, 2 roughly half, and 4 roughly a quarter. This interval does not affect VAE or DINO recomputation. Frozen-weight offload requires interval 1.
+
+For restoration, keep VAE and DINO checkpointed while using spare memory to reduce DiT replay. Start by comparing complete-update time and peak memory with:
+
+```toml
+[execution]
+residency = "resident"
+compile = true
+recompute = "block"
+recompute_interval = 2
+restoration_recompute = "block"
+```
+
+Try interval 4 if memory permits. Setting `recompute = "none"` then disables only DiT recomputation while explicit `restoration_recompute = "block"` keeps VAE and DINO checkpointed. The default, `restoration_recompute = "inherit"`, preserves the unified policy. This field applies only to restoration and does not affect flow-matching training. Keep your attention activation offload setting while comparing recomputation policies. Check headroom after a full backward and optimizer update at the largest bucket. This policy does not automatically adjust intervals based on free memory or retry after OOM.
 
 ## Attention activation offload
 

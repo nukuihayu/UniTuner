@@ -2,6 +2,8 @@
 
 from torch import nn
 
+from unitunner.artifacts.formats.precision import FloatingPrecision
+from unitunner.execution.compiler import CompilerInstallation
 from unitunner.execution.recompute import RecomputeInstallation
 from unitunner.execution.regions import ModelRegion
 from unitunner.models.components.autoencoder import Downsample2d, ResidualConvBlock, Upsample2d
@@ -12,13 +14,22 @@ from unitunner.models.z_image.vae import Downsample, ResidualBlock, SpatialAtten
 from unitunner.training.session import TrainingSession
 
 
-def checkpoint_vae_blocks(vae: nn.Module, session: TrainingSession) -> None:
+def checkpoint_vae_blocks(
+    vae: nn.Module,
+    session: TrainingSession,
+    *,
+    checkpoint_encoder: bool = True,
+    compile_decoder: bool = False,
+    precision: FloatingPrecision = "fp32",
+) -> None:
     """Preserve eval mode and parameter keys while replaying differentiable blocks.
 
     Qwen's temporal residual/resampling blocks mutate history cursors and must
     not be replayed here. Its spatial attention is stateless and safe. The image
     Qwen 2.1 residuals, Z-Image and FLUX-family blocks have no temporal history.
     No-grad HQ encoding, calibration and previews bypass recomputation.
+    Optional decoder compilation includes checkpoint replay and preserves eval
+    mode; no-grad inference still uses the native callable.
     """
     block_types = (
         ResidualBlock,
@@ -32,6 +43,13 @@ def checkpoint_vae_blocks(vae: nn.Module, session: TrainingSession) -> None:
         ImageResidual,
         VAEAttention,
     )
-    for index, module in enumerate(vae.modules()):
+    modules = vae.modules() if checkpoint_encoder else vae.get_submodule("decoder").modules()
+    for index, module in enumerate(modules):
         if isinstance(module, block_types):
             session.own(RecomputeInstallation(ModelRegion(module, index, "visual"), require_training=False))
+    if compile_decoder:
+        for module in vae.get_submodule("decoder").modules():
+            # Keep SDPA native: Inductor layout propagation can violate Flash
+            # Attention's contiguous head-dimension contract during replay.
+            if isinstance(module, (ResidualBlock, Upsample, ResidualConvBlock, Upsample2d, ImageResidual)):
+                session.own(CompilerInstallation(module, precision=precision, require_training=False))

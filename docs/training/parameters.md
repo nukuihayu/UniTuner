@@ -225,6 +225,7 @@ batch_size = 16
 | `compile` | boolean / "auto" | `false` | false 直接执行；true 使用 CUDA 编译，auto 按设备选择；首次编译额外耗时。 |
 | `recompute` | "none", "block" | `"none"` | none 保存激活；block 按块重算以降低激活显存，增加计算量。 |
 | `recompute_interval` | integer；> 0 | `1` | 块重算间隔；冻结块卸载策略要求逐块重算时保持 1。 |
+| `restoration_recompute` | "inherit", "none", "block" | `"inherit"` | 图像恢复的 VAE 与 DINO 重算；inherit 跟随 recompute。block 保留辅助网络重算，不受 recompute_interval 影响，可单独减少 DiT 重算。 |
 | `attention_activation_offload` | boolean | `false` | 将保存的注意力激活卸载到主机，节省显存但增加传输和内存需求。 |
 | `residency` | "resident", "frozen-blocks", "vbar", "trainable-blocks" | `"resident"` | resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。 |
 | `use_pinned_memory_for_block_swap` | boolean / null | `null` | 块交换是否用锁页主机内存；省略由策略决定，注意主机 RAM 占用。 |

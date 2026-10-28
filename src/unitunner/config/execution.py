@@ -30,6 +30,9 @@ class ExecutionConfig(BaseModel):
     )
     recompute: Literal["none", "block"] = "none"
     recompute_interval: int = Field(default=1, gt=0)
+    restoration_recompute: Literal["inherit", "none", "block"] = Field(
+        default="inherit", description="VAE and DINO recomputation; inherit follows the main model policy"
+    )
     attention_activation_offload: bool = False
     residency: Literal["resident", "frozen-blocks", "vbar", "trainable-blocks"] = "resident"
     use_pinned_memory_for_block_swap: bool | None = None

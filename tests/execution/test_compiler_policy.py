@@ -10,6 +10,40 @@ from torch._inductor import config as inductor_config
 from unitunner.execution import compiler
 
 
+@pytest.mark.parametrize("require_training", [True, False])
+def test_eval_compilation_policy_preserves_native_no_grad_calls(monkeypatch, require_training):
+    compiled_calls = []
+
+    def capture_compile(fn, **kwargs):
+        def compiled(*args, **kw):
+            compiled_calls.append(True)
+            return fn(*args, **kw)
+
+        return compiled
+
+    monkeypatch.setattr(torch, "compile", capture_compile)
+    monkeypatch.setattr(torch, "__version__", "2.13.0")
+    model = nn.Linear(4, 4).eval().requires_grad_(False)
+    original = model.forward
+    source = torch.randn(2, 4, requires_grad=True)
+    expected = model(source)
+    owner = compiler.CompilerInstallation(model, require_training=require_training)
+    try:
+        actual = model(source)
+        torch.testing.assert_close(actual, expected)
+        torch.testing.assert_close(
+            torch.autograd.grad(actual.sum(), source)[0], torch.autograd.grad(expected.sum(), source)[0]
+        )
+        assert len(compiled_calls) == int(not require_training)
+        with torch.no_grad():
+            torch.testing.assert_close(model(source), expected)
+        assert len(compiled_calls) == int(not require_training)
+        assert not model.training
+    finally:
+        owner.close()
+    assert model.forward == original
+
+
 @pytest.mark.parametrize("precision", ["fp32", "bf16", "fp16"])
 def test_compile_policy_is_per_graph_and_covers_all_precisions(monkeypatch, precision):
     providers = []

@@ -52,6 +52,8 @@ class CompilerInstallation[R: Tensor | tuple[Tensor, ...], **P]:
     requested from the first training call. Evaluation uses the native callable
     so previews match standalone generation and cannot generalize the training
     graph. Compiler settings are scoped to the training call and restored on exit.
+    Frozen differentiable modules can set require_training=False to compile in
+    eval mode; no-grad calls still bypass compilation.
     fullgraph=True rejects graph breaks instead of falling back. Compiled graphs
     use native buffer donation: one backward per graph, without retain_graph.
     """
@@ -63,6 +65,7 @@ class CompilerInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         backend: Literal["eager", "inductor"] = "inductor",
         fullgraph: bool = False,
         precision: FloatingPrecision = "fp32",
+        require_training: bool = True,
     ) -> None:
         if not torch.__version__.startswith("2.13."):
             raise RuntimeError("Training compilation requires the qualified Torch2.13 provider")
@@ -85,7 +88,7 @@ class CompilerInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         training = torch.compile(training_boundary, backend=provider, fullgraph=fullgraph, dynamic=True)
 
         def installed(*args: P.args, **kwargs: P.kwargs) -> R:
-            if module.training and torch.is_grad_enabled():
+            if (module.training or not require_training) and torch.is_grad_enabled():
                 with compiled_attention(fullgraph=fullgraph):
                     return compiled_training(*args, **kwargs)
             return original(*args, **kwargs)

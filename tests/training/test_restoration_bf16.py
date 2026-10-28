@@ -82,11 +82,16 @@ def _vae(family):
 
 
 @pytest.mark.parametrize("family", FAMILIES)
-@pytest.mark.parametrize("mode", ["full", "lora"])
+@pytest.mark.parametrize(("mode", "encoder_rank"), [("full", 1), ("lora", 1), ("lora", 0)])
 @pytest.mark.parametrize("device_name", ["cpu", "cuda"])
 @pytest.mark.parametrize("precision", ["bf16", "fp16"])
-@pytest.mark.parametrize("recompute", ["none", "block"])
-def test_all_image_restoration_bf16_updates(tmp_path, family, mode, device_name, precision, recompute):
+@pytest.mark.parametrize(
+    ("recompute", "restoration_recompute"),
+    [("none", "inherit"), ("block", "inherit"), ("none", "block"), ("block", "none")],
+)
+def test_all_image_restoration_bf16_updates(
+    tmp_path, family, mode, encoder_rank, device_name, precision, recompute, restoration_recompute
+):
     if device_name == "cuda" and (not torch.cuda.is_available() or not torch.cuda.is_bf16_supported()):
         pytest.skip("BF16-capable CUDA unavailable")
     device = torch.device(device_name)
@@ -114,9 +119,9 @@ resolution = [16,16]
 kind = "restoration"
 [method.restoration]
 sigma = 0.37
-encoder_rank = 1
+encoder_rank = {encoder_rank}
 [losses]
-lrr = 1.0
+lrr = {1.0 if encoder_rank else 0.0}
 l1 = 0.5
 dv3d = 0.0
 gan = 0.0
@@ -127,7 +132,9 @@ weight = 0.5
 levels = 2
 [execution]
 precision = "{precision}"
+compile = {str(device_name == "cuda" and encoder_rank == 0 and family == "z-image").lower()}
 recompute = "{recompute}"
+restoration_recompute = "{restoration_recompute}"
 [train]
 parameter_mode = "full"
 ''')
@@ -158,11 +165,14 @@ parameter_mode = "full"
         for component in (method.vae, binding.model):
             layer = next(m for m in component.modules() if isinstance(m, (nn.Linear, nn.Conv2d, nn.Conv3d)))
             handles.append(layer.register_forward_hook(record))
-        low = torch.randn(1, 3, 16, 16, device=device).requires_grad_()
+        low = torch.randn(1, 3, 16, 16, device=device).requires_grad_(encoder_rank > 0)
         high = torch.randn_like(low).requires_grad_()
-        parameters = [p for p in binding.model.parameters() if p.requires_grad]
-        assert method.encoder is not None
-        parameters += list(method.encoder.parameters())
+        parameters = list(
+            {id(p): p for module in modules.values() for p in module.parameters() if p.requires_grad}.values()
+        )
+        assert (method.encoder is not None) == (encoder_rank > 0)
+        if method.encoder is not None:
+            parameters += list(method.encoder.parameters())
         before = [p.detach().clone() for p in parameters]
         state = RunState()
         result = update_phase(
@@ -177,7 +187,11 @@ parameter_mode = "full"
         assert high.grad is None
         assert state.updates == 1 and torch.isfinite(result.mean_loss)
         assert (torch.bfloat16 if precision == "bf16" else torch.float16) in observed
-        assert low.grad is not None and torch.isfinite(low.grad).all() and low.grad.abs().sum() > 0
+        if encoder_rank:
+            assert low.grad is not None and torch.isfinite(low.grad).all() and low.grad.abs().sum() > 0
+        else:
+            assert low.grad is None
+            assert all(parameter.grad is None for parameter in method.vae.parameters())
         assert any(not torch.equal(old, p) for old, p in zip(before, parameters, strict=True))
 
 

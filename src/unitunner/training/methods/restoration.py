@@ -127,8 +127,20 @@ class RestorationMethod:
         self.encoder = (
             session.own(EncoderAdapters(self.vae.encoder, rank=options.encoder_rank)) if options.encoder_rank else None
         )
-        if config.execution.recompute == "block":
-            checkpoint_vae_blocks(self.vae, session)
+        restoration_recompute = (
+            config.execution.recompute
+            if config.execution.restoration_recompute == "inherit"
+            else config.execution.restoration_recompute
+        )
+        status(f"[train] Restoration VAE/DINO recompute={restoration_recompute}")
+        if restoration_recompute == "block":
+            checkpoint_vae_blocks(
+                self.vae,
+                session,
+                checkpoint_encoder=self.encoder is not None,
+                compile_decoder=device.type == "cuda" and config.execution.compile in (True, "auto"),
+                precision=self.compute_precision,
+            )
         self.modules: dict[str, nn.Module] = {"restoration": self.state}
         if self.encoder is not None:
             self.modules["encoder"] = self.encoder
@@ -147,7 +159,7 @@ class RestorationMethod:
                 dtype=feature_dtype,
             )
             self.modules["dino"] = backbone
-            backbone.recompute = config.execution.recompute == "block"
+            backbone.recompute = restoration_recompute == "block"
             status(f"[train] DINO loaded ({options.feature_precision.upper()} storage and compute)")
             if weights.dv3d:
                 self.perceptual = DinoPerceptualLoss(backbone, bf16_compute=feature_bf16)

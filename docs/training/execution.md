@@ -55,6 +55,8 @@ quantization = "none"
 
 默认使用 eager 直接执行，没有首次编译耗时。通过 `compile` 比较编译训练性能。显式 `true` 使用 CUDA Inductor；`"auto"` 在 CUDA 使用 Inductor，在 CPU 使用 eager。编译作用于训练计算，预览和独立推理使用原生评估路径。比较稳定吞吐后再启用编译；编译可能改变浮点舍入和更新轨迹。
 
+图像恢复训练在 CUDA 同时启用 `compile` 和恢复网络 block 重算时，还会编译 VAE 解码器中支持重算的无状态卷积残差块和上采样块，将前向与重算中的逐元素运算融合，减少中间激活。解码器保持冻结和 eval 模式，梯度仍可回传到 latent；编码器 LoRA 正常训练。设置 `encoder_rank = 0`（同时设置 `losses.lrr = 0`）时不安装编码器重算，解码器优化仍生效，像素损失的梯度仍通过冻结解码器回传到 DiT。首次训练和部分尺寸变化可能触发编译。无梯度预览、校准不走该编译路径；注意力保持原生执行，Qwen 时序状态块不参与此优化。
+
 以下代码块是**修改片段**，应合并到现有 `[execution]`，不要重复追加同名配置段。
 
 ## 训练前权重量化
@@ -84,7 +86,20 @@ recompute = "block"
 recompute_interval = 1
 ```
 
-Resident 可以增大 `recompute_interval`，只重算部分块；冻结权重卸载要求间隔为 1。
+Resident 可以增大 `recompute_interval`，只重算部分 DiT 块：1 为全部，2 约为一半，4 约为四分之一。该间隔不影响 VAE 和 DINO。冻结权重卸载要求间隔为 1。
+
+图像恢复可以独立保留 VAE 和 DINO 的重算，用剩余显存减少 DiT 重算。先从以下配置比较完整更新的耗时和峰值显存：
+
+```toml
+[execution]
+residency = "resident"
+compile = true
+recompute = "block"
+recompute_interval = 2
+restoration_recompute = "block"
+```
+
+显存仍有余量时可以尝试间隔 4；进一步设置 `recompute = "none"` 只关闭 DiT 重算，显式的 `restoration_recompute = "block"` 仍保护 VAE 和 DINO。默认 `restoration_recompute = "inherit"` 延续统一开关的行为。此字段仅用于图像恢复，不影响流匹配训练。保留现有注意力激活卸载设置，单独比较重算策略；用最大 bucket 跑完反向和优化器更新后确认余量。此设置不会自动根据空闲显存调整间隔或在 OOM 后重试。
 
 ## 注意力激活卸载
 
