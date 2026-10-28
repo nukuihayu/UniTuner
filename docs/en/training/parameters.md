@@ -472,10 +472,10 @@ Motion and defocus probabilities sum to at most 1. Remaining probability uses th
 | `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Isotropic/anisotropic Gaussian, generalized and plateau probabilities, nonnegative and summing to 1. |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
-| `motion_probability` | number | `0.20` | Centered handheld straight-exposure PSF probability. |
-| `defocus_probability` | number | `0.15` | Circular-aperture defocus probability. |
-| `motion_length` | [number, number] | `[0.0, 10.0]` | Straight exposure length; 1024-short-edge reference pixels, maximum 64. |
-| `defocus_radius` | [number, number] | `[0.5, 4.0]` | Circular aperture radius in reference pixels, maximum 16; motion also samples a continuous 0..1 focus multiplier. |
+| `motion_probability` | number | `0.08` | Centered handheld straight-exposure PSF probability. |
+| `defocus_probability` | number | `0.05` | Circular-aperture defocus probability. |
+| `motion_length` | [number, number] | `[0.0, 3.0]` | Straight exposure length at the 1024-short-edge reference; the default reaches at most 6 px at 4K. |
+| `defocus_radius` | [number, number] | `[0.15, 1.0]` | Circular aperture radius at the 1024-short-edge reference; the default reaches at most 2 px at 4K, while motion also samples a continuous 0..1 focus multiplier. |
 
 ## `SecondBlurConfig`
 

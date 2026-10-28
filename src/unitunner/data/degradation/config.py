@@ -51,10 +51,10 @@ class BlurConfig(DistributionConfig, frozen=True):
     )
     generalized_beta: Range = (0.5, 4.0)
     plateau_beta: Range = (1.0, 2.0)
-    motion_probability: Probability = 0.20
-    defocus_probability: Probability = 0.15
-    motion_length: Range = (0.0, 10.0)
-    defocus_radius: Range = (0.5, 4.0)
+    motion_probability: Probability = 0.08
+    defocus_probability: Probability = 0.05
+    motion_length: Range = (0.0, 3.0)
+    defocus_radius: Range = (0.15, 1.0)
 
     @model_validator(mode="after")
     def validate_positive(self) -> Self:

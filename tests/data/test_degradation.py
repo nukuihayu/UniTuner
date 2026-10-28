@@ -850,8 +850,10 @@ def test_defaults_merge_realesrgan_strength_with_unitunner_extensions():
     assert cfg.first_noise_variance_share == 0.7
     assert cfg.second_noise_chroma_scale == 0.35
     assert cfg.late_noise_probability == 0.25
-    assert cfg.first.blur.motion_probability == 0.2
-    assert cfg.first.blur.defocus_probability == 0.15
+    assert cfg.first.blur.motion_probability == 0.08
+    assert cfg.first.blur.defocus_probability == 0.05
+    assert cfg.first.blur.motion_length == (0.0, 3.0)
+    assert cfg.first.blur.defocus_radius == (0.15, 1.0)
     assert cfg.grain_strength == (0.0, 0.8)
     assert cfg.smear_strength == (0.0, 0.8)
     assert cfg.sharpen_strength == (0.0, 0.4)

@@ -472,10 +472,10 @@ batch_size = 16
 | `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Gaussian/generalized/plateau 的各向同性与各向异性概率，非负且总和为 1。 |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
-| `motion_probability` | number | `0.20` | 居中手机手持直线曝光核概率。 |
-| `defocus_probability` | number | `0.15` | 圆形孔径失焦核概率。 |
-| `motion_length` | [number, number] | `[0.0, 10.0]` | 直线曝光长度，1024 短边基准像素，上限 64。 |
-| `defocus_radius` | [number, number] | `[0.5, 4.0]` | 圆形失焦半径，基准像素，上限 16；运动分支另乘连续 0..1 失焦系数。 |
+| `motion_probability` | number | `0.08` | 居中手机手持直线曝光核概率。 |
+| `defocus_probability` | number | `0.05` | 圆形孔径失焦核概率。 |
+| `motion_length` | [number, number] | `[0.0, 3.0]` | 直线曝光长度，1024 短边基准像素；默认 4K 上限为 6 px。 |
+| `defocus_radius` | [number, number] | `[0.15, 1.0]` | 圆形失焦半径，1024 短边基准像素；默认 4K 上限为 2 px，运动分支另乘连续 0..1 失焦系数。 |
 
 ## `SecondBlurConfig`
 
