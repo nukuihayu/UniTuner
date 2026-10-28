@@ -149,7 +149,9 @@ def test_spatial_blur_tracks_image_scale(resolution):
     kernel = mixed_blur_kernel(np.random.default_rng(23), gaussian, resolution)
     axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
     measured_sigma = np.sqrt((kernel * axis[None, :] ** 2).sum())
-    assert measured_sigma == pytest.approx(math.sqrt(resolution / 1024), rel=0.08)
+    ratio = resolution / 1024
+    expected = ratio ** (0.25 if ratio < 1 else 0.5)
+    assert measured_sigma == pytest.approx(expected, rel=0.08)
     assert kernel.shape[0] % 2 == 1
     assert kernel.sum() == pytest.approx(1, abs=1e-6)
 
@@ -197,6 +199,10 @@ def test_each_blur_layer_uses_its_actual_input_short_edge(monkeypatch):
 def test_resolution_scale_and_sinc_support_expand_through_4k():
     from unitunner.data.degradation.pipeline import _resolution_scale, _resolution_sinc_kernel
 
+    assert _resolution_scale(64) == pytest.approx(0.5)
+    assert _resolution_scale(256) == pytest.approx(math.sqrt(0.5))
+    assert _resolution_scale(512) == pytest.approx(0.5**0.25)
+    assert _resolution_scale(768) == pytest.approx(0.75**0.25)
     assert _resolution_scale(1024) == 1
     assert _resolution_scale(1280) == pytest.approx(math.sqrt(1.25))
     assert _resolution_scale(2048) == pytest.approx(math.sqrt(2))
@@ -419,7 +425,7 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
 
 
 @pytest.mark.parametrize("scale", [4, 8])
-def test_output_grid_noise_retains_fine_grain_after_sr_resize(monkeypatch, scale):
+def test_deferred_noise_stays_before_constrained_delivery_group(monkeypatch, scale):
     from unitunner.data.degradation import pipeline
 
     shapes = []
@@ -447,15 +453,11 @@ def test_output_grid_noise_retains_fine_grain_after_sr_resize(monkeypatch, scale
             noise=SecondNoiseConfig(probabilities=(1.0, 0.0, 0.0), gaussian_sigma=(8.0, 8.0)),
         ),
     )
-    fine, coarse = [], []
     for seed in range(32):
         shapes.clear()
         low = degrade_image(torch.full((3, 128, 192), 0.5), cfg, seed)
         assert len(shapes) == 1  # Deferring noise must not add it twice.
-        difference = (low[:, :, 1:] - low[:, :, :-1]).std().item()
-        (fine if shapes[0] == (128, 192) else coarse).append(difference)
-    assert len(fine) >= 8 and len(coarse) >= 8
-    assert np.mean(fine) > np.mean(coarse) * 2
+        assert (low[:, :, 1:] - low[:, :, :-1]).std().item() > 0
 
 
 def test_disabling_noise_and_extra_processing_does_not_inject_noise(monkeypatch):
@@ -688,7 +690,7 @@ def test_continuous_scale_and_processing_sampling_cover_intermediate_values():
 
 
 @pytest.mark.parametrize("scale", [1.0, 2.5, 4.0, 6.0, 8.0, 11.7, 16.0])
-def test_smear_layer_covers_both_sides_of_final_resize_and_preserves_hq(monkeypatch, scale):
+def test_smear_layer_stays_before_final_resize_and_preserves_hq(monkeypatch, scale):
     from unitunner.data.degradation import pipeline
 
     grids = []
@@ -726,7 +728,7 @@ def test_smear_layer_covers_both_sides_of_final_resize_and_preserves_hq(monkeypa
         observed.update(grids)
         assert low.shape == high.shape and low.dtype == torch.float32
         assert torch.isfinite(low).all() and 0 <= low.min() <= low.max() <= 1
-    expected = {(65, 97)} if scale == 1 else {(int(65 / scale), int(97 / scale)), (65, 97)}
+    expected = {(65, 97)} if scale == 1 else {(int(65 / scale), int(97 / scale))}
     assert observed == expected
     torch.testing.assert_close(high, before, atol=0, rtol=0)
 
@@ -762,6 +764,33 @@ def test_explicit_scale_candidates_override_continuous_range_and_roundtrip():
     assert {_sample_scale(restored, rng) for _ in range(100)} == {1.5, 2.75, 6.0}
 
 
+def test_defaults_merge_realesrgan_strength_with_unitunner_extensions():
+    cfg = DegradationConfig()
+    assert cfg.first.blur_probability == 1
+    assert cfg.first.blur.sigma == (0.2, 3.0)
+    assert cfg.first.resize_probabilities == (0.2, 0.7, 0.1)
+    assert cfg.first.resize_range == (0.15, 1.5)
+    assert cfg.first.noise_probability == 1
+    assert cfg.first.noise.probabilities == (0.5, 0.5, 0.0)
+    assert cfg.first.noise.gaussian_sigma == (1.0, 30.0)
+    assert cfg.first.noise.poisson_scale == (0.05, 3.0)
+    assert cfg.second.blur_probability == 0.8
+    assert cfg.second.blur.sigma == (0.2, 1.5)
+    assert cfg.second.resize_probabilities == (0.3, 0.4, 0.3)
+    assert cfg.second.resize_range == (0.3, 1.2)
+    assert cfg.second.noise_probability == 1
+    assert cfg.second.noise.probabilities == (0.5, 0.5, 0.0)
+    assert cfg.second.noise.gaussian_sigma == (1.0, 25.0)
+    assert cfg.second.noise.poisson_scale == (0.05, 2.5)
+    assert cfg.final_sinc_probability == 0.8
+    assert cfg.noise_strength == (1.0, 1.0)
+    assert cfg.first.blur.motion_probability == 0.2
+    assert cfg.first.blur.defocus_probability == 0.15
+    assert cfg.grain_strength == (0.0, 1.5)
+    assert cfg.smear_strength == (0.0, 0.8)
+    assert cfg.sharpen_strength == (0.0, 0.4)
+
+
 def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_positive_bounds():
     from unitunner.data.degradation.pipeline import _processing_gain, _sample_processing
 
@@ -771,18 +800,13 @@ def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_pos
     assert _processing_gain((0.0, 0.8), 1.0, 1.0) == 0
     rng = np.random.default_rng(20)
     draws = np.array([_sample_processing(DegradationConfig(), rng) for _ in range(10000)])
-    no_smooth, no_noise = draws[:, 0] == 0, draws[:, 4] == 0
+    no_smooth = draws[:, 0] == 0
     # Beta(1.5,2) CDF at the configured deadzone.
     threshold = DegradationConfig().processing_deadzone
     zero_mass = 2.5 * threshold**1.5 - 1.5 * threshold**2.5
     assert no_smooth.mean() == pytest.approx(zero_mass, abs=0.015)
-    assert no_noise.mean() == pytest.approx(zero_mass, abs=0.015)
-    assert (no_smooth & no_noise).mean() == pytest.approx(zero_mass**2, abs=0.01)
-    assert np.all(draws[no_noise, 1] == 0)
-    # Grain uses the shared zero-noise atom, but no second deadzone. This keeps
-    # coverage broad enough to survive coarse SR downsampling and smoothing.
-    no_grain = draws[:, 1] == 0
-    assert no_grain.mean() == pytest.approx(zero_mass, abs=0.015)
+    assert np.all(draws[:, 4] == 1)
+    assert np.all(draws[:, 1] > 0)
     assert np.median(draws[:, 1]) > 0.2
 
 
@@ -809,10 +833,67 @@ def test_default_second_stage_preserves_late_noise_coverage(monkeypatch):
     high = torch.full((3, 192, 192), 0.5)
     for seed in range(512):
         degrade_image(high, cfg, seed)
-    full_grid = sum(shape == (192, 192) for shape in grids)
-    low_grid = len(grids) - full_grid
-    assert 40 < full_grid < 90
-    assert 40 < low_grid < 90
+    assert len(grids) == 512
+    assert (32, 32) in grids
+    assert any(shape != (32, 32) for shape in grids)
+
+
+def test_final_resize_sinc_group_only_exchanges_with_compression(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    events = []
+    original_resize, original_filter = pipeline._resize, pipeline._filter
+
+    def resize(image, height, width, *args, **kwargs):
+        if image.shape[:2] != (height, width) and (height, width) == (64, 96):
+            events.append("resize")
+        return original_resize(image, height, width, *args, **kwargs)
+
+    def filter_image(image, kernel):
+        events.append("sinc")
+        return original_filter(image, kernel)
+
+    def compress(image, *args, **kwargs):
+        events.append("compression")
+        return image
+
+    def noise(image, *args, **kwargs):
+        events.append("noise")
+        return image
+
+    monkeypatch.setattr(pipeline, "_resize", resize)
+    monkeypatch.setattr(pipeline, "_filter", filter_image)
+    monkeypatch.setattr(pipeline, "_compress", compress)
+    monkeypatch.setattr(pipeline, "add_noise", noise)
+    cfg = DegradationConfig(
+        scales=(4.0,),
+        noise_strength=(1.0, 1.0),
+        grain_strength=(0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
+        final_sinc_probability=1.0,
+        first=StageConfig(
+            blur_probability=0.0,
+            resize_probabilities=(0.0, 0.0, 1.0),
+            noise_probability=1.0,
+            compression_probability=0.0,
+        ),
+        second=SecondStageConfig(
+            blur_probability=0.0,
+            resize_probabilities=(0.0, 0.0, 1.0),
+            noise_probability=0.0,
+            compression_probability=1.0,
+        ),
+    )
+    observed = set()
+    for seed in range(32):
+        events.clear()
+        degrade_image(torch.full((3, 64, 96), 0.5), cfg, seed)
+        observed.add(tuple(events))
+    assert observed == {
+        ("noise", "resize", "sinc", "compression"),
+        ("noise", "compression", "resize", "sinc"),
+    }
 
 
 def test_shared_zero_noise_gain_suppresses_every_noise_stage(monkeypatch):
@@ -851,7 +932,7 @@ def test_zero_smoothing_also_bypasses_camera_denoising(monkeypatch):
         assert torch.isfinite(out).all()
 
 
-def test_codec_positions_cover_denoising_and_resize_history_without_extra_encode(monkeypatch):
+def test_processing_precedes_constrained_codec_group_without_extra_encode(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     events = []
@@ -878,8 +959,7 @@ def test_codec_positions_cover_denoising_and_resize_history_without_extra_encode
         events.clear()
         degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
         observed.add(tuple(events))
-    assert any(events[0][0] == "encode" for events in observed)
-    assert any(events[0][0] == "smooth" for events in observed)
+    assert all(events[0][0] == "smooth" for events in observed)
     grids = {shape for events in observed for _, shape in events}
     assert (64, 96) in grids
     assert any(height < 20 and width < 30 for height, width in grids)

@@ -30,7 +30,9 @@ def _resolution_scale(resolution: int) -> float:
     """Scale spatial kernels from a 1024-pixel short-edge reference."""
     if resolution < 1:
         raise ValueError("Kernel resolution must be positive")
-    return float(np.clip(math.sqrt(resolution / 1024), 0.5, 2.0))
+    ratio = resolution / 1024
+    exponent = 0.25 if ratio < 1 else 0.5
+    return float(np.clip(ratio**exponent, 0.5, 2.0))
 
 
 def _scaled_odd_size(size: int, scale: float) -> int:
@@ -502,7 +504,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     scene = str(rng.choice(("photo", "web", "low-light"), p=settings.scenario_probabilities))
     # Moderate and strong samples coexist; the same draw links blur, noise and codec damage.
     severity = _sample_severity(rng)
-    noise_strength = {"photo": 0.50, "web": 0.70, "low-light": 1.15}[scene]
+    noise_strength = {"photo": 1.0, "web": 1.0, "low-light": 1.15}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
     scale = _sample_scale(settings, rng)
     smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng)
@@ -546,51 +548,66 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                     image = _compress(image, stage.compression, rng, codec_severity)
     sinc = rng.random() < settings.final_sinc_probability
     compression = rng.random() < settings.second.compression_probability
-    active = tuple(
+    processing = tuple(
         name
         for name, enabled in (
             ("smear", smear_strength > 0),
             ("sharpen", sharpening > 0),
             ("noise", late_noise or grain_strength > 0),
-            ("compression", compression),
-            ("sinc", sinc),
-            ("resize", True),
         )
         if enabled
     )
-    orders = _layer_orders(active)
-    for layer in orders[int(rng.integers(len(orders)))]:
+    orders = _layer_orders(processing) if processing else ((),)
+    order = orders[int(rng.integers(len(orders)))]
+
+    def apply_processing(layer: str, value: Pixels) -> Pixels:
         match layer:
             case "smear":
-                image = _smooth_texture(
-                    image,
+                return _smooth_texture(
+                    value,
                     severity,
                     strength=smear_strength,
                     detail_protection=settings.smear_detail_protection,
-                    downsample_factor=max(height / image.shape[0], width / image.shape[1]),
+                    downsample_factor=max(height / value.shape[0], width / value.shape[1]),
                 )
             case "sharpen":
-                image = _sharpen(image, sharpening)
+                return _sharpen(value, sharpening)
             case "noise":
                 if late_noise:
-                    image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
+                    value = add_noise(value, settings.second.noise, rng, strength=noise_strength, severity=severity)
                 if grain_strength > 0:
-                    reduction = max(height / image.shape[0], width / image.shape[1])
-                    image = _residual_grain(
-                        image,
+                    reduction = max(height / value.shape[0], width / value.shape[1])
+                    value = _residual_grain(
+                        value,
                         settings.first.noise,
                         rng,
                         severity,
                         strength=grain_strength,
                         spatial_scale=max(1.0, grain_scale / reduction),
                     )
-            case "compression":
-                image = _compress(image, settings.second.compression, rng, codec_severity)
-            case "sinc":
-                image = _filter(image, _resolution_sinc_kernel(rng, min(image.shape[:2]))).clip(0, 1)
-            case "resize":
-                if image.shape[:2] != (height, width):
-                    image = _resize(image, height, width, rng, settings).clip(0, 1)
+                return value
+        raise ValueError(f"Unknown processing layer: {layer}")
+
+    # Keep the Real-ESRGAN delivery constraint: resize-back and sinc are one
+    # atomic operation, exchanged only as a unit with the final codec pass.
+    for layer in order:
+        image = apply_processing(layer, image)
+
+    def resize_and_sinc(value: Pixels) -> Pixels:
+        if value.shape[:2] != (height, width):
+            value = _resize(value, height, width, rng, settings).clip(0, 1)
+        if sinc:
+            value = _filter(value, _resolution_sinc_kernel(rng, min(value.shape[:2]))).clip(0, 1)
+        return value
+
+    if compression and rng.random() < 0.5:
+        image = resize_and_sinc(image)
+        image = _compress(image, settings.second.compression, rng, codec_severity)
+    else:
+        if compression:
+            image = _compress(image, settings.second.compression, rng, codec_severity)
+        image = resize_and_sinc(image)
+
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     if rng.random() < settings.gray_probability:
         value = image_ops.rgb_to_grayscale(value, num_output_channels=3)
