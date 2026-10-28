@@ -622,7 +622,7 @@ def test_invalid_sensor_exposure_is_rejected(exposure):
         NoiseConfig(exposure=exposure)
 
 
-def test_compression_and_blur_are_independent_layers_with_both_orders(monkeypatch):
+def test_intermediate_compression_stays_after_blur(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     trace = []
@@ -656,7 +656,7 @@ def test_compression_and_blur_are_independent_layers_with_both_orders(monkeypatc
         out = degrade_image(image, cfg, seed)
         observed.add(tuple(trace))
         assert out.shape == image.shape and torch.isfinite(out).all()
-    assert observed == {("encode", "blur"), ("blur", "encode")}
+    assert observed == {("blur", "encode")}
     torch.testing.assert_close(image, original, atol=0, rtol=0)
 
 
@@ -808,6 +808,12 @@ def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_pos
     assert np.all(draws[:, 4] == 1)
     assert np.all(draws[:, 1] > 0)
     assert np.median(draws[:, 1]) > 0.2
+
+    low_rng, high_rng = np.random.default_rng(91), np.random.default_rng(91)
+    low_acquisition = _sample_processing(DegradationConfig(), low_rng, acquisition_level=0.0)
+    high_acquisition = _sample_processing(DegradationConfig(), high_rng, acquisition_level=1.0)
+    assert low_acquisition[4] == high_acquisition[4] == 1
+    assert high_acquisition[1] == pytest.approx(low_acquisition[1] * 0.15)
 
 
 def test_default_second_stage_preserves_late_noise_coverage(monkeypatch):

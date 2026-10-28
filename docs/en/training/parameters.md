@@ -423,7 +423,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
 | `noise_strength` | [number, number] | `[1.0, 1.0]` | Global noise gain, 0..4; defaults to full two-stage strength, while [0,0] disables all added noise. |
 | `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4, multiplied by the square root of global noise_strength. |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4, multiplied by sqrt(global gain) and `max(0.15,1−0.85×acquisition severity)`. |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | Texture-smoothing blend, 0..1; attenuated by min(1, 2/d) at actual downsampling factor d. |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | Continuous delivery sharpening gain, 0..1; [0,0] disables it. |
@@ -431,7 +431,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 
 ## `StageConfig`
 
-Acquisition randomly orders independent resize, blur, noise and optional web-compression layers.
+Acquisition randomly orders resize, blur and noise; optional intermediate web compression always follows those operations.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |

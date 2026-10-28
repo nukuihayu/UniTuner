@@ -356,7 +356,7 @@ def _processing_gain(bounds: tuple[float, float], level: float, deadzone: float)
 
 
 def _sample_processing(
-    settings: DegradationConfig, rng: np.random.Generator
+    settings: DegradationConfig, rng: np.random.Generator, acquisition_level: float = 0.5
 ) -> tuple[float, float, float, float, float]:
     """Sample processing with a shared zero-noise atom and persistent residual grain."""
     denoising = float(rng.beta(1.5, 2.0))
@@ -364,10 +364,10 @@ def _sample_processing(
     noise_level = float(rng.beta(1.5, 2.0))
     smooth = _processing_gain(settings.smear_strength, denoising, settings.processing_deadzone)
     noise_gain = _processing_gain(settings.noise_strength, noise_level, settings.processing_deadzone)
-    # Do not rectify grain a second time: the shared noise deadzone already
-    # provides exact noise-free samples. Square-root coupling keeps subtle
-    # acquisition noise subtle without erasing most visible delivery grain.
-    grain = _processing_gain(settings.grain_strength, retention, 0.0) * math.sqrt(noise_gain)
+    # Acquisition noise and delivery grain share one budget. Strong two-stage
+    # noise suppresses extra grain instead of stacking a third strong pass.
+    grain_budget = max(0.15, 1 - 0.85 * acquisition_level)
+    grain = _processing_gain(settings.grain_strength, retention, 0.0) * math.sqrt(noise_gain) * grain_budget
     footprint = math.exp(rng.uniform(math.log(settings.grain_scale_range[0]), math.log(settings.grain_scale_range[1])))
     sharpening = _processing_gain(settings.sharpen_strength, float(rng.random()), settings.processing_deadzone)
     return smooth, grain, footprint, sharpening, noise_gain
@@ -404,6 +404,20 @@ def _sample_scale(settings: DegradationConfig, rng: np.random.Generator) -> floa
 def _layer_orders(layers: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
     """Return every ordering of independent active degradation layers."""
     return tuple(permutations(layers))
+
+
+@lru_cache(maxsize=64)
+def _stage_orders(layers: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Order processing freely while keeping intermediate encoding last."""
+    if "compression" not in layers:
+        return _layer_orders(layers)
+    processing = tuple(layer for layer in layers if layer != "compression")
+    return tuple((*order, "compression") for order in _layer_orders(processing))
+
+
+def _compression_after_resize_probability(acquisition_level: float) -> float:
+    """Avoid enlarging codec blocks when acquisition noise is already strong."""
+    return 0.55 + 0.30 * float(np.clip(acquisition_level, 0, 1))
 
 
 def _sharpen(image: Pixels, amount: float) -> Pixels:
@@ -507,7 +521,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     noise_strength = {"photo": 1.0, "web": 1.0, "low-light": 1.15}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
     scale = _sample_scale(settings, rng)
-    smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng)
+    smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng, severity)
     noise_strength *= noise_gain
     late_noise = False
     for index, stage in enumerate((settings.first, settings.second)):
@@ -523,7 +537,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
             for name, enabled in (("resize", True), ("blur", blur), ("noise", noise), ("compression", compression))
             if enabled
         )
-        orders = _layer_orders(active)
+        orders = _stage_orders(active)
         for layer in orders[int(rng.integers(len(orders)))]:
             match layer:
                 case "blur":
@@ -600,7 +614,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
             value = _filter(value, _resolution_sinc_kernel(rng, min(value.shape[:2]))).clip(0, 1)
         return value
 
-    if compression and rng.random() < 0.5:
+    if compression and rng.random() < _compression_after_resize_probability(severity):
         image = resize_and_sinc(image)
         image = _compress(image, settings.second.compression, rng, codec_severity)
     else:

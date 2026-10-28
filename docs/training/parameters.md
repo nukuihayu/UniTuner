@@ -423,7 +423,7 @@ batch_size = 16
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
 | `noise_strength` | [number, number] | `[1.0, 1.0]` | 全局噪声增益，0～4；默认完整使用两阶段噪声强度，[0,0] 全部关闭。 |
 | `processing_deadzone` | number | `0.1` | 零起点强度分布的死区，0～1；0 保留纯连续分布，正下界不受影响。 |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4，再乘全局 noise_strength 的平方根；[0,0] 关闭。 |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4；再乘全局增益平方根及 `max(0.15,1−0.85×采集强度)`，[0,0] 关闭。 |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | 连续纹理平滑混合强度，0～1；按实际降采样倍率 d 乘以 min(1,2/d)。 |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | 连续交付锐化强度，范围 0～1；[0,0] 关闭。 |
@@ -431,7 +431,7 @@ batch_size = 16
 
 ## `StageConfig`
 
-采集阶段：resize、blur、noise 与可选网络转载 compression 作为独立层随机排列。
+采集阶段：resize、blur、noise 随机排列；可选网络转载 compression 固定在这些处理之后。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
