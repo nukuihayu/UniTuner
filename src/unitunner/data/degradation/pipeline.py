@@ -26,6 +26,18 @@ from unitunner.data.degradation.config import (
 type Pixels = NDArray[np.float32]
 
 
+def _resolution_scale(resolution: int) -> float:
+    """Scale spatial kernels from a 1024-pixel short-edge reference."""
+    if resolution < 1:
+        raise ValueError("Kernel resolution must be positive")
+    return float(np.clip(math.sqrt(resolution / 1024), 0.5, 2.0))
+
+
+def _scaled_odd_size(size: int, scale: float) -> int:
+    """Scale an odd kernel support while retaining a centered odd grid."""
+    return 2 * max(1, round((size // 2) * scale)) + 1
+
+
 def sinc_kernel(size: int, cutoff: float) -> Pixels:
     """Return a unit-sum circular low-pass kernel; cutoff is in radians/pixel.
 
@@ -43,6 +55,14 @@ def sinc_kernel(size: int, cutoff: float) -> Pixels:
     window = torch.kaiser_window(size, periodic=False, beta=4.0, dtype=torch.float64)
     kernel *= window[:, None] * window[None, :]
     return (kernel / kernel.sum()).float().numpy()
+
+
+def _resolution_sinc_kernel(rng: np.random.Generator, resolution: int) -> Pixels:
+    """Sample an independent sinc layer at the current short-edge scale."""
+    spatial_scale = _resolution_scale(resolution)
+    size = _scaled_odd_size(int(rng.choice(np.arange(7, 22, 2))), spatial_scale)
+    cutoff = min(math.pi, float(rng.uniform(math.pi / 2, math.pi)) / spatial_scale)
+    return sinc_kernel(size, cutoff)
 
 
 def _sample(bounds: tuple[float, float], rng: np.random.Generator, level: float | None = None) -> float:
@@ -98,14 +118,12 @@ def _motion_kernel(size: int, length: float, angle: float, acceleration: float, 
 def mixed_blur_kernel(
     rng: np.random.Generator, settings: BlurConfig, resolution: int, *, severity: float | None = None
 ) -> Pixels:
-    """Sample an optical or reconstruction PSF; pass 1024 for local-pixel blur."""
+    """Sample a PSF scaled to the layer input's current short edge."""
     size = int(rng.choice(np.arange(11, 42, 2)))
     choice = rng.random()
-    if choice < settings.sinc_probability:
-        return sinc_kernel(size, float(rng.uniform(math.pi / (3 if size < 25 else 5), math.pi)))
-    spatial_scale = float(np.clip(math.sqrt(resolution / 1024), 0.5, 1.5))
-    size = 2 * max(1, round((size // 2) * spatial_scale)) + 1
-    if choice < settings.sinc_probability + settings.motion_probability:
+    spatial_scale = _resolution_scale(resolution)
+    size = _scaled_odd_size(size, spatial_scale)
+    if choice < settings.motion_probability:
         # Camera shake and imperfect focus can coexist. A continuous radius
         # starting at zero also includes essentially sharp-focus motion blur.
         return _motion_kernel(
@@ -115,7 +133,7 @@ def mixed_blur_kernel(
             float(rng.uniform(-0.6, 0.6)),
             _sample(settings.defocus_radius, rng, severity) * spatial_scale * float(rng.random()),
         )
-    if choice < settings.sinc_probability + settings.motion_probability + settings.defocus_probability:
+    if choice < settings.motion_probability + settings.defocus_probability:
         return _defocus_kernel(size, _sample(settings.defocus_radius, rng, severity) * spatial_scale)
     kind = int(rng.choice(6, p=settings.probabilities))
     sigma_x = _sample(settings.sigma, rng, severity) * spatial_scale
@@ -240,10 +258,19 @@ def add_noise(
 
 def _camera_processing(image: Pixels, severity: float) -> Pixels:
     """Approximate edge-preserving ISP denoising and stronger chroma smoothing."""
-    image = np.asarray(cv2.bilateralFilter(image, 5, 0.02 + 0.06 * severity, 0.8 + severity), dtype=np.float32)
+    spatial_scale = _resolution_scale(min(image.shape[:2]))
+    image = np.asarray(
+        cv2.bilateralFilter(
+            image,
+            _scaled_odd_size(5, spatial_scale),
+            0.02 + 0.06 * severity,
+            (0.8 + severity) * spatial_scale,
+        ),
+        dtype=np.float32,
+    )
     luminance = (image * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(2, keepdims=True)
     chroma = image - luminance
-    chroma = cv2.GaussianBlur(chroma, (0, 0), 0.6 + 0.6 * severity)
+    chroma = cv2.GaussianBlur(chroma, (0, 0), (0.6 + 0.6 * severity) * spatial_scale)
     return (luminance + chroma).clip(0, 1).astype(np.float32)
 
 
@@ -263,13 +290,21 @@ def _smooth_texture(
     strength *= min(1.0, 2.0 / max(1.0, downsample_factor))
     # A single moderate pass removes microtexture without repeatedly flattening
     # mid-frequency facial and hair detail on the already downsampled grid.
+    spatial_scale = _resolution_scale(min(image.shape[:2]))
     smooth = np.asarray(
-        cv2.bilateralFilter(image, 9, 0.05 + 0.10 * severity, 1.5 + 1.5 * severity), dtype=np.float32
+        cv2.bilateralFilter(
+            image,
+            _scaled_odd_size(9, spatial_scale),
+            0.05 + 0.10 * severity,
+            (1.5 + 1.5 * severity) * spatial_scale,
+        ),
+        dtype=np.float32,
     )
     smooth = _camera_processing(smooth, severity)
     luminance = (image * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(2)
-    mean = cv2.GaussianBlur(luminance, (0, 0), 1.2)
-    variance = (cv2.GaussianBlur(luminance * luminance, (0, 0), 1.2) - mean * mean).clip(0)
+    local_sigma = 1.2 * spatial_scale
+    mean = cv2.GaussianBlur(luminance, (0, 0), local_sigma)
+    variance = (cv2.GaussianBlur(luminance * luminance, (0, 0), local_sigma) - mean * mean).clip(0)
     # Smooth weak microtexture more than eyelashes/hair contours, with a continuous
     # local-contrast map: no face masks, hard patch boundaries or geometric warp.
     blend = strength * (1 - detail_protection * variance / (variance + 0.0009))
@@ -321,13 +356,16 @@ def _processing_gain(bounds: tuple[float, float], level: float, deadzone: float)
 def _sample_processing(
     settings: DegradationConfig, rng: np.random.Generator
 ) -> tuple[float, float, float, float, float]:
-    """Sample continuous processing with exact-zero coverage and shared noise gain."""
+    """Sample processing with a shared zero-noise atom and persistent residual grain."""
     denoising = float(rng.beta(1.5, 2.0))
     retention = float(rng.beta(1.5, 2.0)) * (1 - 0.5 * denoising)
     noise_level = float(rng.beta(1.5, 2.0))
     smooth = _processing_gain(settings.smear_strength, denoising, settings.processing_deadzone)
     noise_gain = _processing_gain(settings.noise_strength, noise_level, settings.processing_deadzone)
-    grain = _processing_gain(settings.grain_strength, retention, settings.processing_deadzone) * noise_gain
+    # Do not rectify grain a second time: the shared noise deadzone already
+    # provides exact noise-free samples. Square-root coupling keeps subtle
+    # acquisition noise subtle without erasing most visible delivery grain.
+    grain = _processing_gain(settings.grain_strength, retention, 0.0) * math.sqrt(noise_gain)
     footprint = math.exp(rng.uniform(math.log(settings.grain_scale_range[0]), math.log(settings.grain_scale_range[1])))
     sharpening = _processing_gain(settings.sharpen_strength, float(rng.random()), settings.processing_deadzone)
     return smooth, grain, footprint, sharpening, noise_gain
@@ -361,24 +399,14 @@ def _sample_scale(settings: DegradationConfig, rng: np.random.Generator) -> floa
 
 
 @lru_cache(maxsize=64)
-def _delivery_orders(operations: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
-    """All legal orders of active operators, cached once per active set.
-
-    Smoothing precedes sharpening and reconstruction; deferred stage-two noise
-    follows reconstruction. Resize and final sinc are one atomic operation so
-    a codec cannot split them and amplify resampling/ringing artifacts.
-    """
-    edges = (("smooth", "sharpen"), ("smooth", "resize"), ("resize", "noise"))
-    return tuple(
-        order
-        for order in permutations(operations)
-        if all(a not in order or b not in order or order.index(a) < order.index(b) for a, b in edges)
-    )
+def _layer_orders(layers: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Return every ordering of independent active degradation layers."""
+    return tuple(permutations(layers))
 
 
 def _sharpen(image: Pixels, amount: float) -> Pixels:
     """Model mild delivery sharpening in LQ only; leave the supervision target intact."""
-    smooth = cv2.GaussianBlur(image, (0, 0), 0.7)
+    smooth = cv2.GaussianBlur(image, (0, 0), 0.7 * _resolution_scale(min(image.shape[:2])))
     return (image + amount * (image - smooth)).clip(0, 1).astype(np.float32)
 
 
@@ -474,7 +502,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     scene = str(rng.choice(("photo", "web", "low-light"), p=settings.scenario_probabilities))
     # Moderate and strong samples coexist; the same draw links blur, noise and codec damage.
     severity = _sample_severity(rng)
-    noise_strength = {"photo": 0.35, "web": 0.5, "low-light": 1.0}[scene]
+    noise_strength = {"photo": 0.50, "web": 0.70, "low-light": 1.15}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
     scale = _sample_scale(settings, rng)
     smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng)
@@ -482,73 +510,58 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     late_noise = False
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
-        # Optical blur stays first; sensor/processed noise can precede or follow
-        # acquisition resizing. Delivery operators can occur in any order.
-        if index == 0:
-            operations = ("blur", "noise", "resize") if rng.random() < 0.5 else ("blur", "resize", "noise")
-        else:
-            operations = rng.permutation(("resize", "blur", "noise"))
-        for operation in operations:
-            match operation:
+        blur = rng.random() < stage.blur_probability
+        noise = noise_gain > 0 and rng.random() < stage.noise_probability
+        if index == 1 and noise and rng.random() < 0.5:
+            late_noise = True
+            noise = False
+        compression = index == 0 and scene == "web" and rng.random() < stage.compression_probability
+        active = tuple(
+            name
+            for name, enabled in (("resize", True), ("blur", blur), ("noise", noise), ("compression", compression))
+            if enabled
+        )
+        orders = _layer_orders(active)
+        for layer in orders[int(rng.integers(len(orders)))]:
+            match layer:
                 case "blur":
-                    if rng.random() < stage.blur_probability:
-                        reference = min(height, width) if index == 0 else 1024
-                        kernel = mixed_blur_kernel(rng, stage.blur, reference, severity=severity)
-                        image = _filter(image, kernel).clip(0, 1)
+                    reference = min(image.shape[:2])
+                    kernel = mixed_blur_kernel(rng, stage.blur, reference, severity=severity)
+                    image = _filter(image, kernel).clip(0, 1)
                 case "resize":
                     h, w = image.shape[:2] if index == 0 else (height / scale, width / scale)
                     image = _resize(
                         image, int(h * resize), int(w * resize), rng, settings, factor=resize if index == 0 else None
                     ).clip(0, 1)
                 case "noise":
-                    if noise_gain > 0 and rng.random() < stage.noise_probability:
-                        if index == 1 and rng.random() < 0.5:
-                            late_noise = True
-                            continue
-                        image = add_noise(
-                            image,
-                            stage.noise,
-                            rng,
-                            strength=noise_strength,
-                            camera=scene == "low-light" and index == 0,
-                            severity=severity,
-                        )
-                        if scene == "low-light" and index == 0 and smear_strength > 0:
-                            denoised = _camera_processing(image, severity)
-                            image = (image + smear_strength * (denoised - image)).clip(0, 1)
-        if index == 0 and scene == "web" and rng.random() < stage.compression_probability:
-            image = _compress(image, stage.compression, rng, codec_severity)
-    image = _resize(image, int(height / scale), int(width / scale), rng, settings).clip(0, 1)
-    # Blur already-encoded blocks/ringing on the delivery grid. This is an
-    # additional historical transcode, before the existing final delivery codec.
-    # Honor explicitly disabled second-stage blur/compression switches.
-    if (
-        settings.second.blur_probability > 0
-        and settings.second.compression_probability > 0
-        and rng.random() < settings.compression_blur_probability
-    ):
-        image = _compress(image, settings.second.compression, rng, codec_severity)
-        kernel = mixed_blur_kernel(rng, settings.second.blur, 1024, severity=severity)
-        image = _filter(image, kernel).clip(0, 1)
-    final_sinc = bool(rng.random() < settings.final_sinc_probability)
-    encode = bool(rng.random() < settings.second.compression_probability)
+                    image = add_noise(
+                        image,
+                        stage.noise,
+                        rng,
+                        strength=noise_strength,
+                        camera=scene == "low-light" and index == 0,
+                        severity=severity,
+                    )
+                case "compression":
+                    image = _compress(image, stage.compression, rng, codec_severity)
+    sinc = rng.random() < settings.final_sinc_probability
+    compression = rng.random() < settings.second.compression_probability
     active = tuple(
         name
         for name, enabled in (
-            ("smooth", smear_strength > 0),
+            ("smear", smear_strength > 0),
             ("sharpen", sharpening > 0),
-            ("grain", grain_strength > 0),
-            ("encode", encode),
+            ("noise", late_noise or grain_strength > 0),
+            ("compression", compression),
+            ("sinc", sinc),
             ("resize", True),
-            ("noise", late_noise),
         )
         if enabled
     )
-    orders = _delivery_orders(active)
-    delivery_order = orders[int(rng.integers(len(orders)))]
-    for operation in delivery_order:
-        match operation:
-            case "smooth":
+    orders = _layer_orders(active)
+    for layer in orders[int(rng.integers(len(orders)))]:
+        match layer:
+            case "smear":
                 image = _smooth_texture(
                     image,
                     severity,
@@ -558,28 +571,26 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                 )
             case "sharpen":
                 image = _sharpen(image, sharpening)
-            case "grain":
-                reduction = max(height / image.shape[0], width / image.shape[1])
-                image = _residual_grain(
-                    image,
-                    settings.first.noise,
-                    rng,
-                    severity,
-                    strength=grain_strength,
-                    spatial_scale=max(1.0, grain_scale / reduction),
-                )
-            case "encode":
+            case "noise":
+                if late_noise:
+                    image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
+                if grain_strength > 0:
+                    reduction = max(height / image.shape[0], width / image.shape[1])
+                    image = _residual_grain(
+                        image,
+                        settings.first.noise,
+                        rng,
+                        severity,
+                        strength=grain_strength,
+                        spatial_scale=max(1.0, grain_scale / reduction),
+                    )
+            case "compression":
                 image = _compress(image, settings.second.compression, rng, codec_severity)
+            case "sinc":
+                image = _filter(image, _resolution_sinc_kernel(rng, min(image.shape[:2]))).clip(0, 1)
             case "resize":
-                # Keep the low-grid sinc and reconstruction together. A codec
-                # can precede or follow this block, never sit between its steps.
-                if final_sinc:
-                    size = int(rng.choice(np.arange(7, 22, 2)))
-                    image = _filter(image, sinc_kernel(size, float(rng.uniform(math.pi / 2, math.pi)))).clip(0, 1)
                 if image.shape[:2] != (height, width):
                     image = _resize(image, height, width, rng, settings).clip(0, 1)
-            case "noise":
-                image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     if rng.random() < settings.gray_probability:
         value = image_ops.rgb_to_grayscale(value, num_output_channels=3)

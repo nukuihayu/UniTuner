@@ -33,10 +33,10 @@ class DistributionConfig(BaseModel, frozen=True):
 
 
 class BlurConfig(DistributionConfig, frozen=True):
-    """Gaussian/generalized/plateau, each isotropic then anisotropic; optional sinc.
+    """Gaussian/generalized/plateau, handheld motion and defocus PSFs.
 
-    First-stage sigma uses a 1024-pixel short-edge reference with square-root
-    scaling. Second-stage sigma is measured directly in low-resolution pixels.
+    All spatial ranges use a 1024-pixel layer-input short-edge reference and
+    square-root resolution scaling capped to [0.5, 2.0].
     """
 
     sigma: Range = (0.4, 2.8)
@@ -50,7 +50,6 @@ class BlurConfig(DistributionConfig, frozen=True):
     )
     generalized_beta: Range = (0.5, 4.0)
     plateau_beta: Range = (1.0, 2.0)
-    sinc_probability: Probability = 0.05
     motion_probability: Probability = 0.20
     defocus_probability: Probability = 0.15
     motion_length: Range = (0.0, 10.0)
@@ -64,8 +63,8 @@ class BlurConfig(DistributionConfig, frozen=True):
             raise ValueError("Plateau beta must be positive and bracket one")
         if self.motion_length[1] > 64 or self.defocus_radius[1] > 16:
             raise ValueError("motion_length must be <=64 and defocus_radius <=16")
-        if self.sinc_probability + self.motion_probability + self.defocus_probability > 1:
-            raise ValueError("Sinc, motion and defocus probabilities must sum to at most one")
+        if self.motion_probability + self.defocus_probability > 1:
+            raise ValueError("Motion and defocus probabilities must sum to at most one")
         return self
 
 
@@ -73,10 +72,10 @@ class NoiseConfig(DistributionConfig, frozen=True):
     """Gaussian/Poisson/ISO probabilities; sigma is in 8-bit intensity units."""
 
     probabilities: Probabilities = (0.35, 0.15, 0.50)
-    gaussian_sigma: Range = (1.0, 9.0)
-    poisson_scale: Range = (0.05, 0.5)
-    iso_shot: Range = (0.0002, 0.006)
-    iso_read: Range = (0.000005, 0.00015)
+    gaussian_sigma: Range = (1.5, 12.0)
+    poisson_scale: Range = (0.08, 0.7)
+    iso_shot: Range = (0.0003, 0.009)
+    iso_read: Range = (0.000008, 0.00025)
     exposure: Range = (0.75, 1.0)
     iso_color_gain: Range = (0.92, 1.15)
     gray_probability: Probability = 0.25
@@ -128,10 +127,10 @@ class SecondNoiseConfig(NoiseConfig, frozen=True):
 
     exposure: Range = (1.0, 1.0)
     probabilities: Probabilities = (0.7, 0.1, 0.2)
-    gaussian_sigma: Range = (0.2, 2.0)
-    poisson_scale: Range = (0.02, 0.15)
-    iso_shot: Range = (0.00001, 0.0002)
-    iso_read: Range = (0.0000001, 0.000004)
+    gaussian_sigma: Range = (0.5, 4.0)
+    poisson_scale: Range = (0.04, 0.25)
+    iso_shot: Range = (0.00002, 0.0004)
+    iso_read: Range = (0.0000002, 0.000008)
     iso_color_gain: Range = (0.95, 1.05)
 
 
@@ -145,10 +144,9 @@ class SecondCompressionConfig(CompressionConfig, frozen=True):
 
 
 class SecondBlurConfig(BlurConfig, frozen=True):
-    """Second-stage blur range; other kernel distributions match the first stage."""
+    """Milder second-stage blur ranges with the same resolution adaptation."""
 
     sigma: Range = (0.15, 0.65)
-    sinc_probability: Probability = 0.03
     motion_probability: Probability = 0.0
     defocus_probability: Probability = 0.0
 
@@ -160,7 +158,7 @@ class SecondStageConfig(StageConfig, frozen=True):
     blur_probability: Probability = 0.15
     resize_probabilities: Probabilities = (0.1, 0.2, 0.7)
     resize_range: Range = (0.9, 1.1)
-    noise_probability: Probability = 0.1
+    noise_probability: Probability = 0.25
     compression_probability: Probability = 0.9
     noise: SecondNoiseConfig = Field(default_factory=SecondNoiseConfig)
     compression: SecondCompressionConfig = Field(default_factory=SecondCompressionConfig)
@@ -169,9 +167,9 @@ class SecondStageConfig(StageConfig, frozen=True):
 class DegradationConfig(DistributionConfig, frozen=True):
     """Dataset-owned super-resolution acquisition and delivery distributions.
 
-    First-stage blur scales by sqrt(short edge / 1024), capped to [0.5, 1.5].
-    Second-stage blur uses local pixels. Scene probabilities: photo/web/low-light.
-    Sinc cutoff and support remain in the local pixel grid, independent of HQ size.
+    Spatial kernels use the current layer-input short edge with square-root
+    scaling from a 1024-pixel reference, capped to [0.5, 2.0]. Scene
+    probabilities are photo/web/low-light.
     Color jitter and grayscale affect LQ only; HQ remains an unchanged target.
     """
 
@@ -179,7 +177,6 @@ class DegradationConfig(DistributionConfig, frozen=True):
     scales: tuple[Annotated[float, Field(ge=1, le=16)], ...] | None = None
     scale_range: Range = (1.0, 8.0)
     scenario_probabilities: Probabilities = (0.25, 0.35, 0.40)
-    compression_blur_probability: Probability = 0.25
     noise_strength: Range = (0.0, 1.0)
     processing_deadzone: Probability = 0.1
     grain_strength: Range = (0.0, 1.5)

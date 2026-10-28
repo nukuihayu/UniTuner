@@ -138,12 +138,11 @@ def test_hue_matches_scalar_colorsys():
         )
 
 
-@pytest.mark.parametrize("resolution", [512, 768, 1024, 1536])
-def test_spatial_blur_tracks_image_scale_without_changing_sinc(resolution):
+@pytest.mark.parametrize("resolution", [512, 768, 1024, 1280, 1536, 2048, 4096])
+def test_spatial_blur_tracks_image_scale(resolution):
     gaussian = BlurConfig(
         sigma=(1.0, 1.0),
         probabilities=(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-        sinc_probability=0.0,
         motion_probability=0.0,
         defocus_probability=0.0,
     )
@@ -153,14 +152,9 @@ def test_spatial_blur_tracks_image_scale_without_changing_sinc(resolution):
     assert measured_sigma == pytest.approx(math.sqrt(resolution / 1024), rel=0.08)
     assert kernel.shape[0] % 2 == 1
     assert kernel.sum() == pytest.approx(1, abs=1e-6)
-    sinc = BlurConfig(sinc_probability=1.0, motion_probability=0.0, defocus_probability=0.0)
-    np.testing.assert_array_equal(
-        mixed_blur_kernel(np.random.default_rng(23), sinc, resolution),
-        mixed_blur_kernel(np.random.default_rng(23), sinc, 1024),
-    )
 
 
-def test_acquisition_blur_uses_short_edge_and_delivery_blur_uses_local_pixels(monkeypatch):
+def test_each_blur_layer_uses_its_actual_input_short_edge(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     resolutions = []
@@ -176,14 +170,43 @@ def test_acquisition_blur_uses_short_edge_and_delivery_blur_uses_local_pixels(mo
         result = degrade_image(
             image,
             DegradationConfig(
-                compression_blur_probability=0.0,
-                first=StageConfig(blur_probability=1.0),
-                second=SecondStageConfig(blur_probability=1.0),
+                scales=(1.0,),
+                smear_strength=(0.0, 0.0),
+                grain_strength=(0.0, 0.0),
+                sharpen_strength=(0.0, 0.0),
+                final_sinc_probability=0.0,
+                first=StageConfig(
+                    blur_probability=1.0,
+                    resize_probabilities=(0.0, 0.0, 1.0),
+                    noise_probability=0.0,
+                    compression_probability=0.0,
+                ),
+                second=SecondStageConfig(
+                    blur_probability=1.0,
+                    resize_probabilities=(0.0, 0.0, 1.0),
+                    noise_probability=0.0,
+                    compression_probability=0.0,
+                ),
             ),
             7,
         )
         assert result.shape == image.shape
-    assert resolutions == [64, 1024, 64, 1024]
+    assert resolutions == [64, 64, 64, 64]
+
+
+def test_resolution_scale_and_sinc_support_expand_through_4k():
+    from unitunner.data.degradation.pipeline import _resolution_scale, _resolution_sinc_kernel
+
+    assert _resolution_scale(1024) == 1
+    assert _resolution_scale(1280) == pytest.approx(math.sqrt(1.25))
+    assert _resolution_scale(2048) == pytest.approx(math.sqrt(2))
+    assert _resolution_scale(4096) == 2
+    supports = [
+        _resolution_sinc_kernel(np.random.default_rng(9), resolution).shape[0]
+        for resolution in (1024, 1280, 2048, 4096)
+    ]
+    assert supports == sorted(supports)
+    assert supports[0] < supports[-1]
 
 
 @pytest.mark.parametrize("motion", [False, True])
@@ -262,7 +285,6 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
     monkeypatch.setattr(pipeline, "_compress", encode)
     monkeypatch.setattr(pipeline, "add_noise", noise)
     settings = DegradationConfig(
-        compression_blur_probability=0.0,
         scales=(4,),
         scenario_probabilities=(float(scene == 0), float(scene == 1), float(scene == 2)),
         smear_strength=(0.0, 0.0),
@@ -274,17 +296,19 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
     )
     degrade_image(torch.full((3, 128, 192), 0.5), settings, 7)
     assert len(codecs) == (2 if scene == 1 else 1)
-    assert codecs[-1] in ((32, 48), (128, 192))
+    assert codecs[-1] == (128, 192) or (codecs[-1][0] < 40 and codecs[-1][1] < 60)
     assert cameras == [scene == 2, False]
 
 
-def test_degradation_rejects_invalid_scene_and_optical_probabilities():
+def test_degradation_rejects_invalid_scene_and_blur_probabilities():
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="sum to one"):
         DegradationConfig(scenario_probabilities=(0.5, 0.4, 0.4))
     with pytest.raises(ValidationError, match="at most one"):
         BlurConfig(motion_probability=0.8, defocus_probability=0.8)
+    with pytest.raises(ValidationError, match="sinc_probability"):
+        BlurConfig(sinc_probability=0.1)
 
 
 def test_scale_sampling_is_uniform_without_favoring_the_largest_factor(monkeypatch):
@@ -348,7 +372,6 @@ def test_continuous_processing_supports_delivery_and_output_grid_encoding(monkey
 
     monkeypatch.setattr(pipeline, "_compress", capture)
     cfg = DegradationConfig(
-        compression_blur_probability=0.0,
         scales=(4,),
         scenario_probabilities=(1.0, 0.0, 0.0),
         second=SecondStageConfig(compression_probability=1.0),
@@ -356,7 +379,9 @@ def test_continuous_processing_supports_delivery_and_output_grid_encoding(monkey
     for seed in range(32):
         low = degrade_image(torch.full((3, 128, 192), 0.4), cfg, seed)
         assert low.shape == (3, 128, 192)
-    assert set(encoded) == {(32, 48), (128, 192)}
+    assert (128, 192) in encoded
+    assert any(height < 40 and width < 60 for height, width in encoded)
+    assert all((height, width) == (128, 192) or (height < 40 and width < 60) for height, width in encoded)
 
 
 @pytest.mark.parametrize("shape", [(45, 70), (9, 13)])
@@ -454,7 +479,7 @@ def test_disabling_noise_and_extra_processing_does_not_inject_noise(monkeypatch)
         assert low.std().item() < 1 / 255
 
 
-def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
+def test_random_order_covers_noise_before_and_after_blur_in_both_stages(monkeypatch):
     from itertools import permutations
 
     from unitunner.data.degradation import pipeline
@@ -503,7 +528,7 @@ def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
         degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
         for index in range(2):
             observed[index].add(tuple(traces[index]))
-    assert observed[0] == {("blur", "noise", "resize"), ("blur", "resize", "noise")}
+    assert observed[0] == set(permutations(("blur", "resize", "noise")))
     assert observed[1] == set(permutations(("blur", "resize", "noise")))
 
 
@@ -595,8 +620,7 @@ def test_invalid_sensor_exposure_is_rejected(exposure):
         NoiseConfig(exposure=exposure)
 
 
-@pytest.mark.parametrize("disabled", [None, "blur", "compression", "path"])
-def test_compression_blur_order_and_disable_switches(monkeypatch, disabled):
+def test_compression_and_blur_are_independent_layers_with_both_orders(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     trace = []
@@ -613,25 +637,24 @@ def test_compression_blur_order_and_disable_switches(monkeypatch, disabled):
     monkeypatch.setattr(pipeline, "_compress", encode)
     monkeypatch.setattr(pipeline, "_filter", blur)
     cfg = DegradationConfig(
-        compression_blur_probability=0.0 if disabled == "path" else 1.0,
-        scenario_probabilities=(1.0, 0.0, 0.0),
+        scenario_probabilities=(0.0, 1.0, 0.0),
         smear_strength=(0.0, 0.0),
         noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
-        first=StageConfig(blur_probability=0.0, noise_probability=0.0, compression_probability=0.0),
-        second=SecondStageConfig(
-            blur_probability=0.0 if disabled == "blur" else 1e-12,
-            compression_probability=0.0 if disabled == "compression" else 1e-12,
-            noise_probability=0.0,
-        ),
+        first=StageConfig(blur_probability=1.0, noise_probability=0.0, compression_probability=1.0),
+        second=SecondStageConfig(blur_probability=0.0, compression_probability=0.0, noise_probability=0.0),
         final_sinc_probability=0.0,
     )
     image = torch.rand(3, 96, 128)
     original = image.clone()
-    out = degrade_image(image, cfg, 42)
-    assert trace == (["encode", "blur"] if disabled is None else [])
-    assert out.shape == image.shape and torch.isfinite(out).all()
+    observed = set()
+    for seed in range(64):
+        trace.clear()
+        out = degrade_image(image, cfg, seed)
+        observed.add(tuple(trace))
+        assert out.shape == image.shape and torch.isfinite(out).all()
+    assert observed == {("encode", "blur"), ("blur", "encode")}
     torch.testing.assert_close(image, original, atol=0, rtol=0)
 
 
@@ -665,7 +688,7 @@ def test_continuous_scale_and_processing_sampling_cover_intermediate_values():
 
 
 @pytest.mark.parametrize("scale", [1.0, 2.5, 4.0, 6.0, 8.0, 11.7, 16.0])
-def test_fractional_scale_uses_rounded_delivery_grid_and_preserves_hq(monkeypatch, scale):
+def test_smear_layer_covers_both_sides_of_final_resize_and_preserves_hq(monkeypatch, scale):
     from unitunner.data.degradation import pipeline
 
     grids = []
@@ -678,11 +701,33 @@ def test_fractional_scale_uses_rounded_delivery_grid_and_preserves_hq(monkeypatc
     monkeypatch.setattr(pipeline, "_smooth_texture", capture)
     high = torch.from_numpy(np.random.default_rng(15).random((3, 65, 97), dtype=np.float32))
     before = high.clone()
-    cfg = DegradationConfig(scales=(scale,))
-    low = degrade_image(high, cfg, 12)
-    assert grids == [(int(65 / scale), int(97 / scale))]
-    assert low.shape == high.shape and low.dtype == torch.float32
-    assert torch.isfinite(low).all() and 0 <= low.min() <= low.max() <= 1
+    cfg = DegradationConfig(
+        scales=(scale,),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
+        final_sinc_probability=0.0,
+        first=StageConfig(
+            blur_probability=0.0,
+            resize_probabilities=(0.0, 0.0, 1.0),
+            noise_probability=0.0,
+            compression_probability=0.0,
+        ),
+        second=SecondStageConfig(
+            blur_probability=0.0,
+            resize_probabilities=(0.0, 0.0, 1.0),
+            noise_probability=0.0,
+            compression_probability=0.0,
+        ),
+    )
+    observed = set()
+    for seed in range(32):
+        grids.clear()
+        low = degrade_image(high, cfg, seed)
+        observed.update(grids)
+        assert low.shape == high.shape and low.dtype == torch.float32
+        assert torch.isfinite(low).all() and 0 <= low.min() <= low.max() <= 1
+    expected = {(65, 97)} if scale == 1 else {(int(65 / scale), int(97 / scale)), (65, 97)}
+    assert observed == expected
     torch.testing.assert_close(high, before, atol=0, rtol=0)
 
 
@@ -696,6 +741,7 @@ def test_fractional_scale_uses_rounded_delivery_grid_and_preserves_hq(monkeypatc
         {"scales": (17.0,)},
         {"grain_scale_range": (0.0, 2.0)},
         {"sharpen_strength": (0.0, 2.0)},
+        {"compression_blur_probability": 0.25},
         {"processing_probabilities": (0.3, 0.45, 0.25)},
         {"grain_smear_probability": 0.45},
     ],
@@ -733,6 +779,40 @@ def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_pos
     assert no_noise.mean() == pytest.approx(zero_mass, abs=0.015)
     assert (no_smooth & no_noise).mean() == pytest.approx(zero_mass**2, abs=0.01)
     assert np.all(draws[no_noise, 1] == 0)
+    # Grain uses the shared zero-noise atom, but no second deadzone. This keeps
+    # coverage broad enough to survive coarse SR downsampling and smoothing.
+    no_grain = draws[:, 1] == 0
+    assert no_grain.mean() == pytest.approx(zero_mass, abs=0.015)
+    assert np.median(draws[:, 1]) > 0.2
+
+
+def test_default_second_stage_preserves_late_noise_coverage(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    grids = []
+
+    def noise(image, *args, **kwargs):
+        grids.append(image.shape[:2])
+        return image
+
+    monkeypatch.setattr(pipeline, "add_noise", noise)
+    cfg = DegradationConfig(
+        scales=(6.0,),
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        noise_strength=(1.0, 1.0),
+        grain_strength=(0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
+        first=StageConfig(noise_probability=0.0),
+        second=SecondStageConfig(blur_probability=0.0, compression_probability=0.0),
+    )
+    high = torch.full((3, 192, 192), 0.5)
+    for seed in range(512):
+        degrade_image(high, cfg, seed)
+    full_grid = sum(shape == (192, 192) for shape in grids)
+    low_grid = len(grids) - full_grid
+    assert 40 < full_grid < 90
+    assert 40 < low_grid < 90
 
 
 def test_shared_zero_noise_gain_suppresses_every_noise_stage(monkeypatch):
@@ -791,7 +871,6 @@ def test_codec_positions_cover_denoising_and_resize_history_without_extra_encode
         scales=(4.0,),
         smear_strength=(0.3, 0.3),
         scenario_probabilities=(1.0, 0.0, 0.0),
-        compression_blur_probability=0.0,
         second=SecondStageConfig(compression_probability=1.0),
     )
     observed = set()
@@ -799,11 +878,11 @@ def test_codec_positions_cover_denoising_and_resize_history_without_extra_encode
         events.clear()
         degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
         observed.add(tuple(events))
-    assert observed == {
-        (("encode", (16, 24)), ("smooth", (16, 24))),
-        (("smooth", (16, 24)), ("encode", (16, 24))),
-        (("smooth", (16, 24)), ("encode", (64, 96))),
-    }
+    assert any(events[0][0] == "encode" for events in observed)
+    assert any(events[0][0] == "smooth" for events in observed)
+    grids = {shape for events in observed for _, shape in events}
+    assert (64, 96) in grids
+    assert any(height < 20 and width < 30 for height, width in grids)
 
 
 def test_windowed_sinc_limits_short_kernel_step_ringing_without_removing_negative_lobes():
@@ -839,22 +918,20 @@ def test_defocus_broadens_handheld_psf_without_changing_centroid():
     assert moment(_motion_kernel(7, 10, 0.7, 0.6, 3)) > moment(_motion_kernel(7, 10, 0.7, 0.6))
 
 
-@pytest.mark.parametrize("late_noise,count", [(False, 40), (True, 90)])
-def test_delivery_order_space_and_sampling(late_noise, count):
-    from unitunner.data.degradation.pipeline import _delivery_orders
+@pytest.mark.parametrize(
+    "active,count",
+    [(("smear", "sharpen", "noise", "compression", "sinc", "resize"), 720), (("noise", "resize"), 2)],
+)
+def test_independent_layer_order_space_and_sampling(active, count):
+    from unitunner.data.degradation.pipeline import _layer_orders
 
-    active = ("smooth", "sharpen", "grain", "encode", "resize") + (("noise",) if late_noise else ())
-    orders = _delivery_orders(active)
+    orders = _layer_orders(active)
     assert len(orders) == len(set(orders)) == count
     for order in orders:
         assert set(order) == set(active)
-        assert order.index("smooth") < order.index("sharpen")
-        assert order.index("smooth") < order.index("resize")
-        if late_noise:
-            assert order.index("resize") < order.index("noise")
     hits = np.bincount(np.random.default_rng(42).integers(count, size=count * 1000), minlength=count)
     assert hits.min() > 850 and hits.max() < 1150
-    assert _delivery_orders(("resize",)) == (("resize",),)
+    assert _layer_orders(("resize",)) == (("resize",),)
 
 
 def test_correlated_parameter_draws_retain_full_range_exploration():

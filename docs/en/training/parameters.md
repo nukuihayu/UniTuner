@@ -413,7 +413,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | Downsampling uses antialiasing for bilinear/bicubic; enlargement omits area when other modes exist. Nearest is opt-in. |
 | `first` | object | `subtable` | First-stage blur, resize, noise and compression distributions. |
 | `second` | object | `subtable` | Independent second-stage blur, resize, noise and compression distributions. |
-| `final_sinc_probability` | number | `0.1` | Probability of final sinc filtering, 0..1. |
+| `final_sinc_probability` | number | `0.1` | Probability of enabling the independent sinc layer, 0..1; it may run before or after resize and adapts to its execution-grid short edge. |
 | `gray_probability` | number | `0.0` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
 | `color_jitter_probability` | number | `0.0` | Probability of color jitter, 0..1; 0 disables it. |
 | `brightness` | [number, number] | `[0.5, 1.5]` | Brightness multiplier range [lower, upper] for enabled color jitter. |
@@ -423,16 +423,15 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
 | `noise_strength` | [number, number] | `[0.0, 1.0]` | Global gain for all noise and grain, 0..4; [0,0] disables all added noise. |
 | `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4, multiplied by global noise_strength. |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4, multiplied by the square root of global noise_strength. |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | Texture-smoothing blend, 0..1; attenuated by min(1, 2/d) at actual downsampling factor d. |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | Continuous delivery sharpening gain, 0..1; [0,0] disables it. |
 | `smear_detail_protection` | number | `0.6` | Local contrast protection, 0..1; zero restores uniform blending. |
-| `compression_blur_probability` | number | `0.25` | Encode then blur on the LQ grid; disabled when second-stage blur or compression is explicitly off. |
 
 ## `StageConfig`
 
-Acquisition: blur → resize → optional noise/low-light denoising → optional web encoding.
+Acquisition randomly orders independent resize, blur, noise and optional web-compression layers.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
@@ -457,20 +456,19 @@ Delivery randomly orders resizing, local blur and noise, then applies the target
 | `resize_range` | [number, number] | `[0.9, 1.1]` | Positive resize-factor range spanning 1. |
 | `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
 | `compression` | object | `subtable` | JPEG/WebP/JPEG2000 compression distribution table. |
-| `noise_probability` | number | `0.1` | Additional residual noise probability; once selected, applied equally in delivery or after HQ enlargement, once per sample. |
+| `noise_probability` | number | `0.25` | Additional residual noise probability; once selected, applied equally in delivery or after HQ enlargement, once per sample. |
 | `compression_probability` | number | `0.9` | Final encoding probability; sampled uniformly among legal delivery orders, before or after HQ enlargement. |
 
 ## `BlurConfig`
 
-Sinc, motion and defocus probabilities sum to at most 1. Remaining probability uses the six-family mixture. Scene severity correlates sigma with noise and codec damage.
+Motion and defocus probabilities sum to at most 1. Remaining probability uses the isotropic/anisotropic Gaussian, generalized-Gaussian and plateau mixture. Sinc is a separate layer.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.4, 2.8]` | Sigma at short edge 1024; multiplied by clamp(sqrt(short edge / 1024), 0.5, 1.5). |
+| `sigma` | [number, number] | `[0.4, 2.8]` | Sigma at short edge 1024; multiplied by clamp(sqrt(current layer short edge / 1024), 0.5, 2.0). |
 | `probabilities` | [number, number, number, number, number, number] | `[0.5, 0.25, 0.1, 0.05, 0.07, 0.03]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
-| `sinc_probability` | number | `0.05` | Probability of selecting a sinc blur kernel, 0..1. |
 | `motion_probability` | number | `0.20` | Centered handheld straight-exposure PSF probability. |
 | `defocus_probability` | number | `0.15` | Circular-aperture defocus probability. |
 | `motion_length` | [number, number] | `[0.0, 10.0]` | Straight exposure length; 1024-short-edge reference pixels, maximum 64. |
@@ -478,29 +476,28 @@ Sinc, motion and defocus probabilities sum to at most 1. Remaining probability u
 
 ## `SecondBlurConfig`
 
-Same kernel selection as BlurConfig, but sigma is in local LQ pixels.
+Same kernel selection and resolution adaptation as BlurConfig; all spatial ranges use a 1024-pixel current-layer short-edge reference.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.15, 0.65]` | Local LQ pixel sigma; independent of HQ dimensions. |
+| `sigma` | [number, number] | `[0.15, 0.65]` | 1024-short-edge reference sigma, scaled to the blur layer's actual execution grid. |
 | `probabilities` | [number, number, number, number, number, number] | `[0.5, 0.25, 0.1, 0.05, 0.07, 0.03]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
-| `sinc_probability` | number | `0.03` | Probability of selecting a sinc blur kernel, 0..1. |
 | `motion_probability` | number | `0.0` | Local-pixel motion PSF probability. |
 | `defocus_probability` | number | `0.0` | Local-pixel circular defocus probability. |
 
 ## `NoiseConfig`
 
-Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/read noise followed by edge-preserving and chroma denoising. Scene standard-deviation multipliers: photo 0.35, web 0.5, low-light 1.0.
+Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/read noise. Scene standard-deviation multipliers: photo 0.50, web 0.70, low-light 1.15.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.35, 0.15, 0.5]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `gaussian_sigma` | [number, number] | `[1.0, 9.0]` | Gaussian noise sigma range in 8-bit intensity units. |
-| `poisson_scale` | [number, number] | `[0.05, 0.5]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
-| `iso_shot` | [number, number] | `[0.0002, 0.006]` | Linear-light signal-dependent variance coefficient. |
-| `iso_read` | [number, number] | `[5e-06, 0.00015]` | Linear-light signal-independent read variance. |
+| `gaussian_sigma` | [number, number] | `[1.5, 12.0]` | Gaussian noise sigma range in 8-bit intensity units. |
+| `poisson_scale` | [number, number] | `[0.08, 0.7]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
+| `iso_shot` | [number, number] | `[0.0003, 0.009]` | Linear-light signal-dependent variance coefficient. |
+| `iso_read` | [number, number] | `[8e-06, 0.00025]` | Linear-light signal-independent read variance. |
 | `iso_color_gain` | [number, number] | `[0.92, 1.15]` | ISO color-channel gain range. |
 | `exposure` | [number, number] | `[0.75, 1.0]` | Linear capture exposure before recovery; (0,1]. |
 | `gray_probability` | number | `0.25` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
@@ -512,10 +509,10 @@ Weak residual noise on the delivery or final HQ grid; uses the same scene streng
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.7, 0.1, 0.2]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `gaussian_sigma` | [number, number] | `[0.2, 2.0]` | Gaussian noise sigma range in 8-bit intensity units. |
-| `poisson_scale` | [number, number] | `[0.02, 0.15]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
-| `iso_shot` | [number, number] | `[1e-05, 0.0002]` | Linear-light signal-dependent variance coefficient. |
-| `iso_read` | [number, number] | `[1e-07, 4e-06]` | Linear-light signal-independent read variance. |
+| `gaussian_sigma` | [number, number] | `[0.5, 4.0]` | Gaussian noise sigma range in 8-bit intensity units. |
+| `poisson_scale` | [number, number] | `[0.04, 0.25]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
+| `iso_shot` | [number, number] | `[2e-05, 0.0004]` | Linear-light signal-dependent variance coefficient. |
+| `iso_read` | [number, number] | `[2e-07, 8e-06]` | Linear-light signal-independent read variance. |
 | `iso_color_gain` | [number, number] | `[0.95, 1.05]` | ISO color-channel gain range. |
 | `exposure` | [number, number] | `[1.0, 1.0]` | Linear capture exposure before recovery; (0,1]. |
 | `gray_probability` | number | `0.25` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |

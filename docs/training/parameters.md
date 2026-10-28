@@ -413,7 +413,7 @@ batch_size = 16
 | `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | bilinear/bicubic 降采样启用抗混叠；放大时有其他候选则不选 area。nearest 仅显式启用。 |
 | `first` | object | `子表` | 第一阶段的模糊、缩放、噪声和压缩分布。 |
 | `second` | object | `子表` | 第二阶段的独立模糊、缩放、噪声和压缩分布。 |
-| `final_sinc_probability` | number | `0.1` | 最后应用 sinc 滤波的概率，0..1。 |
+| `final_sinc_probability` | number | `0.1` | 启用独立 sinc 层的概率，0..1；层可在 resize 前或后，核按执行时短边自适应。 |
 | `gray_probability` | number | `0.0` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
 | `color_jitter_probability` | number | `0.0` | 启用色彩扰动的概率，0..1；0 关闭。 |
 | `brightness` | [number, number] | `[0.5, 1.5]` | 亮度倍率范围 [下界, 上界]，用于已启用的色彩扰动。 |
@@ -423,16 +423,15 @@ batch_size = 16
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
 | `noise_strength` | [number, number] | `[0.0, 1.0]` | 全局噪声增益，0～4；乘到所有噪声和颗粒，[0,0] 全部关闭。 |
 | `processing_deadzone` | number | `0.1` | 零起点强度分布的死区，0～1；0 保留纯连续分布，正下界不受影响。 |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4，再乘全局 noise_strength；[0,0] 关闭。 |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4，再乘全局 noise_strength 的平方根；[0,0] 关闭。 |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | 连续纹理平滑混合强度，0～1；按实际降采样倍率 d 乘以 min(1,2/d)。 |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | 连续交付锐化强度，范围 0～1；[0,0] 关闭。 |
 | `smear_detail_protection` | number | `0.6` | 局部对比度保护，0～1；0 恢复均匀混合。 |
-| `compression_blur_probability` | number | `0.25` | 在 LQ 网格先编码后模糊；第二阶段显式关闭模糊或压缩时禁用。 |
 
 ## `StageConfig`
 
-采集阶段：模糊 → 缩放 → 可选噪声/低照度降噪 → 可选网络转载编码。
+采集阶段：resize、blur、noise 与可选网络转载 compression 作为独立层随机排列。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
@@ -457,20 +456,19 @@ batch_size = 16
 | `resize_range` | [number, number] | `[0.9, 1.1]` | 缩放倍率范围，需为正且覆盖 1。 |
 | `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
 | `compression` | object | `子表` | JPEG/WebP/JPEG2000 压缩分布子表。 |
-| `noise_probability` | number | `0.1` | 额外残差噪声概率；触发后等概率在交付阶段或放大回 HQ 后添加一次。 |
+| `noise_probability` | number | `0.25` | 额外残差噪声概率；触发后等概率在交付阶段或放大回 HQ 后添加一次。 |
 | `compression_probability` | number | `0.9` | 最终编码概率；从合法交付算子顺序中等概率采样，可位于 HQ 放大前或后。 |
 
 ## `BlurConfig`
 
-sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混合核。场景强度将 sigma、噪声与压缩损伤关联起来。
+运动和失焦概率之和不得超过 1，其余概率使用 Gaussian／广义 Gaussian／平台核的各向同性与各向异性六类混合。sinc 不属于 blur 层。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.4, 2.8]` | 1024 短边基准 sigma；乘以 clamp(sqrt(短边 / 1024), 0.5, 1.5)。 |
+| `sigma` | [number, number] | `[0.4, 2.8]` | 1024 短边基准 sigma；乘以 clamp(sqrt(当前层短边 / 1024), 0.5, 2.0)。 |
 | `probabilities` | [number, number, number, number, number, number] | `[0.5, 0.25, 0.1, 0.05, 0.07, 0.03]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
-| `sinc_probability` | number | `0.05` | 模糊核选择 sinc 的概率，0..1。 |
 | `motion_probability` | number | `0.20` | 居中手机手持直线曝光核概率。 |
 | `defocus_probability` | number | `0.15` | 圆形孔径失焦核概率。 |
 | `motion_length` | [number, number] | `[0.0, 10.0]` | 直线曝光长度，1024 短边基准像素，上限 64。 |
@@ -478,29 +476,28 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 
 ## `SecondBlurConfig`
 
-核选择规则与 BlurConfig 一致，sigma、motion_length、defocus_radius 使用 LQ 局部像素单位；长度和半径范围继承第一阶段默认值。
+核选择和分辨率适配规则与 BlurConfig 一致；sigma、motion_length、defocus_radius 都以当前层 1024 短边为基准。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.15, 0.65]` | LQ 网格像素单位的 sigma，不随 HQ 分辨率放大。 |
+| `sigma` | [number, number] | `[0.15, 0.65]` | 1024 短边基准 sigma；按该 blur 层执行时的实际短边缩放。 |
 | `probabilities` | [number, number, number, number, number, number] | `[0.5, 0.25, 0.1, 0.05, 0.07, 0.03]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
-| `sinc_probability` | number | `0.03` | 模糊核选择 sinc 的概率，0..1。 |
 | `motion_probability` | number | `0.0` | LQ 像素尺度运动模糊核概率。 |
 | `defocus_probability` | number | `0.0` | LQ 像素尺度圆形失焦核概率。 |
 
 ## `NoiseConfig`
 
-概率顺序为 Gaussian/Poisson/ISO。低照度采集固定使用线性光 shot/read 噪声，并关联保边与色度降噪。场景标准差倍率：普通 0.35、转载 0.5、低照度 1.0。
+概率顺序为 Gaussian/Poisson/ISO。低照度采集固定使用线性光 shot/read 噪声。场景标准差倍率：普通 0.50、转载 0.70、低照度 1.15。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.35, 0.15, 0.5]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `gaussian_sigma` | [number, number] | `[1.0, 9.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
-| `poisson_scale` | [number, number] | `[0.05, 0.5]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
-| `iso_shot` | [number, number] | `[0.0002, 0.006]` | 线性光域信号相关方差系数。 |
-| `iso_read` | [number, number] | `[5e-06, 0.00015]` | 线性光域信号无关读出方差。 |
+| `gaussian_sigma` | [number, number] | `[1.5, 12.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
+| `poisson_scale` | [number, number] | `[0.08, 0.7]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
+| `iso_shot` | [number, number] | `[0.0003, 0.009]` | 线性光域信号相关方差系数。 |
+| `iso_read` | [number, number] | `[8e-06, 0.00025]` | 线性光域信号无关读出方差。 |
 | `iso_color_gain` | [number, number] | `[0.92, 1.15]` | ISO 各颜色通道增益范围。 |
 | `exposure` | [number, number] | `[0.75, 1.0]` | 恢复曝光前的线性采集曝光倍率；范围 (0,1]。 |
 | `gray_probability` | number | `0.25` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
@@ -512,10 +509,10 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.7, 0.1, 0.2]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `gaussian_sigma` | [number, number] | `[0.2, 2.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
-| `poisson_scale` | [number, number] | `[0.02, 0.15]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
-| `iso_shot` | [number, number] | `[1e-05, 0.0002]` | 线性光域信号相关方差系数。 |
-| `iso_read` | [number, number] | `[1e-07, 4e-06]` | 线性光域信号无关读出方差。 |
+| `gaussian_sigma` | [number, number] | `[0.5, 4.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
+| `poisson_scale` | [number, number] | `[0.04, 0.25]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
+| `iso_shot` | [number, number] | `[2e-05, 0.0004]` | 线性光域信号相关方差系数。 |
+| `iso_read` | [number, number] | `[2e-07, 8e-06]` | 线性光域信号无关读出方差。 |
 | `iso_color_gain` | [number, number] | `[0.95, 1.05]` | ISO 各颜色通道增益范围。 |
 | `exposure` | [number, number] | `[1.0, 1.0]` | 恢复曝光前的线性采集曝光倍率；范围 (0,1]。 |
 | `gray_probability` | number | `0.25` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |

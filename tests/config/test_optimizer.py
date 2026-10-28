@@ -50,7 +50,7 @@ def test_explicit_defaults_share_current_grouped_optimizer_identity():
         },
     )
     assert identity(baseline) == identity(explicit)
-    assert identity(baseline).config_sha256 == "7d945df7cfbcb62bb218c8037a9052621b4104be6f22473c1ccecb4de289f447"
+    assert identity(baseline).config_sha256 == "4a25dbfefe8fcbd2d79373c4bff09086cdce16fff09be0605866bb47bb5f314c"
 
 
 @pytest.mark.parametrize("settings", [{"betas": [0.8, 0.95]}, {"eps": 1e-6}, {"backend": "single"}])
