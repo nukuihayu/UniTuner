@@ -5,6 +5,8 @@ These are synthetic processed-RGB approximations, not a calibrated RAW camera IS
 """
 
 import math
+from functools import lru_cache
+from itertools import permutations
 
 import cv2
 import numpy as np
@@ -36,27 +38,60 @@ def sinc_kernel(size: int, cutoff: float) -> Pixels:
     radius = (axis[:, None].square() + axis[None, :].square()).sqrt()
     kernel = cutoff * torch.special.bessel_j1(cutoff * radius) / (2 * math.pi * radius.clamp_min(1e-12))
     kernel[size // 2, size // 2] = cutoff**2 / (4 * math.pi)
+    # Taper the finite support: abrupt truncation can amplify edge overshoot
+    # after DC normalization, especially for short kernels on coarse grids.
+    window = torch.kaiser_window(size, periodic=False, beta=4.0, dtype=torch.float64)
+    kernel *= window[:, None] * window[None, :]
     return (kernel / kernel.sum()).float().numpy()
 
 
 def _sample(bounds: tuple[float, float], rng: np.random.Generator, level: float | None = None) -> float:
-    """Sample uniformly alone, or with small variation around a shared scene severity."""
-    position = rng.random() if level is None else float(np.clip(level + rng.uniform(-0.15, 0.15), 0, 1))
+    """Keep scene correlation while reserving 20% of draws for the full range."""
+    position = (
+        rng.random() if level is None or rng.random() < 0.2 else float(np.clip(level + rng.uniform(-0.15, 0.15), 0, 1))
+    )
     return bounds[0] + (bounds[1] - bounds[0]) * position
 
 
-def _optical_kernel(size: int, sigma: float, angle: float, *, motion: bool) -> Pixels:
-    """Integrate a centered line exposure or circular aperture over pixel areas."""
+def _defocus_kernel(size: int, radius: float) -> Pixels:
+    """Integrate a circular aperture over pixel areas without truncating its rim."""
+    size = max(size, 2 * math.ceil(radius) + 1)
+    if radius == 0:
+        kernel = np.zeros((size, size), dtype=np.float32)
+        kernel[size // 2, size // 2] = 1
+        return kernel
     axis = (np.arange(size * 4, dtype=np.float64) - (size * 4 - 1) / 2) / 4
     xx, yy = np.meshgrid(axis, axis)
-    sigma = max(sigma, 0.25)
-    if motion:
-        u = xx * np.cos(angle) + yy * np.sin(angle)
-        v = -xx * np.sin(angle) + yy * np.cos(angle)
-        aperture = (np.abs(u) <= math.sqrt(3) * sigma) & (np.abs(v) <= 0.5)
-    else:
-        aperture = xx**2 + yy**2 <= (2 * sigma) ** 2
+    aperture = xx**2 + yy**2 <= max(radius, 0.25) ** 2
     kernel = aperture.reshape(size, 4, size, 4).mean((1, 3))
+    return (kernel / kernel.sum()).astype(np.float32)
+
+
+def _motion_kernel(size: int, length: float, angle: float, acceleration: float, focus_radius: float = 0.0) -> Pixels:
+    """Integrate a straight, nonuniform-speed handheld exposure, centered for aligned pairs.
+
+    Equal time samples and bilinear splats preserve exposure energy and the
+    subpixel centroid. Optional aperture convolution adds simultaneous defocus.
+    """
+    time = np.linspace(-0.5, 0.5, max(32, math.ceil(length * 8)), dtype=np.float64)
+    along = length * (time + acceleration * (time**2 - 0.25))
+    x = along * math.cos(angle)
+    y = along * math.sin(angle)
+    x -= x.mean()
+    y -= y.mean()
+    half = max(size // 2, math.ceil(max(float(np.abs(x).max()), float(np.abs(y).max()))) + 1)
+    x += half
+    y += half
+    ix, iy = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
+    fx, fy = x - ix, y - iy
+    kernel = np.zeros((2 * half + 1, 2 * half + 1), dtype=np.float64)
+    for dx, wx in ((0, 1 - fx), (1, fx)):
+        for dy, wy in ((0, 1 - fy), (1, fy)):
+            np.add.at(kernel, (iy + dy, ix + dx), wx * wy / time.size)
+    if focus_radius > 0:
+        aperture = _defocus_kernel(2 * math.ceil(focus_radius) + 1, focus_radius)
+        kernel = np.pad(kernel, aperture.shape[0] // 2)
+        kernel = cv2.filter2D(kernel, -1, aperture, borderType=cv2.BORDER_CONSTANT).clip(0)
     return (kernel / kernel.sum()).astype(np.float32)
 
 
@@ -70,13 +105,18 @@ def mixed_blur_kernel(
         return sinc_kernel(size, float(rng.uniform(math.pi / (3 if size < 25 else 5), math.pi)))
     spatial_scale = float(np.clip(math.sqrt(resolution / 1024), 0.5, 1.5))
     size = 2 * max(1, round((size // 2) * spatial_scale)) + 1
-    if choice < settings.sinc_probability + settings.motion_probability + settings.defocus_probability:
-        return _optical_kernel(
+    if choice < settings.sinc_probability + settings.motion_probability:
+        # Camera shake and imperfect focus can coexist. A continuous radius
+        # starting at zero also includes essentially sharp-focus motion blur.
+        return _motion_kernel(
             size,
-            _sample(settings.sigma, rng, severity) * spatial_scale,
-            rng.uniform(-math.pi, math.pi),
-            motion=choice < settings.sinc_probability + settings.motion_probability,
+            _sample(settings.motion_length, rng, severity) * spatial_scale,
+            float(rng.uniform(-math.pi, math.pi)),
+            float(rng.uniform(-0.6, 0.6)),
+            _sample(settings.defocus_radius, rng, severity) * spatial_scale * float(rng.random()),
         )
+    if choice < settings.sinc_probability + settings.motion_probability + settings.defocus_probability:
+        return _defocus_kernel(size, _sample(settings.defocus_radius, rng, severity) * spatial_scale)
     kind = int(rng.choice(6, p=settings.probabilities))
     sigma_x = _sample(settings.sigma, rng, severity) * spatial_scale
     sigma_y = sigma_x if kind % 2 == 0 else _sample(settings.sigma, rng, severity) * spatial_scale
@@ -267,27 +307,73 @@ def _residual_grain(
     return (image + strength * residual).clip(0, 1).astype(np.float32)
 
 
-def _sample_processing(settings: DegradationConfig, rng: np.random.Generator) -> tuple[float, float, float, float]:
-    """Continuous denoising, residual grain, grain footprint and sharpening.
+def _processing_gain(bounds: tuple[float, float], level: float, deadzone: float) -> float:
+    """A zero atom joined continuously to positive gains, without mode selection.
 
-    More denoising tends to leave less grain, but the independent retention draw
-    allows clean, grainy, softened and intermediate outcomes without class labels.
-    Configured strength bounds are respected, including fixed/zero endpoints.
+    A positive lower bound explicitly requests an always-active operation;
+    fixed bounds remain exact. Deadzone=1 disables zero-based ranges entirely.
     """
+    if bounds[0] == 0:
+        level = max(0.0, (level - deadzone) / (1 - deadzone)) if deadzone < 1 else 0.0
+    return bounds[0] + (bounds[1] - bounds[0]) * level
+
+
+def _sample_processing(
+    settings: DegradationConfig, rng: np.random.Generator
+) -> tuple[float, float, float, float, float]:
+    """Sample continuous processing with exact-zero coverage and shared noise gain."""
     denoising = float(rng.beta(1.5, 2.0))
     retention = float(rng.beta(1.5, 2.0)) * (1 - 0.5 * denoising)
-    smooth = settings.smear_strength[0] + np.ptp(settings.smear_strength) * denoising
-    grain = settings.grain_strength[0] + np.ptp(settings.grain_strength) * retention
+    noise_level = float(rng.beta(1.5, 2.0))
+    smooth = _processing_gain(settings.smear_strength, denoising, settings.processing_deadzone)
+    noise_gain = _processing_gain(settings.noise_strength, noise_level, settings.processing_deadzone)
+    grain = _processing_gain(settings.grain_strength, retention, settings.processing_deadzone) * noise_gain
     footprint = math.exp(rng.uniform(math.log(settings.grain_scale_range[0]), math.log(settings.grain_scale_range[1])))
-    sharpening = _sample(settings.sharpen_strength, rng)
-    return float(smooth), float(grain), footprint, sharpening
+    sharpening = _processing_gain(settings.sharpen_strength, float(rng.random()), settings.processing_deadzone)
+    return smooth, grain, footprint, sharpening, noise_gain
+
+
+def _sample_severity(rng: np.random.Generator) -> float:
+    """Invert a smooth CDF with 20/40/40 mass across diagnostic thirds.
+
+    F(s)=0.1s+1.8s**2-0.9s**3 has strictly positive density on [0,1].
+    No class is selected: every sample follows the same continuous pipeline.
+    """
+    quantile = float(rng.random())
+    low, high = 0.0, 1.0
+    for _ in range(40):
+        middle = (low + high) * 0.5
+        cdf = middle * (0.1 + middle * (1.8 - 0.9 * middle))
+        if cdf < quantile:
+            low = middle
+        else:
+            high = middle
+    return (low + high) * 0.5
 
 
 def _sample_scale(settings: DegradationConfig, rng: np.random.Generator) -> float:
-    """Explicit candidates are uniform; a continuous range is uniform in log scale."""
+    """Sample log-uniform factors independently of damage severity."""
     if settings.scales is not None:
         return float(rng.choice(settings.scales))
-    return math.exp(rng.uniform(math.log(settings.scale_range[0]), math.log(settings.scale_range[1])))
+    level = float(rng.random())
+    low, high = (math.log(value) for value in settings.scale_range)
+    return math.exp(low + (high - low) * level)
+
+
+@lru_cache(maxsize=64)
+def _delivery_orders(operations: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """All legal orders of active operators, cached once per active set.
+
+    Smoothing precedes sharpening and reconstruction; deferred stage-two noise
+    follows reconstruction. Resize and final sinc are one atomic operation so
+    a codec cannot split them and amplify resampling/ringing artifacts.
+    """
+    edges = (("smooth", "sharpen"), ("smooth", "resize"), ("resize", "noise"))
+    return tuple(
+        order
+        for order in permutations(operations)
+        if all(a not in order or b not in order or order.index(a) < order.index(b) for a, b in edges)
+    )
 
 
 def _sharpen(image: Pixels, amount: float) -> Pixels:
@@ -387,11 +473,12 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     height, width = image.shape[:2]
     scene = str(rng.choice(("photo", "web", "low-light"), p=settings.scenario_probabilities))
     # Moderate and strong samples coexist; the same draw links blur, noise and codec damage.
-    severity = float(rng.beta(2, 2))
+    severity = _sample_severity(rng)
     noise_strength = {"photo": 0.35, "web": 0.5, "low-light": 1.0}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
     scale = _sample_scale(settings, rng)
-    smear_strength, grain_strength, grain_scale, sharpening = _sample_processing(settings, rng)
+    smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng)
+    noise_strength *= noise_gain
     late_noise = False
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
@@ -414,7 +501,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                         image, int(h * resize), int(w * resize), rng, settings, factor=resize if index == 0 else None
                     ).clip(0, 1)
                 case "noise":
-                    if rng.random() < stage.noise_probability:
+                    if noise_gain > 0 and rng.random() < stage.noise_probability:
                         if index == 1 and rng.random() < 0.5:
                             late_noise = True
                             continue
@@ -426,8 +513,9 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                             camera=scene == "low-light" and index == 0,
                             severity=severity,
                         )
-                        if scene == "low-light" and index == 0:
-                            image = _camera_processing(image, severity)
+                        if scene == "low-light" and index == 0 and smear_strength > 0:
+                            denoised = _camera_processing(image, severity)
+                            image = (image + smear_strength * (denoised - image)).clip(0, 1)
         if index == 0 and scene == "web" and rng.random() < stage.compression_probability:
             image = _compress(image, stage.compression, rng, codec_severity)
     image = _resize(image, int(height / scale), int(width / scale), rng, settings).clip(0, 1)
@@ -442,31 +530,56 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
         image = _compress(image, settings.second.compression, rng, codec_severity)
         kernel = mixed_blur_kernel(rng, settings.second.blur, 1024, severity=severity)
         image = _filter(image, kernel).clip(0, 1)
-    if rng.random() < settings.final_sinc_probability:
-        size = int(rng.choice(np.arange(7, 22, 2)))
-        image = _filter(image, sinc_kernel(size, float(rng.uniform(math.pi / 2, math.pi)))).clip(0, 1)
-    image = _smooth_texture(
-        image,
-        severity,
-        strength=smear_strength,
-        detail_protection=settings.smear_detail_protection,
-        downsample_factor=max(height / image.shape[0], width / image.shape[1]),
+    final_sinc = bool(rng.random() < settings.final_sinc_probability)
+    encode = bool(rng.random() < settings.second.compression_probability)
+    active = tuple(
+        name
+        for name, enabled in (
+            ("smooth", smear_strength > 0),
+            ("sharpen", sharpening > 0),
+            ("grain", grain_strength > 0),
+            ("encode", encode),
+            ("resize", True),
+            ("noise", late_noise),
+        )
+        if enabled
     )
-    if sharpening > 0:
-        image = _sharpen(image, sharpening)
-    encode = rng.random() < settings.second.compression_probability
-    encode_before_resize = rng.random() < 0.5
-    if encode and encode_before_resize:
-        image = _compress(image, settings.second.compression, rng, codec_severity)
-    if image.shape[:2] != (height, width):
-        image = _resize(image, height, width, rng, settings).clip(0, 1)
-    image = _residual_grain(
-        image, settings.first.noise, rng, severity, strength=grain_strength, spatial_scale=grain_scale
-    )
-    if late_noise:
-        image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
-    if encode and not encode_before_resize:
-        image = _compress(image, settings.second.compression, rng, codec_severity)
+    orders = _delivery_orders(active)
+    delivery_order = orders[int(rng.integers(len(orders)))]
+    for operation in delivery_order:
+        match operation:
+            case "smooth":
+                image = _smooth_texture(
+                    image,
+                    severity,
+                    strength=smear_strength,
+                    detail_protection=settings.smear_detail_protection,
+                    downsample_factor=max(height / image.shape[0], width / image.shape[1]),
+                )
+            case "sharpen":
+                image = _sharpen(image, sharpening)
+            case "grain":
+                reduction = max(height / image.shape[0], width / image.shape[1])
+                image = _residual_grain(
+                    image,
+                    settings.first.noise,
+                    rng,
+                    severity,
+                    strength=grain_strength,
+                    spatial_scale=max(1.0, grain_scale / reduction),
+                )
+            case "encode":
+                image = _compress(image, settings.second.compression, rng, codec_severity)
+            case "resize":
+                # Keep the low-grid sinc and reconstruction together. A codec
+                # can precede or follow this block, never sit between its steps.
+                if final_sinc:
+                    size = int(rng.choice(np.arange(7, 22, 2)))
+                    image = _filter(image, sinc_kernel(size, float(rng.uniform(math.pi / 2, math.pi)))).clip(0, 1)
+                if image.shape[:2] != (height, width):
+                    image = _resize(image, height, width, rng, settings).clip(0, 1)
+            case "noise":
+                image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     if rng.random() < settings.gray_probability:
         value = image_ops.rgb_to_grayscale(value, num_output_channels=3)

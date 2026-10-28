@@ -409,7 +409,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Enable synthetic degradation for this group; omit this table for real paired LQ data. |
 | `scales` | [number, …] | unset | Optional explicit factors, 1..16 including fractions; sampled uniformly, overrides scale_range. |
-| `scale_range` | [number, number] | `[1.0, 8.0]` | Continuous factors, log-uniform; bounds within 1..16. |
+| `scale_range` | [number, number] | `[1.0, 8.0]` | Continuous factors log-uniform and independent of severity; bounds within 1..16. |
 | `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | Downsampling uses antialiasing for bilinear/bicubic; enlargement omits area when other modes exist. Nearest is opt-in. |
 | `first` | object | `subtable` | First-stage blur, resize, noise and compression distributions. |
 | `second` | object | `subtable` | Independent second-stage blur, resize, noise and compression distributions. |
@@ -421,7 +421,9 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `saturation` | [number, number] | `[0.0, 1.5]` | Saturation multiplier range [lower, upper]. |
 | `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4. |
+| `noise_strength` | [number, number] | `[0.0, 1.0]` | Global gain for all noise and grain, 0..4; [0,0] disables all added noise. |
+| `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4, multiplied by global noise_strength. |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | Texture-smoothing blend, 0..1; attenuated by min(1, 2/d) at actual downsampling factor d. |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | Continuous delivery sharpening gain, 0..1; [0,0] disables it. |
@@ -456,7 +458,7 @@ Delivery randomly orders resizing, local blur and noise, then applies the target
 | `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
 | `compression` | object | `subtable` | JPEG/WebP/JPEG2000 compression distribution table. |
 | `noise_probability` | number | `0.1` | Additional residual noise probability; once selected, applied equally in delivery or after HQ enlargement, once per sample. |
-| `compression_probability` | number | `0.9` | Final encoding probability for all scenes; equally before/after any remaining HQ enlargement, or on HQ if already enlarged. |
+| `compression_probability` | number | `0.9` | Final encoding probability; sampled uniformly among legal delivery orders, before or after HQ enlargement. |
 
 ## `BlurConfig`
 
@@ -469,8 +471,10 @@ Sinc, motion and defocus probabilities sum to at most 1. Remaining probability u
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
 | `sinc_probability` | number | `0.05` | Probability of selecting a sinc blur kernel, 0..1. |
-| `motion_probability` | number | `0.12` | Centered linear motion PSF probability. |
-| `defocus_probability` | number | `0.1` | Circular-aperture defocus probability. |
+| `motion_probability` | number | `0.20` | Centered handheld straight-exposure PSF probability. |
+| `defocus_probability` | number | `0.15` | Circular-aperture defocus probability. |
+| `motion_length` | [number, number] | `[0.0, 10.0]` | Straight exposure length; 1024-short-edge reference pixels, maximum 64. |
+| `defocus_radius` | [number, number] | `[0.5, 4.0]` | Circular aperture radius in reference pixels, maximum 16; motion also samples a continuous 0..1 focus multiplier. |
 
 ## `SecondBlurConfig`
 

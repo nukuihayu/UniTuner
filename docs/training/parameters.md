@@ -409,7 +409,7 @@ batch_size = 16
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | 启用该组的合成退化；真实 LQ 配对任务不添加此表。 |
 | `scales` | [number, …] | unset | 可选的显式倍率列表，支持 1～16 的小数；等概率抽取，优先于 scale_range。 |
-| `scale_range` | [number, number] | `[1.0, 8.0]` | 连续倍率区间，按对数均匀分布采样；上下界在 1～16 内。 |
+| `scale_range` | [number, number] | `[1.0, 8.0]` | 连续倍率区间，与强度独立的对数均匀采样；上下界在 1～16 内。 |
 | `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | bilinear/bicubic 降采样启用抗混叠；放大时有其他候选则不选 area。nearest 仅显式启用。 |
 | `first` | object | `子表` | 第一阶段的模糊、缩放、噪声和压缩分布。 |
 | `second` | object | `子表` | 第二阶段的独立模糊、缩放、噪声和压缩分布。 |
@@ -421,7 +421,9 @@ batch_size = 16
 | `saturation` | [number, number] | `[0.0, 1.5]` | 饱和度倍率范围 [下界, 上界]。 |
 | `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4；[0,0] 关闭。 |
+| `noise_strength` | [number, number] | `[0.0, 1.0]` | 全局噪声增益，0～4；乘到所有噪声和颗粒，[0,0] 全部关闭。 |
+| `processing_deadzone` | number | `0.1` | 零起点强度分布的死区，0～1；0 保留纯连续分布，正下界不受影响。 |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4，再乘全局 noise_strength；[0,0] 关闭。 |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | 连续纹理平滑混合强度，0～1；按实际降采样倍率 d 乘以 min(1,2/d)。 |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | 连续交付锐化强度，范围 0～1；[0,0] 关闭。 |
@@ -456,7 +458,7 @@ batch_size = 16
 | `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
 | `compression` | object | `子表` | JPEG/WebP/JPEG2000 压缩分布子表。 |
 | `noise_probability` | number | `0.1` | 额外残差噪声概率；触发后等概率在交付阶段或放大回 HQ 后添加一次。 |
-| `compression_probability` | number | `0.9` | 所有场景最终编码概率；仍需放大时等概率位于放大前或后，已到 HQ 网格时在该网格编码。 |
+| `compression_probability` | number | `0.9` | 最终编码概率；从合法交付算子顺序中等概率采样，可位于 HQ 放大前或后。 |
 
 ## `BlurConfig`
 
@@ -469,12 +471,14 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
 | `sinc_probability` | number | `0.05` | 模糊核选择 sinc 的概率，0..1。 |
-| `motion_probability` | number | `0.12` | 居中直线运动模糊核概率。 |
-| `defocus_probability` | number | `0.1` | 圆形孔径失焦核概率。 |
+| `motion_probability` | number | `0.20` | 居中手机手持直线曝光核概率。 |
+| `defocus_probability` | number | `0.15` | 圆形孔径失焦核概率。 |
+| `motion_length` | [number, number] | `[0.0, 10.0]` | 直线曝光长度，1024 短边基准像素，上限 64。 |
+| `defocus_radius` | [number, number] | `[0.5, 4.0]` | 圆形失焦半径，基准像素，上限 16；运动分支另乘连续 0..1 失焦系数。 |
 
 ## `SecondBlurConfig`
 
-核选择规则与 BlurConfig 一致，但 sigma 使用 LQ 局部像素单位。
+核选择规则与 BlurConfig 一致，sigma、motion_length、defocus_radius 使用 LQ 局部像素单位；长度和半径范围继承第一阶段默认值。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |

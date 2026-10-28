@@ -51,8 +51,10 @@ class BlurConfig(DistributionConfig, frozen=True):
     generalized_beta: Range = (0.5, 4.0)
     plateau_beta: Range = (1.0, 2.0)
     sinc_probability: Probability = 0.05
-    motion_probability: Probability = 0.12
-    defocus_probability: Probability = 0.10
+    motion_probability: Probability = 0.20
+    defocus_probability: Probability = 0.15
+    motion_length: Range = (0.0, 10.0)
+    defocus_radius: Range = (0.5, 4.0)
 
     @model_validator(mode="after")
     def validate_positive(self) -> Self:
@@ -60,6 +62,8 @@ class BlurConfig(DistributionConfig, frozen=True):
             raise ValueError("Blur sigma must be positive and generalized beta must bracket one")
         if not 0 < self.plateau_beta[0] <= 1 <= self.plateau_beta[1]:
             raise ValueError("Plateau beta must be positive and bracket one")
+        if self.motion_length[1] > 64 or self.defocus_radius[1] > 16:
+            raise ValueError("motion_length must be <=64 and defocus_radius <=16")
         if self.sinc_probability + self.motion_probability + self.defocus_probability > 1:
             raise ValueError("Sinc, motion and defocus probabilities must sum to at most one")
         return self
@@ -176,6 +180,8 @@ class DegradationConfig(DistributionConfig, frozen=True):
     scale_range: Range = (1.0, 8.0)
     scenario_probabilities: Probabilities = (0.25, 0.35, 0.40)
     compression_blur_probability: Probability = 0.25
+    noise_strength: Range = (0.0, 1.0)
+    processing_deadzone: Probability = 0.1
     grain_strength: Range = (0.0, 1.5)
     smear_strength: Range = (0.0, 0.8)
     smear_detail_protection: Probability = 0.6
@@ -198,6 +204,8 @@ class DegradationConfig(DistributionConfig, frozen=True):
 
     @model_validator(mode="after")
     def validate_choices(self) -> Self:
+        if self.noise_strength[1] > 4:
+            raise ValueError("noise_strength must be within [0,4]")
         if self.grain_strength[1] > 4 or self.smear_strength[1] > 1:
             raise ValueError("grain_strength must be within [0,4] and smear_strength within [0,1]")
         if not 1 <= self.scale_range[0] <= self.scale_range[1] <= 16:

@@ -19,7 +19,8 @@ from unitunner.data.degradation.config import (
     StageConfig,
 )
 from unitunner.data.degradation.pipeline import (
-    _optical_kernel,
+    _defocus_kernel,
+    _motion_kernel,
     _resize,
     add_noise,
     compress_image,
@@ -29,17 +30,19 @@ from unitunner.data.degradation.pipeline import (
 )
 
 
-def test_kernels_preserve_dc_symmetry_and_sinc_negative_lobes():
+def test_kernels_preserve_dc_centroid_and_sinc_negative_lobes():
     rng = np.random.default_rng(42)
     for _ in range(32):
         kernel = mixed_blur_kernel(rng, BlurConfig(), 512)
         assert np.isfinite(kernel).all()
-        assert kernel.sum() == pytest.approx(1, abs=2e-7)
-        np.testing.assert_allclose(kernel, kernel[::-1, ::-1], atol=1e-7)
+        assert kernel.sum(dtype=np.float64) == pytest.approx(1, abs=2e-7)
+        axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
+        assert abs((kernel * axis[None, :]).sum()) < 1e-6
+        assert abs((kernel * axis[:, None]).sum()) < 1e-6
     kernel = sinc_kernel(21, math.pi / 2)
     assert kernel.min() < 0
     np.testing.assert_allclose(kernel, kernel.T, atol=1e-7)
-    assert kernel.sum() == pytest.approx(1, abs=2e-7)
+    assert kernel.sum(dtype=np.float64) == pytest.approx(1, abs=2e-7)
 
 
 @pytest.mark.parametrize("scale", [1, 4, 16])
@@ -172,7 +175,11 @@ def test_acquisition_blur_uses_short_edge_and_delivery_blur_uses_local_pixels(mo
     for image in (high, high.transpose(1, 2)):
         result = degrade_image(
             image,
-            DegradationConfig(first=StageConfig(blur_probability=1.0), second=SecondStageConfig(blur_probability=1.0)),
+            DegradationConfig(
+                compression_blur_probability=0.0,
+                first=StageConfig(blur_probability=1.0),
+                second=SecondStageConfig(blur_probability=1.0),
+            ),
             7,
         )
         assert result.shape == image.shape
@@ -181,7 +188,7 @@ def test_acquisition_blur_uses_short_edge_and_delivery_blur_uses_local_pixels(mo
 
 @pytest.mark.parametrize("motion", [False, True])
 def test_optical_exposure_kernels_are_centered_and_preserve_energy(motion):
-    kernel = _optical_kernel(31, 2, 0, motion=motion)
+    kernel = _motion_kernel(31, 8, 0, 0) if motion else _defocus_kernel(31, 4)
     assert np.isfinite(kernel).all() and kernel.min() >= 0
     assert kernel.sum() == pytest.approx(1, abs=1e-7)
     np.testing.assert_array_equal(kernel, kernel[::-1, ::-1])
@@ -259,6 +266,7 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
         scales=(4,),
         scenario_probabilities=(float(scene == 0), float(scene == 1), float(scene == 2)),
         smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
         first=StageConfig(noise_probability=1.0, compression_probability=1.0),
@@ -298,6 +306,7 @@ def test_scale_sampling_is_uniform_without_favoring_the_largest_factor(monkeypat
         scales=scales,
         scenario_probabilities=(1.0, 0.0, 0.0),
         smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
         first=StageConfig(blur_probability=0.0, noise_probability=0.0),
@@ -400,6 +409,7 @@ def test_output_grid_noise_retains_fine_grain_after_sr_resize(monkeypatch, scale
         scales=(scale,),
         scenario_probabilities=(1.0, 0.0, 0.0),
         smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
         resize_modes=("bilinear",),
@@ -433,6 +443,7 @@ def test_disabling_noise_and_extra_processing_does_not_inject_noise(monkeypatch)
     cfg = DegradationConfig(
         scales=(4, 8),
         smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
         first=StageConfig(noise_probability=0.0),
@@ -452,6 +463,7 @@ def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
         scales=(4,),
         scenario_probabilities=(1.0, 0.0, 0.0),
         smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
         final_sinc_probability=0.0,
@@ -529,7 +541,7 @@ def test_recompression_shifts_block_origin_without_shifting_image(monkeypatch):
     np.testing.assert_array_equal(result, image)
 
 
-def test_continuous_processing_smooths_before_adding_residual_grain(monkeypatch):
+def test_delivery_history_covers_noise_before_and_after_smoothing(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     calls = []
@@ -547,10 +559,18 @@ def test_continuous_processing_smooths_before_adding_residual_grain(monkeypatch)
     monkeypatch.setattr(pipeline, "_residual_grain", record_grain)
     high = torch.rand(3, 64, 96)
     before = high.clone()
-    result = degrade_image(high, DegradationConfig(), 17)
-    assert calls == ["smooth", "grain"]
-    torch.testing.assert_close(high, before, atol=0, rtol=0)
-    assert result.shape == high.shape and torch.isfinite(result).all()
+    orders = set()
+    for seed in range(32):
+        calls.clear()
+        result = degrade_image(
+            high,
+            DegradationConfig(smear_strength=(0.3, 0.3), grain_strength=(0.3, 0.3), noise_strength=(1.0, 1.0)),
+            seed,
+        )
+        orders.add(tuple(calls))
+        torch.testing.assert_close(high, before, atol=0, rtol=0)
+        assert result.shape == high.shape and torch.isfinite(result).all()
+    assert orders == {("smooth", "grain"), ("grain", "smooth")}
 
 
 def test_adaptive_smear_preserves_contrast_without_disabling_flat_texture_removal():
@@ -596,6 +616,7 @@ def test_compression_blur_order_and_disable_switches(monkeypatch, disabled):
         compression_blur_probability=0.0 if disabled == "path" else 1.0,
         scenario_probabilities=(1.0, 0.0, 0.0),
         smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
         first=StageConfig(blur_probability=0.0, noise_probability=0.0, compression_probability=0.0),
@@ -633,13 +654,13 @@ def test_continuous_scale_and_processing_sampling_cover_intermediate_values():
     rng = np.random.default_rng(37)
     scales = np.array([_sample_scale(cfg, rng) for _ in range(2048)])
     assert np.all((scales >= 1) & (scales <= 8))
-    assert np.median(scales) == pytest.approx(math.sqrt(8), rel=0.08)
+    assert np.median(np.log(scales) / math.log(8)) == pytest.approx(0.5, abs=0.03)
     assert len(np.unique(scales.round(2))) > 400
     draws = np.array([_sample_processing(cfg, rng) for _ in range(2048)])
-    assert np.all((draws >= 0) & (draws <= [0.8, 1.5, 4, 0.4]))
+    assert np.all((draws >= 0) & (draws <= [0.8, 1.5, 4, 0.4, 1.0]))
     assert np.all(draws[:, 2] >= 1)
     assert np.corrcoef(draws[:, 0], draws[:, 1])[0, 1] < -0.1
-    assert np.any((draws[:, 0] > 0.5) & (draws[:, 1] > 0.4))
+    assert np.any((draws[:, 0] > 0.4) & (draws[:, 1] > 0.2))
     assert np.any((draws[:, 0] < 0.1) & (draws[:, 1] < 0.1))
 
 
@@ -693,3 +714,195 @@ def test_explicit_scale_candidates_override_continuous_range_and_roundtrip():
     restored = DegradationConfig.model_validate_json(cfg.model_dump_json())
     rng = np.random.default_rng(0)
     assert {_sample_scale(restored, rng) for _ in range(100)} == {1.5, 2.75, 6.0}
+
+
+def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_positive_bounds():
+    from unitunner.data.degradation.pipeline import _processing_gain, _sample_processing
+
+    assert _processing_gain((0.0, 0.8), 0.2, 0.2) == 0
+    assert _processing_gain((0.0, 0.8), 0.2 + 1e-8, 0.2) == pytest.approx(1e-8)
+    assert _processing_gain((0.3, 0.3), 0.0, 1.0) == 0.3
+    assert _processing_gain((0.0, 0.8), 1.0, 1.0) == 0
+    rng = np.random.default_rng(20)
+    draws = np.array([_sample_processing(DegradationConfig(), rng) for _ in range(10000)])
+    no_smooth, no_noise = draws[:, 0] == 0, draws[:, 4] == 0
+    # Beta(1.5,2) CDF at the configured deadzone.
+    threshold = DegradationConfig().processing_deadzone
+    zero_mass = 2.5 * threshold**1.5 - 1.5 * threshold**2.5
+    assert no_smooth.mean() == pytest.approx(zero_mass, abs=0.015)
+    assert no_noise.mean() == pytest.approx(zero_mass, abs=0.015)
+    assert (no_smooth & no_noise).mean() == pytest.approx(zero_mass**2, abs=0.01)
+    assert np.all(draws[no_noise, 1] == 0)
+
+
+def test_shared_zero_noise_gain_suppresses_every_noise_stage(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("An all-stage zero noise gain must bypass noise generation")
+
+    monkeypatch.setattr(pipeline, "add_noise", forbidden)
+    cfg = DegradationConfig(
+        noise_strength=(0.0, 0.0),
+        grain_strength=(1.0, 1.0),
+        first=StageConfig(noise_probability=1.0),
+        second=SecondStageConfig(noise_probability=1.0),
+    )
+    for seed in range(16):
+        out = degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
+        assert torch.isfinite(out).all()
+
+
+def test_zero_smoothing_also_bypasses_camera_denoising(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Zero smoothing must bypass the camera denoiser as well")
+
+    monkeypatch.setattr(pipeline, "_camera_processing", forbidden)
+    cfg = DegradationConfig(
+        smear_strength=(0.0, 0.0),
+        noise_strength=(1.0, 1.0),
+        scenario_probabilities=(0.0, 0.0, 1.0),
+        first=StageConfig(noise_probability=1.0),
+    )
+    for seed in range(16):
+        out = degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
+        assert torch.isfinite(out).all()
+
+
+def test_codec_positions_cover_denoising_and_resize_history_without_extra_encode(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    events = []
+    compress, smooth = pipeline._compress, pipeline._smooth_texture
+
+    def encode(image, *args, **kwargs):
+        events.append(("encode", image.shape[:2]))
+        return compress(image, *args, **kwargs)
+
+    def denoise(image, *args, **kwargs):
+        events.append(("smooth", image.shape[:2]))
+        return smooth(image, *args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_compress", encode)
+    monkeypatch.setattr(pipeline, "_smooth_texture", denoise)
+    cfg = DegradationConfig(
+        scales=(4.0,),
+        smear_strength=(0.3, 0.3),
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        compression_blur_probability=0.0,
+        second=SecondStageConfig(compression_probability=1.0),
+    )
+    observed = set()
+    for seed in range(64):
+        events.clear()
+        degrade_image(torch.full((3, 64, 96), 0.4), cfg, seed)
+        observed.add(tuple(events))
+    assert observed == {
+        (("encode", (16, 24)), ("smooth", (16, 24))),
+        (("smooth", (16, 24)), ("encode", (16, 24))),
+        (("smooth", (16, 24)), ("encode", (64, 96))),
+    }
+
+
+def test_windowed_sinc_limits_short_kernel_step_ringing_without_removing_negative_lobes():
+    # Previously this short, abruptly truncated kernel produced about 24% step
+    # overshoot after normalization, exaggerated further by coarse-grid resizing.
+    kernel = sinc_kernel(7, 1.8889296497771006)
+    edge = kernel.sum(axis=0).cumsum()
+    assert kernel.min() < 0
+    assert edge.min() > -0.05 and edge.max() < 1.05
+    np.testing.assert_allclose(kernel.sum(), 1.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("angle", [0, 0.7, 2.1])
+@pytest.mark.parametrize("length,focus", [(0, 0), (10, 2), (96, 24)])
+def test_handheld_psf_preserves_alignment_and_complete_support(angle, length, focus):
+    kernel = _motion_kernel(7, length, angle, 0.6, focus)
+    axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
+    assert np.isfinite(kernel).all() and kernel.min() >= 0
+    assert kernel.sum(dtype=np.float64) == pytest.approx(1, abs=2e-7)
+    assert abs((kernel * axis[None, :]).sum()) < 2e-6
+    assert abs((kernel * axis[:, None]).sum()) < 2e-6
+    assert np.abs(kernel[[0, -1]]).max() < 1e-12
+    assert np.abs(kernel[:, [0, -1]]).max() < 1e-12
+
+
+def test_defocus_broadens_handheld_psf_without_changing_centroid():
+    def moment(kernel):
+        axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
+        return (kernel * (axis[:, None] ** 2 + axis[None, :] ** 2)).sum()
+
+    assert moment(_defocus_kernel(7, 0)) == 0
+    assert moment(_defocus_kernel(7, 4)) > moment(_defocus_kernel(7, 1))
+    assert moment(_motion_kernel(7, 10, 0.7, 0.6, 3)) > moment(_motion_kernel(7, 10, 0.7, 0.6))
+
+
+@pytest.mark.parametrize("late_noise,count", [(False, 40), (True, 90)])
+def test_delivery_order_space_and_sampling(late_noise, count):
+    from unitunner.data.degradation.pipeline import _delivery_orders
+
+    active = ("smooth", "sharpen", "grain", "encode", "resize") + (("noise",) if late_noise else ())
+    orders = _delivery_orders(active)
+    assert len(orders) == len(set(orders)) == count
+    for order in orders:
+        assert set(order) == set(active)
+        assert order.index("smooth") < order.index("sharpen")
+        assert order.index("smooth") < order.index("resize")
+        if late_noise:
+            assert order.index("resize") < order.index("noise")
+    hits = np.bincount(np.random.default_rng(42).integers(count, size=count * 1000), minlength=count)
+    assert hits.min() > 850 and hits.max() < 1150
+    assert _delivery_orders(("resize",)) == (("resize",),)
+
+
+def test_correlated_parameter_draws_retain_full_range_exploration():
+    from unitunner.data.degradation.pipeline import _sample
+
+    rng = np.random.default_rng(42)
+    values = np.array([_sample((2, 10), rng, 0.5) for _ in range(10000)])
+    assert values.min() >= 2 and values.max() <= 10
+    assert (values < 2.8).sum() > 130 and (values > 9.2).sum() > 130
+    assert _sample((3, 3), rng, 0.9) == 3
+
+
+@pytest.mark.parametrize(
+    "field,value", [("motion_length", (0.0, 65.0)), ("defocus_radius", (0.0, 17.0)), ("motion_length", (-1.0, 4.0))]
+)
+def test_invalid_handheld_ranges_fail(field, value):
+    with pytest.raises(ValueError):
+        BlurConfig.model_validate({field: value})
+
+
+def test_continuous_severity_matches_smooth_cdf_and_covers_tails():
+    from unitunner.data.degradation.pipeline import _sample_severity
+
+    rng = np.random.default_rng(42)
+    values = np.array([_sample_severity(rng) for _ in range(20000)])
+    assert 0 < values.min() < 0.01 and 0.99 < values.max() < 1
+    np.testing.assert_allclose(
+        np.histogram(values, bins=[0, 1 / 3, 2 / 3, 1])[0] / values.size, [0.2, 0.4, 0.4], atol=0.015, rtol=0
+    )
+    # Replaying uniforms checks inversion throughout the interval, not just bins.
+    uniforms = np.random.default_rng(42).random(values.size)
+    np.testing.assert_allclose(values * (0.1 + values * (1.8 - 0.9 * values)), uniforms, atol=1e-12, rtol=0)
+
+
+def test_independent_scale_covers_all_severities_and_respects_explicit_choices():
+    from unitunner.data.degradation.pipeline import _sample_scale, _sample_severity
+
+    rng = np.random.default_rng(42)
+    cfg = DegradationConfig()
+    pairs = np.array([(_sample_severity(rng), _sample_scale(cfg, rng)) for _ in range(20000)])
+    severity, log_scale = pairs[:, 0], np.log(pairs[:, 1]) / math.log(8)
+    assert abs(np.corrcoef(severity, log_scale)[0, 1]) < 0.03
+    for low, high in [(0, 1 / 3), (1 / 3, 2 / 3), (2 / 3, 1)]:
+        selected = severity[(log_scale >= low) & (log_scale < high)]
+        assert len(selected) > 6000
+        np.testing.assert_allclose(
+            np.histogram(selected, [0, 1 / 3, 2 / 3, 1])[0] / len(selected), [0.2, 0.4, 0.4], atol=0.025, rtol=0
+        )
+    for _ in range(20):
+        assert _sample_scale(DegradationConfig(scale_range=(6.0, 6.0)), rng) == pytest.approx(6)
+        assert _sample_scale(DegradationConfig(scales=(4.0, 6.0)), rng) in (4.0, 6.0)
