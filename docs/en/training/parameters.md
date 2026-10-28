@@ -422,6 +422,8 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
 | `noise_strength` | [number, number] | `[1.0, 1.0]` | Global noise gain, 0..4; defaults to full two-stage strength, while [0,0] disables all added noise. |
+| `first_noise_variance_share` | number | `0.7` | First-stage share of total variance when both noise stages run; stage two uses the remainder, while a sole active stage receives full gain. |
+| `second_noise_chroma_scale` | number | `0.35` | Stage-two RGB-noise chroma ratio, 0..1; RMS is renormalized after scaling so total noise energy is unchanged. |
 | `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
 | `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4, multiplied by sqrt(global gain) and `max(0.15,1−0.85×acquisition severity)`. |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
@@ -446,7 +448,7 @@ Acquisition randomly orders resize, blur and noise; optional intermediate web co
 
 ## `SecondStageConfig`
 
-Delivery randomly orders resizing, local blur and noise. Noise may instead be deferred to the processing layer before the terminal group, but runs once per sample. The pipeline then strictly applies `resize+sinc -> compression` or `compression -> resize+sinc`.
+Delivery randomly orders resizing, local blur and noise. Stage-two noise may instead be deferred until after the complete delivery group, producing fine noise on the final HQ grid, but still runs once per sample. The delivery group strictly applies `resize+sinc -> compression` or `compression -> resize+sinc`.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
@@ -456,7 +458,7 @@ Delivery randomly orders resizing, local blur and noise. Noise may instead be de
 | `resize_range` | [number, number] | `[0.3, 1.2]` | Positive resize-factor range spanning 1. |
 | `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
 | `compression` | object | `subtable` | JPEG/WebP/JPEG2000 compression distribution table. |
-| `noise_probability` | number | `1.0` | Second-stage noise probability; applied once before or after blur, never past the terminal delivery group. |
+| `noise_probability` | number | `1.0` | Second-stage noise probability; applied once before/after blur or deferred to the final HQ grid. |
 | `compression_probability` | number | `0.9` | Final encoding probability; only `resize+sinc -> compression` or `compression -> resize+sinc` is legal. |
 
 ## `BlurConfig`

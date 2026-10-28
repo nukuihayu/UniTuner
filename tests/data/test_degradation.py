@@ -425,7 +425,7 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
 
 
 @pytest.mark.parametrize("scale", [4, 8])
-def test_deferred_noise_stays_before_constrained_delivery_group(monkeypatch, scale):
+def test_second_stage_noise_covers_delivery_and_final_fine_grids(monkeypatch, scale):
     from unitunner.data.degradation import pipeline
 
     shapes = []
@@ -453,11 +453,56 @@ def test_deferred_noise_stays_before_constrained_delivery_group(monkeypatch, sca
             noise=SecondNoiseConfig(probabilities=(1.0, 0.0, 0.0), gaussian_sigma=(8.0, 8.0)),
         ),
     )
+    observed = set()
     for seed in range(32):
         shapes.clear()
         low = degrade_image(torch.full((3, 128, 192), 0.5), cfg, seed)
         assert len(shapes) == 1  # Deferring noise must not add it twice.
+        observed.add(shapes[0])
         assert (low[:, :, 1:] - low[:, :, :-1]).std().item() > 0
+    assert (128, 192) in observed
+    assert any(shape != (128, 192) for shape in observed)
+
+
+def test_two_stage_noise_preserves_one_unit_of_variance_budget(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    strengths = []
+
+    def noise(image, *args, **kwargs):
+        strengths.append(kwargs["strength"])
+        return image
+
+    monkeypatch.setattr(pipeline, "add_noise", noise)
+    cfg = DegradationConfig(
+        scales=(4.0,),
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        noise_strength=(1.0, 1.0),
+        grain_strength=(0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
+        first=StageConfig(blur_probability=0.0, noise_probability=1.0, compression_probability=0.0),
+        second=SecondStageConfig(blur_probability=0.0, noise_probability=1.0, compression_probability=0.0),
+        final_sinc_probability=0.0,
+    )
+    for seed in range(16):
+        strengths.clear()
+        degrade_image(torch.full((3, 64, 96), 0.5), cfg, seed)
+        assert len(strengths) == 2
+        assert sum(value**2 for value in strengths) == pytest.approx(1)
+
+
+def test_chroma_control_preserves_noise_rms_while_reducing_color_speckle():
+    image = np.full((128, 128, 3), 0.5, dtype=np.float32)
+    settings = NoiseConfig(
+        probabilities=(1.0, 0.0, 0.0), gaussian_sigma=(12.0, 12.0), gray_probability=0.0
+    )
+    full = add_noise(image, settings, np.random.default_rng(41), chroma_scale=1.0) - image
+    controlled = add_noise(image, settings, np.random.default_rng(41), chroma_scale=0.35) - image
+    full_luma = (full * np.array([0.2126, 0.7152, 0.0722])).sum(2, keepdims=True)
+    controlled_luma = (controlled * np.array([0.2126, 0.7152, 0.0722])).sum(2, keepdims=True)
+    assert np.square(controlled).mean() == pytest.approx(np.square(full).mean(), rel=1e-5)
+    assert np.square(controlled - controlled_luma).mean() < np.square(full - full_luma).mean() * 0.3
 
 
 def test_disabling_noise_and_extra_processing_does_not_inject_noise(monkeypatch):
@@ -784,6 +829,8 @@ def test_defaults_merge_realesrgan_strength_with_unitunner_extensions():
     assert cfg.second.noise.poisson_scale == (0.05, 2.5)
     assert cfg.final_sinc_probability == 0.8
     assert cfg.noise_strength == (1.0, 1.0)
+    assert cfg.first_noise_variance_share == 0.7
+    assert cfg.second_noise_chroma_scale == 0.35
     assert cfg.first.blur.motion_probability == 0.2
     assert cfg.first.blur.defocus_probability == 0.15
     assert cfg.grain_strength == (0.0, 1.5)

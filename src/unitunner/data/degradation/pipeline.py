@@ -219,6 +219,7 @@ def add_noise(
     strength: float = 1.0,
     camera: bool = False,
     severity: float | None = None,
+    chroma_scale: float = 1.0,
 ) -> Pixels:
     """Gaussian/Poisson residuals in sRGB, or shot/read noise in linear light.
 
@@ -251,6 +252,14 @@ def add_noise(
         if gray:
             variance = variance.mean(2, keepdims=True)
         noise = rng.standard_normal(shape) * np.sqrt(variance.clip(0))
+    if noise.shape[-1] == 3 and chroma_scale < 1:
+        luminance = (noise * np.array([0.2126, 0.7152, 0.0722])).sum(2, keepdims=True)
+        adjusted = luminance + chroma_scale * (noise - luminance)
+        original_energy = float(np.square(noise).mean())
+        adjusted_energy = float(np.square(adjusted).mean())
+        if adjusted_energy > 0:
+            adjusted *= math.sqrt(original_energy / adjusted_energy)
+        noise = adjusted
     result = (source + noise * strength).clip(0, 1)
     if kind == 2:
         result = (result / exposure).clip(0, 1)
@@ -523,14 +532,24 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     scale = _sample_scale(settings, rng)
     smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng, severity)
     noise_strength *= noise_gain
-    late_noise = False
+    selected_noise = tuple(
+        noise_gain > 0 and rng.random() < stage.noise_probability for stage in (settings.first, settings.second)
+    )
+    late_noise = selected_noise[1] and rng.random() < 0.5
+    if all(selected_noise):
+        first_share = settings.first_noise_variance_share
+        noise_gains = (math.sqrt(first_share), math.sqrt(1 - first_share))
+    elif selected_noise[0]:
+        noise_gains = (1.0, 0.0)
+    elif selected_noise[1]:
+        noise_gains = (0.0, 1.0)
+    else:
+        noise_gains = (0.0, 0.0)
+
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
         blur = rng.random() < stage.blur_probability
-        noise = noise_gain > 0 and rng.random() < stage.noise_probability
-        if index == 1 and noise and rng.random() < 0.5:
-            late_noise = True
-            noise = False
+        noise = selected_noise[index] and not (index == 1 and late_noise)
         compression = index == 0 and scene == "web" and rng.random() < stage.compression_probability
         active = tuple(
             name
@@ -554,9 +573,10 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                         image,
                         stage.noise,
                         rng,
-                        strength=noise_strength,
+                        strength=noise_strength * noise_gains[index],
                         camera=scene == "low-light" and index == 0,
                         severity=severity,
+                        chroma_scale=settings.second_noise_chroma_scale if index == 1 else 1.0,
                     )
                 case "compression":
                     image = _compress(image, stage.compression, rng, codec_severity)
@@ -567,7 +587,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
         for name, enabled in (
             ("smear", smear_strength > 0),
             ("sharpen", sharpening > 0),
-            ("noise", late_noise or grain_strength > 0),
+            ("noise", grain_strength > 0),
         )
         if enabled
     )
@@ -587,8 +607,6 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
             case "sharpen":
                 return _sharpen(value, sharpening)
             case "noise":
-                if late_noise:
-                    value = add_noise(value, settings.second.noise, rng, strength=noise_strength, severity=severity)
                 if grain_strength > 0:
                     reduction = max(height / value.shape[0], width / value.shape[1])
                     value = _residual_grain(
@@ -621,6 +639,16 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
         if compression:
             image = _compress(image, settings.second.compression, rng, codec_severity)
         image = resize_and_sinc(image)
+
+    if late_noise:
+        image = add_noise(
+            image,
+            settings.second.noise,
+            rng,
+            strength=noise_strength * noise_gains[1],
+            severity=severity,
+            chroma_scale=settings.second_noise_chroma_scale,
+        )
 
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     if rng.random() < settings.gray_probability:

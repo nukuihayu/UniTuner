@@ -422,6 +422,8 @@ batch_size = 16
 | `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
 | `noise_strength` | [number, number] | `[1.0, 1.0]` | 全局噪声增益，0～4；默认完整使用两阶段噪声强度，[0,0] 全部关闭。 |
+| `first_noise_variance_share` | number | `0.7` | 两阶段噪声同时启用时第一阶段占总方差的比例，第二阶段使用剩余方差；仅单阶段启用时自动使用完整增益。 |
+| `second_noise_chroma_scale` | number | `0.35` | 第二阶段 RGB 噪声的色度比例，0～1；缩放后重新归一 RMS，因此不改变总噪声能量。 |
 | `processing_deadzone` | number | `0.1` | 零起点强度分布的死区，0～1；0 保留纯连续分布，正下界不受影响。 |
 | `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4；再乘全局增益平方根及 `max(0.15,1−0.85×采集强度)`，[0,0] 关闭。 |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |
@@ -446,7 +448,7 @@ batch_size = 16
 
 ## `SecondStageConfig`
 
-交付阶段随机排列缩放、局部模糊与噪声；噪声也可推迟至终结组前的 processing 层，但每个样本只执行一次。最后严格执行 `resize+sinc → compression` 或 `compression → resize+sinc`。
+交付阶段随机排列缩放、局部模糊与噪声；第二阶段噪声也可推迟至完整交付组之后，在最终 HQ 网格形成细噪点，但每个样本只执行一次。交付组严格执行 `resize+sinc → compression` 或 `compression → resize+sinc`。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
@@ -456,7 +458,7 @@ batch_size = 16
 | `resize_range` | [number, number] | `[0.3, 1.2]` | 缩放倍率范围，需为正且覆盖 1。 |
 | `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
 | `compression` | object | `子表` | JPEG/WebP/JPEG2000 压缩分布子表。 |
-| `noise_probability` | number | `1.0` | 第二阶段噪声概率；每个样本执行一次，可位于 blur 前后，但不会越过末端交付组。 |
+| `noise_probability` | number | `1.0` | 第二阶段噪声概率；每个样本执行一次，可位于 blur 前后或延迟到最终 HQ 网格。 |
 | `compression_probability` | number | `0.9` | 最终编码概率；只允许 `resize+sinc → compression` 或 `compression → resize+sinc`。 |
 
 ## `BlurConfig`
