@@ -642,7 +642,25 @@ def test_delivery_history_covers_noise_before_and_after_smoothing(monkeypatch):
         orders.add(tuple(calls))
         torch.testing.assert_close(high, before, atol=0, rtol=0)
         assert result.shape == high.shape and torch.isfinite(result).all()
-    assert orders == {("smooth", "grain"), ("grain", "smooth")}
+    assert ("smooth",) in orders
+    assert ("smooth", "grain") in orders
+    assert ("grain", "smooth") in orders
+
+
+def test_grain_has_exact_zero_samples_and_is_inversely_coupled_to_acquisition():
+    from unitunner.data.degradation.pipeline import _sample_processing
+
+    settings = DegradationConfig(noise_strength=(1.0, 1.0), grain_strength=(0.5, 0.5))
+
+    def active_count(severity):
+        return sum(
+            _sample_processing(settings, np.random.default_rng(seed), severity)[1] > 0 for seed in range(1000)
+        )
+
+    weak = active_count(0.0)
+    strong = active_count(1.0)
+    assert 950 <= weak <= 1000
+    assert 100 <= strong <= 200
 
 
 def test_adaptive_smear_preserves_contrast_without_disabling_flat_texture_removal():
@@ -853,14 +871,15 @@ def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_pos
     zero_mass = 2.5 * threshold**1.5 - 1.5 * threshold**2.5
     assert no_smooth.mean() == pytest.approx(zero_mass, abs=0.015)
     assert np.all(draws[:, 4] == 1)
-    assert np.all(draws[:, 1] > 0)
-    assert np.median(draws[:, 1]) > 0.2
+    assert (draws[:, 1] > 0).mean() == pytest.approx(0.575, abs=0.015)
+    assert np.median(draws[draws[:, 1] > 0, 1]) > 0.2
 
     low_rng, high_rng = np.random.default_rng(91), np.random.default_rng(91)
     low_acquisition = _sample_processing(DegradationConfig(), low_rng, acquisition_level=0.0)
     high_acquisition = _sample_processing(DegradationConfig(), high_rng, acquisition_level=1.0)
     assert low_acquisition[4] == high_acquisition[4] == 1
-    assert high_acquisition[1] == pytest.approx(low_acquisition[1] * 0.15)
+    assert low_acquisition[1] > 0
+    assert high_acquisition[1] == 0
 
 
 def test_default_second_stage_preserves_late_noise_coverage(monkeypatch):

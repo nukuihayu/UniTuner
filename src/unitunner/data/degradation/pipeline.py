@@ -367,16 +367,18 @@ def _processing_gain(bounds: tuple[float, float], level: float, deadzone: float)
 def _sample_processing(
     settings: DegradationConfig, rng: np.random.Generator, acquisition_level: float = 0.5
 ) -> tuple[float, float, float, float, float]:
-    """Sample processing with a shared zero-noise atom and persistent residual grain."""
+    """Sample processing with shared noise gain and acquisition-coupled grain."""
     denoising = float(rng.beta(1.5, 2.0))
     retention = float(rng.beta(1.5, 2.0)) * (1 - 0.5 * denoising)
     noise_level = float(rng.beta(1.5, 2.0))
     smooth = _processing_gain(settings.smear_strength, denoising, settings.processing_deadzone)
     noise_gain = _processing_gain(settings.noise_strength, noise_level, settings.processing_deadzone)
-    # Acquisition noise and delivery grain share one budget. Strong two-stage
-    # noise suppresses extra grain instead of stacking a third strong pass.
+    # Strong acquisition noise both suppresses and often disables extra grain,
+    # preventing a third noise pass from appearing in every sample.
     grain_budget = max(0.15, 1 - 0.85 * acquisition_level)
     grain = _processing_gain(settings.grain_strength, retention, 0.0) * math.sqrt(noise_gain) * grain_budget
+    if rng.random() >= grain_budget:
+        grain = 0.0
     footprint = math.exp(rng.uniform(math.log(settings.grain_scale_range[0]), math.log(settings.grain_scale_range[1])))
     sharpening = _processing_gain(settings.sharpen_strength, float(rng.random()), settings.processing_deadzone)
     return smooth, grain, footprint, sharpening, noise_gain
