@@ -846,9 +846,10 @@ def test_defaults_merge_realesrgan_strength_with_unitunner_extensions():
     assert cfg.second.noise.gaussian_sigma == (1.0, 25.0)
     assert cfg.second.noise.poisson_scale == (0.05, 2.5)
     assert cfg.final_sinc_probability == 0.8
-    assert cfg.noise_strength == (1.0, 1.0)
+    assert cfg.noise_strength == (0.85, 0.85)
     assert cfg.first_noise_variance_share == 0.7
     assert cfg.second_noise_chroma_scale == 0.35
+    assert cfg.late_noise_probability == 0.25
     assert cfg.first.blur.motion_probability == 0.2
     assert cfg.first.blur.defocus_probability == 0.15
     assert cfg.grain_strength == (0.0, 0.8)
@@ -870,14 +871,14 @@ def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_pos
     threshold = DegradationConfig().processing_deadzone
     zero_mass = 2.5 * threshold**1.5 - 1.5 * threshold**2.5
     assert no_smooth.mean() == pytest.approx(zero_mass, abs=0.015)
-    assert np.all(draws[:, 4] == 1)
+    assert np.all(draws[:, 4] == 0.85)
     assert (draws[:, 1] > 0).mean() == pytest.approx(0.575, abs=0.015)
     assert 0.1 < np.median(draws[draws[:, 1] > 0, 1]) < 0.2
 
     low_rng, high_rng = np.random.default_rng(91), np.random.default_rng(91)
     low_acquisition = _sample_processing(DegradationConfig(), low_rng, acquisition_level=0.0)
     high_acquisition = _sample_processing(DegradationConfig(), high_rng, acquisition_level=1.0)
-    assert low_acquisition[4] == high_acquisition[4] == 1
+    assert low_acquisition[4] == high_acquisition[4] == 0.85
     assert low_acquisition[1] > 0
     assert high_acquisition[1] == 0
 
@@ -907,7 +908,8 @@ def test_default_second_stage_preserves_late_noise_coverage(monkeypatch):
         degrade_image(high, cfg, seed)
     assert len(grids) == 512
     assert (32, 32) in grids
-    assert any(shape != (32, 32) for shape in grids)
+    late_ratio = sum(shape == (192, 192) for shape in grids) / len(grids)
+    assert late_ratio == pytest.approx(0.25, abs=0.05)
 
 
 def test_final_resize_sinc_group_only_exchanges_with_compression(monkeypatch):

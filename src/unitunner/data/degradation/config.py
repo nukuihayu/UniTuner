@@ -179,9 +179,10 @@ class DegradationConfig(DistributionConfig, frozen=True):
     scales: tuple[Annotated[float, Field(ge=1, le=16)], ...] | None = None
     scale_range: Range = (1.0, 8.0)
     scenario_probabilities: Probabilities = (0.25, 0.35, 0.40)
-    noise_strength: Range = (1.0, 1.0)
+    noise_strength: Range = (0.85, 0.85)
     first_noise_variance_share: Probability = 0.70
     second_noise_chroma_scale: Probability = 0.35
+    late_noise_probability: Probability = 0.25
     processing_deadzone: Probability = 0.1
     grain_strength: Range = (0.0, 0.8)
     smear_strength: Range = (0.0, 0.8)

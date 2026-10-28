@@ -421,9 +421,10 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `saturation` | [number, number] | `[0.0, 1.5]` | Saturation multiplier range [lower, upper]. |
 | `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
-| `noise_strength` | [number, number] | `[1.0, 1.0]` | Global noise gain, 0..4; defaults to full two-stage strength, while [0,0] disables all added noise. |
+| `noise_strength` | [number, number] | `[0.85, 0.85]` | Global acquisition-noise standard-deviation gain, 0..4; defaults to 85% while retaining high-noise tails, and [0,0] disables all added noise. |
 | `first_noise_variance_share` | number | `0.7` | First-stage share of total variance when both noise stages run; stage two uses the remainder, while a sole active stage receives full gain. |
 | `second_noise_chroma_scale` | number | `0.35` | Stage-two RGB-noise chroma ratio, 0..1; RMS is renormalized after scaling so total noise energy is unchanged. |
+| `late_noise_probability` | number | `0.25` | Probability of deferring stage-two noise until after the complete delivery group on the final HQ grid; otherwise it runs inside the stage, and always runs only once. |
 | `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
 | `grain_strength` | [number, number] | `[0.0, 0.8]` | Residual grain gain, 0..4; the default is a subtle fine-grain supplement, while `max(0.15,1−0.85×acquisition severity)` controls both gain and enable probability. |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |

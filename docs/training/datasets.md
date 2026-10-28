@@ -178,7 +178,7 @@ enable_bucket = false
 [dataset.groups.main.degradation]
 enabled = true
 scale_range = [1.0, 8.0]
-noise_strength = [1.0, 1.0]
+noise_strength = [0.85, 0.85]
 processing_deadzone = 0.1
 smear_strength = [0.0, 0.8]
 grain_strength = [0.0, 0.8]
@@ -190,9 +190,9 @@ sharpen_strength = [0.0, 0.4]
 
 不再选择“常规／颗粒／涂抹”类别。所有样本共用同一条成图流程。对从零开始的强度范围，使用 `g(z)=max(0,(z−t)/(1−t))`，其中 `t=processing_deadzone=0.1`。这让低强度的一段概率质量落在精确零上，零点以上仍连续变化；不是追加互斥的风格开关。t=0 恢复纯连续采样，t=1 将所有从零开始的处理强度归零。正的下界表示明确要求操作持续开启，不应用死区；固定范围保持固定。
 
-降噪程度 u、颗粒保留程度 v、全局噪声程度 n 均服从 Beta(1.5,2)。平滑范围的位置使用 g(u)；颗粒保留使用连续的 `v(1−0.5u)`，不再应用第二个死区。默认 `noise_strength=[1,1]`；两阶段同时启用时按方差 70%／30% 分配，标准差倍率为 sqrt(0.7)／sqrt(0.3)，平方和仍为 1；只有一个阶段启用时使用完整 1.0。独立 grain 的强度和启用概率均乘 `p=max(0.15,1−0.85s)`，与共享采集强度 s 反向耦合；因此会产生明确的无 grain 样本，而不改变两阶段采集噪声预算。第二阶段 RGB 噪声将色度缩至 0.35 后重新归一 RMS，减少紫绿斑点但不降低总噪声能量。Gaussian/Poisson 各占 50%，低照度第一阶段仍强制使用线性光 shot/read 噪声。
+降噪程度 u、颗粒保留程度 v、全局噪声程度 n 均服从 Beta(1.5,2)。平滑范围的位置使用 g(u)；颗粒保留使用连续的 `v(1−0.5u)`，不再应用第二个死区。默认 `noise_strength=[0.85,0.85]`，将采集噪声标准差整体收至 Real-ESRGAN 范围的 85%，同时保留其高噪声尾部；两阶段同时启用时仍按方差 70%／30% 分配，只有一个阶段启用时获得完整的全局增益。独立 grain 的强度和启用概率均乘 `p=max(0.15,1−0.85s)`，与共享采集强度 s 反向耦合；因此会产生明确的无 grain 样本。第二阶段 RGB 噪声将色度缩至 0.35 后重新归一 RMS，减少紫绿斑点而不改变该阶段分配到的噪声能量。Gaussian/Poisson 各占 50%，低照度第一阶段仍强制使用线性光 shot/read 噪声。
 
-管道按算子边界分成独立层：resize 只改尺寸；blur 统一 Gaussian／广义 Gaussian／平台核、手持运动和失焦 PSF；compression 只编解码；noise 合并阶段噪声与残余颗粒；smear、sinc、sharpen 各自独立。阶段内 resize／blur／noise 随机换序。smear、sharpen、grain 先随机排列；末端将“回目标尺寸 + sinc”作为不可拆分操作，只允许 `resize+sinc → compression` 或 `compression → resize+sinc`。第二阶段噪声每个样本只执行一次：50% 留在阶段内，50% 延迟至整个交付组之后，在最终 HQ 网格形成细噪点。
+管道按算子边界分成独立层：resize 只改尺寸；blur 统一 Gaussian／广义 Gaussian／平台核、手持运动和失焦 PSF；compression 只编解码；noise 合并阶段噪声与残余颗粒；smear、sinc、sharpen 各自独立。阶段内 resize／blur／noise 随机换序。smear、sharpen、grain 先随机排列；末端将“回目标尺寸 + sinc”作为不可拆分操作，只允许 `resize+sinc → compression` 或 `compression → resize+sinc`。第二阶段噪声每个样本只执行一次：默认 75% 留在阶段内接受后续交付处理，25% 延迟至整个交付组之后，在最终 HQ 网格形成细噪点。
 
 将 `noise_strength=[0,0]` 可关闭所有额外噪声，将 `smear_strength=[0,0]` 可关闭内容平滑与相机降噪；blur 配置仍独立生效。若要恢复带精确零点的连续噪声增益，可设置 `noise_strength=[0,1]`；`processing_deadzone=0` 会移除零起点范围的死区。
 

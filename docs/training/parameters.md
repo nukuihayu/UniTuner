@@ -421,9 +421,10 @@ batch_size = 16
 | `saturation` | [number, number] | `[0.0, 1.5]` | 饱和度倍率范围 [下界, 上界]。 |
 | `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
-| `noise_strength` | [number, number] | `[1.0, 1.0]` | 全局噪声增益，0～4；默认完整使用两阶段噪声强度，[0,0] 全部关闭。 |
+| `noise_strength` | [number, number] | `[0.85, 0.85]` | 全局采集噪声标准差增益，0～4；默认保留高噪声尾部并将整体强度降至 85%，[0,0] 全部关闭。 |
 | `first_noise_variance_share` | number | `0.7` | 两阶段噪声同时启用时第一阶段占总方差的比例，第二阶段使用剩余方差；仅单阶段启用时自动使用完整增益。 |
 | `second_noise_chroma_scale` | number | `0.35` | 第二阶段 RGB 噪声的色度比例，0～1；缩放后重新归一 RMS，因此不改变总噪声能量。 |
+| `late_noise_probability` | number | `0.25` | 将第二阶段噪声延迟到完整交付组之后、在最终 HQ 网格添加的概率；其余在阶段内添加，总共仍只执行一次。 |
 | `processing_deadzone` | number | `0.1` | 零起点强度分布的死区，0～1；0 保留纯连续分布，正下界不受影响。 |
 | `grain_strength` | [number, number] | `[0.0, 0.8]` | 残余颗粒增益，0～4；默认作为较轻的细颗粒补充，`max(0.15,1−0.85×采集强度)` 同时控制增益和启用概率，[0,0] 关闭。 |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |

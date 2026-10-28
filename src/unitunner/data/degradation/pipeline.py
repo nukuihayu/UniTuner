@@ -537,7 +537,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     selected_noise = tuple(
         noise_gain > 0 and rng.random() < stage.noise_probability for stage in (settings.first, settings.second)
     )
-    late_noise = selected_noise[1] and rng.random() < 0.5
+    late_noise = selected_noise[1] and rng.random() < settings.late_noise_probability
     if all(selected_noise):
         first_share = settings.first_noise_variance_share
         noise_gains = (math.sqrt(first_share), math.sqrt(1 - first_share))
