@@ -851,7 +851,7 @@ def test_defaults_merge_realesrgan_strength_with_unitunner_extensions():
     assert cfg.second_noise_chroma_scale == 0.35
     assert cfg.first.blur.motion_probability == 0.2
     assert cfg.first.blur.defocus_probability == 0.15
-    assert cfg.grain_strength == (0.0, 1.5)
+    assert cfg.grain_strength == (0.0, 0.8)
     assert cfg.smear_strength == (0.0, 0.8)
     assert cfg.sharpen_strength == (0.0, 0.4)
 
@@ -872,7 +872,7 @@ def test_rectified_gains_cover_exact_zero_without_discontinuity_or_violating_pos
     assert no_smooth.mean() == pytest.approx(zero_mass, abs=0.015)
     assert np.all(draws[:, 4] == 1)
     assert (draws[:, 1] > 0).mean() == pytest.approx(0.575, abs=0.015)
-    assert np.median(draws[draws[:, 1] > 0, 1]) > 0.2
+    assert 0.1 < np.median(draws[draws[:, 1] > 0, 1]) < 0.2
 
     low_rng, high_rng = np.random.default_rng(91), np.random.default_rng(91)
     low_acquisition = _sample_processing(DegradationConfig(), low_rng, acquisition_level=0.0)

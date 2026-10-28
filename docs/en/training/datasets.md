@@ -181,7 +181,7 @@ scale_range = [1.0, 8.0]
 noise_strength = [1.0, 1.0]
 processing_deadzone = 0.1
 smear_strength = [0.0, 0.8]
-grain_strength = [0.0, 1.5]
+grain_strength = [0.0, 0.8]
 grain_scale_range = [1.0, 4.0]
 sharpen_strength = [0.0, 0.4]
 ```

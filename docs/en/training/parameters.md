@@ -425,7 +425,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `first_noise_variance_share` | number | `0.7` | First-stage share of total variance when both noise stages run; stage two uses the remainder, while a sole active stage receives full gain. |
 | `second_noise_chroma_scale` | number | `0.35` | Stage-two RGB-noise chroma ratio, 0..1; RMS is renormalized after scaling so total noise energy is unchanged. |
 | `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
-| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4; `max(0.15,1−0.85×acquisition severity)` controls both gain and enable probability. |
+| `grain_strength` | [number, number] | `[0.0, 0.8]` | Residual grain gain, 0..4; the default is a subtle fine-grain supplement, while `max(0.15,1−0.85×acquisition severity)` controls both gain and enable probability. |
 | `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
 | `smear_strength` | [number, number] | `[0.0, 0.8]` | Texture-smoothing blend, 0..1; attenuated by min(1, 2/d) at actual downsampling factor d. |
 | `sharpen_strength` | [number, number] | `[0.0, 0.4]` | Continuous delivery sharpening gain, 0..1; [0,0] disables it. |
