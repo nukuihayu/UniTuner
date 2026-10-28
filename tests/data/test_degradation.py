@@ -19,8 +19,6 @@ from unitunner.data.degradation.config import (
     StageConfig,
 )
 from unitunner.data.degradation.pipeline import (
-    _defocus_kernel,
-    _motion_kernel,
     _resize,
     add_noise,
     compress_image,
@@ -143,8 +141,6 @@ def test_spatial_blur_tracks_image_scale(resolution):
     gaussian = BlurConfig(
         sigma=(1.0, 1.0),
         probabilities=(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-        motion_probability=0.0,
-        defocus_probability=0.0,
     )
     kernel = mixed_blur_kernel(np.random.default_rng(23), gaussian, resolution)
     axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
@@ -213,22 +209,6 @@ def test_resolution_scale_and_sinc_support_expand_through_4k():
     ]
     assert supports == sorted(supports)
     assert supports[0] < supports[-1]
-
-
-@pytest.mark.parametrize("motion", [False, True])
-def test_optical_exposure_kernels_are_centered_and_preserve_energy(motion):
-    kernel = _motion_kernel(31, 8, 0, 0) if motion else _defocus_kernel(31, 4)
-    assert np.isfinite(kernel).all() and kernel.min() >= 0
-    assert kernel.sum() == pytest.approx(1, abs=1e-7)
-    np.testing.assert_array_equal(kernel, kernel[::-1, ::-1])
-    axis = np.arange(31) - 15
-    x_variance = (kernel * axis[None, :] ** 2).sum()
-    y_variance = (kernel * axis[:, None] ** 2).sum()
-    if motion:
-        assert x_variance > 10 * y_variance
-    else:
-        assert x_variance == pytest.approx(y_variance)
-        assert kernel[15, 20] == 0  # Outside the circular aperture.
 
 
 def test_poisson_noise_does_not_depend_on_unrelated_image_colors():
@@ -306,13 +286,13 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
     assert cameras == [scene == 2, False]
 
 
-def test_degradation_rejects_invalid_scene_and_blur_probabilities():
+def test_degradation_rejects_invalid_scene_and_removed_blur_fields():
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="sum to one"):
         DegradationConfig(scenario_probabilities=(0.5, 0.4, 0.4))
-    with pytest.raises(ValidationError, match="at most one"):
-        BlurConfig(motion_probability=0.8, defocus_probability=0.8)
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        BlurConfig(motion_probability=0.8)
     with pytest.raises(ValidationError, match="sinc_probability"):
         BlurConfig(sinc_probability=0.1)
 
@@ -850,10 +830,6 @@ def test_defaults_merge_realesrgan_strength_with_unitunner_extensions():
     assert cfg.first_noise_variance_share == 0.7
     assert cfg.second_noise_chroma_scale == 0.35
     assert cfg.late_noise_probability == 0.25
-    assert cfg.first.blur.motion_probability == 0.08
-    assert cfg.first.blur.defocus_probability == 0.05
-    assert cfg.first.blur.motion_length == (0.0, 3.0)
-    assert cfg.first.blur.defocus_radius == (0.15, 1.0)
     assert cfg.grain_strength == (0.0, 0.8)
     assert cfg.smear_strength == (0.0, 0.8)
     assert cfg.sharpen_strength == (0.0, 0.4)
@@ -1051,29 +1027,6 @@ def test_windowed_sinc_limits_short_kernel_step_ringing_without_removing_negativ
     np.testing.assert_allclose(kernel.sum(), 1.0, atol=1e-6)
 
 
-@pytest.mark.parametrize("angle", [0, 0.7, 2.1])
-@pytest.mark.parametrize("length,focus", [(0, 0), (10, 2), (96, 24)])
-def test_handheld_psf_preserves_alignment_and_complete_support(angle, length, focus):
-    kernel = _motion_kernel(7, length, angle, 0.6, focus)
-    axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
-    assert np.isfinite(kernel).all() and kernel.min() >= 0
-    assert kernel.sum(dtype=np.float64) == pytest.approx(1, abs=2e-7)
-    assert abs((kernel * axis[None, :]).sum()) < 2e-6
-    assert abs((kernel * axis[:, None]).sum()) < 2e-6
-    assert np.abs(kernel[[0, -1]]).max() < 1e-12
-    assert np.abs(kernel[:, [0, -1]]).max() < 1e-12
-
-
-def test_defocus_broadens_handheld_psf_without_changing_centroid():
-    def moment(kernel):
-        axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
-        return (kernel * (axis[:, None] ** 2 + axis[None, :] ** 2)).sum()
-
-    assert moment(_defocus_kernel(7, 0)) == 0
-    assert moment(_defocus_kernel(7, 4)) > moment(_defocus_kernel(7, 1))
-    assert moment(_motion_kernel(7, 10, 0.7, 0.6, 3)) > moment(_motion_kernel(7, 10, 0.7, 0.6))
-
-
 @pytest.mark.parametrize(
     "active,count",
     [(("smear", "sharpen", "noise", "compression", "sinc", "resize"), 720), (("noise", "resize"), 2)],
@@ -1098,14 +1051,6 @@ def test_correlated_parameter_draws_retain_full_range_exploration():
     assert values.min() >= 2 and values.max() <= 10
     assert (values < 2.8).sum() > 130 and (values > 9.2).sum() > 130
     assert _sample((3, 3), rng, 0.9) == 3
-
-
-@pytest.mark.parametrize(
-    "field,value", [("motion_length", (0.0, 65.0)), ("defocus_radius", (0.0, 17.0)), ("motion_length", (-1.0, 4.0))]
-)
-def test_invalid_handheld_ranges_fail(field, value):
-    with pytest.raises(ValueError):
-        BlurConfig.model_validate({field: value})
 
 
 def test_continuous_severity_matches_smooth_cdf_and_covers_tails():

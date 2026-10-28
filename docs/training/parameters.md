@@ -464,7 +464,7 @@ batch_size = 16
 
 ## `BlurConfig`
 
-运动和失焦概率之和不得超过 1，其余概率使用 Gaussian／广义 Gaussian／平台核的各向同性与各向异性六类混合。sinc 不属于 blur 层。
+blur 使用 Gaussian／广义 Gaussian／平台核的各向同性与各向异性六类混合，不生成运动或失焦核。sinc 不属于 blur 层。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
@@ -472,14 +472,10 @@ batch_size = 16
 | `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Gaussian/generalized/plateau 的各向同性与各向异性概率，非负且总和为 1。 |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
-| `motion_probability` | number | `0.08` | 居中手机手持直线曝光核概率。 |
-| `defocus_probability` | number | `0.05` | 圆形孔径失焦核概率。 |
-| `motion_length` | [number, number] | `[0.0, 3.0]` | 直线曝光长度，1024 短边基准像素；默认 4K 上限为 6 px。 |
-| `defocus_radius` | [number, number] | `[0.15, 1.0]` | 圆形失焦半径，1024 短边基准像素；默认 4K 上限为 2 px，运动分支另乘连续 0..1 失焦系数。 |
 
 ## `SecondBlurConfig`
 
-核选择和分辨率适配规则与 BlurConfig 一致；sigma、motion_length、defocus_radius 都以当前层 1024 短边为基准。
+核选择和分辨率适配规则与 BlurConfig 一致；sigma 以当前层 1024 短边为基准。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
@@ -487,8 +483,6 @@ batch_size = 16
 | `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Gaussian/generalized/plateau 的各向同性与各向异性概率，非负且总和为 1。 |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
-| `motion_probability` | number | `0.0` | LQ 像素尺度运动模糊核概率。 |
-| `defocus_probability` | number | `0.0` | LQ 像素尺度圆形失焦核概率。 |
 
 ## `NoiseConfig`
 

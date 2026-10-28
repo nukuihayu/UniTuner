@@ -33,7 +33,7 @@ class DistributionConfig(BaseModel, frozen=True):
 
 
 class BlurConfig(DistributionConfig, frozen=True):
-    """Gaussian/generalized/plateau, handheld motion and defocus PSFs.
+    """Gaussian, generalized-Gaussian and plateau blur kernels.
 
     All spatial ranges use a 1024-pixel layer-input short-edge reference and
     gentle fourth-root scaling below 1024 and square-root scaling above it,
@@ -51,21 +51,12 @@ class BlurConfig(DistributionConfig, frozen=True):
     )
     generalized_beta: Range = (0.5, 4.0)
     plateau_beta: Range = (1.0, 2.0)
-    motion_probability: Probability = 0.08
-    defocus_probability: Probability = 0.05
-    motion_length: Range = (0.0, 3.0)
-    defocus_radius: Range = (0.15, 1.0)
-
     @model_validator(mode="after")
     def validate_positive(self) -> Self:
         if min(self.sigma) <= 0 or not 0 < self.generalized_beta[0] <= 1 <= self.generalized_beta[1]:
             raise ValueError("Blur sigma must be positive and generalized beta must bracket one")
         if not 0 < self.plateau_beta[0] <= 1 <= self.plateau_beta[1]:
             raise ValueError("Plateau beta must be positive and bracket one")
-        if self.motion_length[1] > 64 or self.defocus_radius[1] > 16:
-            raise ValueError("motion_length must be <=64 and defocus_radius <=16")
-        if self.motion_probability + self.defocus_probability > 1:
-            raise ValueError("Motion and defocus probabilities must sum to at most one")
         return self
 
 
@@ -148,8 +139,6 @@ class SecondBlurConfig(BlurConfig, frozen=True):
     """Milder second-stage blur ranges with the same resolution adaptation."""
 
     sigma: Range = (0.2, 1.5)
-    motion_probability: Probability = 0.0
-    defocus_probability: Probability = 0.0
 
 
 class SecondStageConfig(StageConfig, frozen=True):

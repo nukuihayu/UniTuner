@@ -75,68 +75,13 @@ def _sample(bounds: tuple[float, float], rng: np.random.Generator, level: float 
     return bounds[0] + (bounds[1] - bounds[0]) * position
 
 
-def _defocus_kernel(size: int, radius: float) -> Pixels:
-    """Integrate a circular aperture over pixel areas without truncating its rim."""
-    size = max(size, 2 * math.ceil(radius) + 1)
-    if radius == 0:
-        kernel = np.zeros((size, size), dtype=np.float32)
-        kernel[size // 2, size // 2] = 1
-        return kernel
-    axis = (np.arange(size * 4, dtype=np.float64) - (size * 4 - 1) / 2) / 4
-    xx, yy = np.meshgrid(axis, axis)
-    aperture = xx**2 + yy**2 <= max(radius, 0.25) ** 2
-    kernel = aperture.reshape(size, 4, size, 4).mean((1, 3))
-    return (kernel / kernel.sum()).astype(np.float32)
-
-
-def _motion_kernel(size: int, length: float, angle: float, acceleration: float, focus_radius: float = 0.0) -> Pixels:
-    """Integrate a straight, nonuniform-speed handheld exposure, centered for aligned pairs.
-
-    Equal time samples and bilinear splats preserve exposure energy and the
-    subpixel centroid. Optional aperture convolution adds simultaneous defocus.
-    """
-    time = np.linspace(-0.5, 0.5, max(32, math.ceil(length * 8)), dtype=np.float64)
-    along = length * (time + acceleration * (time**2 - 0.25))
-    x = along * math.cos(angle)
-    y = along * math.sin(angle)
-    x -= x.mean()
-    y -= y.mean()
-    half = max(size // 2, math.ceil(max(float(np.abs(x).max()), float(np.abs(y).max()))) + 1)
-    x += half
-    y += half
-    ix, iy = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
-    fx, fy = x - ix, y - iy
-    kernel = np.zeros((2 * half + 1, 2 * half + 1), dtype=np.float64)
-    for dx, wx in ((0, 1 - fx), (1, fx)):
-        for dy, wy in ((0, 1 - fy), (1, fy)):
-            np.add.at(kernel, (iy + dy, ix + dx), wx * wy / time.size)
-    if focus_radius > 0:
-        aperture = _defocus_kernel(2 * math.ceil(focus_radius) + 1, focus_radius)
-        kernel = np.pad(kernel, aperture.shape[0] // 2)
-        kernel = cv2.filter2D(kernel, -1, aperture, borderType=cv2.BORDER_CONSTANT).clip(0)
-    return (kernel / kernel.sum()).astype(np.float32)
-
-
 def mixed_blur_kernel(
     rng: np.random.Generator, settings: BlurConfig, resolution: int, *, severity: float | None = None
 ) -> Pixels:
     """Sample a PSF scaled to the layer input's current short edge."""
     size = int(rng.choice(np.arange(11, 42, 2)))
-    choice = rng.random()
     spatial_scale = _resolution_scale(resolution)
     size = _scaled_odd_size(size, spatial_scale)
-    if choice < settings.motion_probability:
-        # Camera shake and imperfect focus can coexist. A continuous radius
-        # starting at zero also includes essentially sharp-focus motion blur.
-        return _motion_kernel(
-            size,
-            _sample(settings.motion_length, rng, severity) * spatial_scale,
-            float(rng.uniform(-math.pi, math.pi)),
-            float(rng.uniform(-0.6, 0.6)),
-            _sample(settings.defocus_radius, rng, severity) * spatial_scale * float(rng.random()),
-        )
-    if choice < settings.motion_probability + settings.defocus_probability:
-        return _defocus_kernel(size, _sample(settings.defocus_radius, rng, severity) * spatial_scale)
     kind = int(rng.choice(6, p=settings.probabilities))
     sigma_x = _sample(settings.sigma, rng, severity) * spatial_scale
     sigma_y = sigma_x if kind % 2 == 0 else _sample(settings.sigma, rng, severity) * spatial_scale
