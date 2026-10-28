@@ -235,11 +235,11 @@ def _processed_photo(
         residual = 0.65 * residual + 0.7 * fine + (0.8 + severity) * chroma
         noisy = (image + strength * residual).clip(0, 1).astype(np.float32)
         return (0.85 * noisy + 0.15 * _camera_processing(noisy, severity)).astype(np.float32)
-    smooth = image
-    for diameter in (9, 13):
-        smooth = np.asarray(
-            cv2.bilateralFilter(smooth, diameter, 0.06 + 0.14 * severity, 2.0 + 2.0 * severity), dtype=np.float32
-        )
+    # A single moderate pass removes microtexture without repeatedly flattening
+    # mid-frequency facial and hair detail on the already downsampled grid.
+    smooth = np.asarray(
+        cv2.bilateralFilter(image, 9, 0.05 + 0.10 * severity, 1.5 + 1.5 * severity), dtype=np.float32
+    )
     smooth = _camera_processing(smooth, severity)
     luminance = (image * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(2)
     mean = cv2.GaussianBlur(luminance, (0, 0), 1.2)

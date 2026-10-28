@@ -419,7 +419,7 @@ batch_size = 16
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
 | `processing_probabilities` | [number, number, number] | `[0.3, 0.45, 0.25]` | 常规 / 残留相机颗粒 / 纹理涂抹后锐化的概率，和为 1；独立于场景选择。 |
 | `grain_strength` | [number, number] | `[0.75, 1.5]` | Residual grain gain, 0..4. |
-| `smear_strength` | [number, number] | `[0.5, 1.0]` | Texture-smoothing blend, 0..1. |
+| `smear_strength` | [number, number] | `[0.4, 0.8]` | Texture-smoothing blend, 0..1. |
 | `smear_detail_protection` | number | `0.6` | 局部对比度保护，0～1；0 恢复均匀混合。 |
 | `grain_smear_probability` | number | `0.45` | Smooth before grain within the grain branch. |
 | `compression_blur_probability` | number | `0.25` | 在 LQ 网格先编码后模糊；第二阶段显式关闭模糊或压缩时禁用。 |

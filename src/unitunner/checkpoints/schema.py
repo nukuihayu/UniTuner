@@ -47,7 +47,7 @@ def build_resume_identity(
     exclusions: dict[str, bool | set[str]] = {"output": True, "preview": True, "cache": True, **fields}
     values = config.model_dump(mode="json", exclude=exclusions)
     if any(group.degradation is not None and group.degradation.enabled for group in config.dataset.groups.values()):
-        values["degradation_policy"] = "exposure-grain/adaptive-smear/compression-blur/delivery-codec/4"
+        values["degradation_policy"] = "exposure-grain/adaptive-smear/compression-blur/delivery-codec/5"
     values["dataset_sampling_policy"] = "named-groups/independent-buckets/repeat-before-chunk/short-tail/2"
     values["dataset_group_order"] = list(config.dataset.groups)
     if config.method.kind == "restoration":

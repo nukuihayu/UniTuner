@@ -178,7 +178,7 @@ class DegradationConfig(DistributionConfig, frozen=True):
     grain_smear_probability: Probability = 0.45
     compression_blur_probability: Probability = 0.25
     grain_strength: Range = (0.75, 1.5)
-    smear_strength: Range = (0.5, 1.0)
+    smear_strength: Range = (0.4, 0.8)
     smear_detail_protection: Probability = 0.6
     resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (
         "area",

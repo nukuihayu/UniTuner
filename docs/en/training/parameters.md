@@ -419,7 +419,7 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
 | `processing_probabilities` | [number, number, number] | `[0.3, 0.45, 0.25]` | Standard / residual camera grain / texture smoothing + sharpening probabilities, summing to 1. Independent of scene selection. |
 | `grain_strength` | [number, number] | `[0.75, 1.5]` | Residual grain gain, 0..4. |
-| `smear_strength` | [number, number] | `[0.5, 1.0]` | Texture-smoothing blend, 0..1. |
+| `smear_strength` | [number, number] | `[0.4, 0.8]` | Texture-smoothing blend, 0..1. |
 | `smear_detail_protection` | number | `0.6` | Local contrast protection, 0..1; zero restores uniform blending. |
 | `grain_smear_probability` | number | `0.45` | Smooth before grain within the grain branch. |
 | `compression_blur_probability` | number | `0.25` | Encode then blur on the LQ grid; disabled when second-stage blur or compression is explicitly off. |
