@@ -46,9 +46,15 @@ def build_resume_identity(
     # Cache execution is already pinned by dataset records, not training policy.
     exclusions: dict[str, bool | set[str]] = {"output": True, "preview": True, "cache": True, **fields}
     values = config.model_dump(mode="json", exclude=exclusions)
+    if any(group.degradation is not None and group.degradation.enabled for group in config.dataset.groups.values()):
+        values["degradation_policy"] = "exposure-grain/adaptive-smear/compression-blur/delivery-codec/4"
     values["dataset_sampling_policy"] = "named-groups/independent-buckets/repeat-before-chunk/short-tail/2"
     values["dataset_group_order"] = list(config.dataset.groups)
     if config.method.kind == "restoration":
+        if config.losses is not None and not config.losses.ms_ssim:
+            values["losses"].pop("ms_ssim")
+        else:
+            values["ms_ssim_policy"] = "rgb/fp32/valid-gaussian11-sigma1.5/5-scales/parity-pool/floor1e-6/1"
         if values["method"]["restoration"]["calibration_sampling"] == "random":
             values["method"]["restoration"].pop("calibration_sampling")
         if config.losses is not None and not config.losses.phase:

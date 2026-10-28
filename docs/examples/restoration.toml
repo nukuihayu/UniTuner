@@ -62,6 +62,9 @@ horizontal_flip_probability = 0.5
 kind = "restoration"
 
 [losses]
+# 可选五尺度结构损失，宽高需 >160；示例权重未调优。
+# Optional five-scale structural loss; both dimensions >160, example weight is not tuned.
+# ms_ssim = 0.1
 # latent 修复回归损失系数；0 关闭。
 # Latent restoration regression coefficient; 0 disables it.
 lrr = 5.0

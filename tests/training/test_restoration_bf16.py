@@ -179,8 +179,10 @@ parameter_mode = "full"
         assert any(not torch.equal(old, p) for old, p in zip(before, parameters, strict=True))
 
 
-def test_bf16_feature_losses_and_discriminator_preserve_gradients():
+@pytest.mark.parametrize("recompute", [False, True])
+def test_bf16_feature_losses_and_discriminator_preserve_gradients(recompute):
     backbone = DinoConvNeXt((4, 8, 12, 16), (1, 1, 1, 1))
+    backbone.recompute = recompute
     perception = DinoPerceptualLoss(backbone, bf16_compute=True)
     vgg = Vgg19Features((2, 2, 2, 2, 2))
     frequency = FrequencyDistributionLoss(vgg.feature_stages(), vgg.widths, 3, bf16_compute=True)

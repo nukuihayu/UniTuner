@@ -95,11 +95,19 @@ def validate_training_policy(config: "TrainingConfig") -> None:
             any((wavelet.lh, wavelet.hl, wavelet.hh))
             or (wavelet.ll > 0 and (threshold is None or threshold < wavelet.levels))
         )
-        if not any((losses.dv3d, losses.l1, losses.gan, losses.fdl, losses.histogram, wavelet_objective)):
+        if not any(
+            (losses.dv3d, losses.l1, losses.gan, losses.fdl, losses.histogram, losses.ms_ssim, wavelet_objective)
+        ):
             raise ConfigRuleError(
                 "losses",
                 "At least one image objective is required",
-                "Enable dv3d, l1, gan, fdl, histogram or an active method.wavelet band; lrr/phase alone are insufficient.",
+                "Enable dv3d, l1, gan, fdl, histogram, ms_ssim or an active method.wavelet band; lrr/phase alone are insufficient.",
+            )
+        if losses.ms_ssim and any(min(group.resolution) <= 160 for group in config.dataset.groups.values()):
+            raise ConfigRuleError(
+                "losses.ms_ssim",
+                "Five-scale MS-SSIM requires both image dimensions >160",
+                "Increase every dataset resolution (e.g. [256,256]) or disable losses.ms_ssim.",
             )
         if (losses.dv3d or losses.gan) and not restoration.dino_weights:
             raise ConfigRuleError(

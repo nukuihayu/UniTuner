@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from unitunner.config.restoration import RestorationLossWeights
 from unitunner.training.losses.adversarial import gan_loss
 from unitunner.training.losses.histogram import histogram_loss
+from unitunner.training.losses.ms_ssim import ms_ssim_loss
 from unitunner.training.losses.phase import phase_loss
 
 
@@ -90,4 +91,8 @@ def generator_loss(
             phase = phase_loss(generated, target, period=phase_period, cycles=phase_cycles, epsilon=phase_epsilon)
             total = total + weights.phase * phase
         terms["phase"] = phase
+        ms_ssim = ms_ssim_loss(generated, target) if weights.ms_ssim else zero
+        if weights.ms_ssim:
+            total = total + weights.ms_ssim * ms_ssim
+        terms["ms_ssim"] = ms_ssim
     return RestorationLoss(total, {name: value.detach() for name, value in terms.items()})

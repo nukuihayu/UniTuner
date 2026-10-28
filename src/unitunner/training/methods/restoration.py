@@ -144,6 +144,7 @@ class RestorationMethod:
                 dtype=feature_dtype,
             )
             self.modules["dino"] = backbone
+            backbone.recompute = config.execution.recompute == "block"
             status(f"[train] DINO loaded ({options.feature_precision.upper()} storage and compute)")
             if weights.dv3d:
                 self.perceptual = DinoPerceptualLoss(backbone, bf16_compute=feature_bf16)

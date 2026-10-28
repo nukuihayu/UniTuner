@@ -416,8 +416,13 @@ batch_size = 16
 | `contrast` | [number, number] | `[0.5, 1.5]` | 对比度倍率范围 [下界, 上界]。 |
 | `saturation` | [number, number] | `[0.0, 1.5]` | 饱和度倍率范围 [下界, 上界]。 |
 | `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
-| `scenario_probabilities` | [number, number, number] | `[0.55, 0.3, 0.15]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
-| `processing_probabilities` | [number, number, number] | `[0.65, 0.2, 0.15]` | 常规 / 残留相机颗粒 / 纹理涂抹后锐化的概率，和为 1；独立于场景选择。 |
+| `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
+| `processing_probabilities` | [number, number, number] | `[0.3, 0.45, 0.25]` | 常规 / 残留相机颗粒 / 纹理涂抹后锐化的概率，和为 1；独立于场景选择。 |
+| `grain_strength` | [number, number] | `[0.75, 1.5]` | Residual grain gain, 0..4. |
+| `smear_strength` | [number, number] | `[0.5, 1.0]` | Texture-smoothing blend, 0..1. |
+| `smear_detail_protection` | number | `0.6` | 局部对比度保护，0～1；0 恢复均匀混合。 |
+| `grain_smear_probability` | number | `0.45` | Smooth before grain within the grain branch. |
+| `compression_blur_probability` | number | `0.25` | 在 LQ 网格先编码后模糊；第二阶段显式关闭模糊或压缩时禁用。 |
 
 ## `StageConfig`
 
@@ -455,7 +460,7 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.2, 2.4]` | 1024 短边基准 sigma；乘以 clamp(sqrt(短边 / 1024), 0.5, 1.5)。 |
+| `sigma` | [number, number] | `[0.4, 2.8]` | 1024 短边基准 sigma；乘以 clamp(sqrt(短边 / 1024), 0.5, 1.5)。 |
 | `probabilities` | [number, number, number, number, number, number] | `[0.5, 0.25, 0.1, 0.05, 0.07, 0.03]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
@@ -484,11 +489,12 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.35, 0.15, 0.5]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `gaussian_sigma` | [number, number] | `[0.5, 6.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
+| `gaussian_sigma` | [number, number] | `[1.0, 9.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
 | `poisson_scale` | [number, number] | `[0.05, 0.5]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
-| `iso_shot` | [number, number] | `[5e-05, 0.002]` | 线性光域信号相关方差系数。 |
-| `iso_read` | [number, number] | `[1e-06, 4e-05]` | 线性光域信号无关读出方差。 |
+| `iso_shot` | [number, number] | `[0.0002, 0.006]` | 线性光域信号相关方差系数。 |
+| `iso_read` | [number, number] | `[5e-06, 0.00015]` | 线性光域信号无关读出方差。 |
 | `iso_color_gain` | [number, number] | `[0.92, 1.15]` | ISO 各颜色通道增益范围。 |
+| `exposure` | [number, number] | `[0.75, 1.0]` | 恢复曝光前的线性采集曝光倍率；范围 (0,1]。 |
 | `gray_probability` | number | `0.25` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
 
 ## `SecondNoiseConfig`
@@ -503,6 +509,7 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | `iso_shot` | [number, number] | `[1e-05, 0.0002]` | 线性光域信号相关方差系数。 |
 | `iso_read` | [number, number] | `[1e-07, 4e-06]` | 线性光域信号无关读出方差。 |
 | `iso_color_gain` | [number, number] | `[0.95, 1.05]` | ISO 各颜色通道增益范围。 |
+| `exposure` | [number, number] | `[1.0, 1.0]` | 恢复曝光前的线性采集曝光倍率；范围 (0,1]。 |
 | `gray_probability` | number | `0.25` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
 
 ## `CompressionConfig`
@@ -512,7 +519,8 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.85, 0.15, 0.0]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `jpeg_quality` | [number, number] | `[60.0, 98.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
+| `jpeg_quality` | [number, number] | `[45.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
+| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
 | `webp_quality` | [number, number] | `[65.0, 98.0]` | WebP 质量范围，0..100。 |
 | `jpeg2000_quality` | [number, number] | `[300.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
 
@@ -523,7 +531,8 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.8, 0.2, 0.0]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `jpeg_quality` | [number, number] | `[45.0, 98.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
+| `jpeg_quality` | [number, number] | `[35.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
+| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
 | `webp_quality` | [number, number] | `[50.0, 98.0]` | WebP 质量范围，0..100。 |
 | `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
 

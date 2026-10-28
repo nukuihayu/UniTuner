@@ -11,6 +11,7 @@ from itertools import pairwise
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 class ChannelLayerNorm(nn.LayerNorm):
@@ -20,10 +21,11 @@ class ChannelLayerNorm(nn.LayerNorm):
         super().__init__(width, eps=1e-6)
 
     def compute(self, input: torch.Tensor) -> torch.Tensor:
-        x = input
-        mean = x.mean(1, keepdim=True)
-        variance = (x - mean).square().mean(1, keepdim=True)
-        return (x - mean) / torch.sqrt(variance + self.eps) * self.weight[:, None, None] + self.bias[:, None, None]
+        # Native LayerNorm accumulates reduced-precision statistics in FP32 and
+        # avoids materializing channel-sized centered/squared intermediates.
+        return F.layer_norm(
+            input.permute(0, 2, 3, 1), self.normalized_shape, self.weight, self.bias, self.eps
+        ).permute(0, 3, 1, 2)
 
     forward = compute
 
@@ -62,6 +64,7 @@ class DinoConvNeXt(nn.Module):
         if len(widths) != 4 or len(depths) != 4 or min(*widths, *depths) <= 0:
             raise ValueError("DINO ConvNeXt requires four stages")
         self.embed_dims = widths
+        self.recompute = False
         self.downsample_layers = nn.ModuleList(
             [nn.Sequential(nn.Conv2d(3, widths[0], 4, 4), ChannelLayerNorm(widths[0]))]
         )
@@ -83,7 +86,14 @@ class DinoConvNeXt(nn.Module):
             raise ValueError("DINO ConvNeXt requires floating RGB BCHW images at least 16x16")
         result = []
         for down, stage in zip(self.downsample_layers[:3], self.stages[:3], strict=True):
-            x = stage(down(x))
+            # Frozen weights still retain large MLP activations for image gradients.
+            # Checkpoint only this stateless backbone, never discriminator heads
+            # whose spectral-normalization buffers change during forward.
+            for module in (down, *stage):
+                if self.recompute and torch.is_grad_enabled() and x.requires_grad:
+                    x = checkpoint(module, x, use_reentrant=False, preserve_rng_state=False)
+                else:
+                    x = module(x)
             if pooled:
                 x = l2_pool(x)
             result.append(x)

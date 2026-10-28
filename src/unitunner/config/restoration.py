@@ -23,6 +23,7 @@ class RestorationLossWeights(BaseModel):
     fdl: float = Field(default=0.5, ge=0)
     histogram: float = Field(default=0.0, ge=0)
     phase: float = Field(default=0.0, ge=0)
+    ms_ssim: float = Field(default=0.0, ge=0)
 
 
 class RestorationConfig(BaseModel):

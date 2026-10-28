@@ -68,6 +68,51 @@ def test_convnext_strict_reload_and_dists_image_gradient(tmp_path):
         load_dino_convnext(path, widths=widths, depths=depths, device=torch.device("cpu"))
 
 
+def test_channel_norm_bf16_matches_fp32_statistics():
+    torch.manual_seed(93)
+    norm = ChannelLayerNorm(16).bfloat16().requires_grad_(False)
+    image = torch.randn(2, 16, 9, 7).bfloat16().requires_grad_()
+    reference_input = image.detach().float().requires_grad_()
+    expected = F.layer_norm(
+        reference_input.permute(0, 2, 3, 1), (16,), norm.weight.float(), norm.bias.float(), norm.eps
+    ).permute(0, 3, 1, 2)
+    actual = norm(image)
+    torch.testing.assert_close(actual, expected.bfloat16(), rtol=0, atol=0)
+    gradient = torch.randn_like(actual)
+    actual.backward(gradient)
+    expected.backward(gradient.float())
+    torch.testing.assert_close(image.grad, reference_input.grad.bfloat16(), rtol=0.02, atol=0.016)
+
+
+@pytest.mark.parametrize("pooled", [False, True])
+def test_frozen_convnext_recompute_preserves_image_gradients_and_saves_activations(pooled):
+    torch.manual_seed(31)
+    model = DinoConvNeXt((8, 16, 24, 32), (2, 2, 3, 1)).eval().requires_grad_(False)
+    source = torch.randn(1, 3, 64, 64)
+    results = []
+    for recompute in (False, True):
+        model.recompute = recompute
+        image = source.clone().requires_grad_()
+        saved = []
+
+        def pack(tensor, saved=saved):
+            saved.append(tensor.numel() * tensor.element_size())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            features = model.features(image, pooled=pooled)
+        sum(feature.square().mean() for feature in features).backward()
+        results.append((tuple(f.detach() for f in features), image.grad, sum(saved)))
+    for actual, expected in zip(results[1][0], results[0][0], strict=True):
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    torch.testing.assert_close(results[1][1], results[0][1], rtol=0, atol=0)
+    assert results[1][2] < results[0][2] / 2
+    assert all(p.grad is None for p in model.parameters())
+    with torch.no_grad():
+        for actual, expected in zip(model.features(source, pooled=pooled), results[0][0], strict=True):
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("suffix", [".pth", ".pt", ".safetensors"])
 def test_convnext_official_pytorch_state_dict_and_misnamed_checkpoint(tmp_path, suffix):
     widths, depths = (4, 8, 12, 16), (1, 1, 1, 1)

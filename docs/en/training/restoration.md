@@ -50,9 +50,10 @@ Both `dino_weights` and `vgg_weights` accept `.pt`, `.pth`, and `.safetensors` w
 | `gan` | `0.5` | Adversarial image supervision with discriminator updates | DINO weights |
 | `fdl` | `0.5` | Feature frequency distribution | VGG19 weights |
 | `histogram` | `0.0` | Normalized Lab color CDF matching | None |
+| `ms_ssim` | `0.0` | Five-scale RGB structural similarity: `1 - MS-SSIM` | None |
 | `phase` | `0.0` | Target-texture-protected periodic residual constraint; disabled by default | None |
 
-These are schema defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, or `histogram`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
+These are schema defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, `histogram`, or `ms_ssim`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
 
 For large datasets, startup indexing validates source images, captions, and cache files one record at a time, reading only cache header metadata rather than latent/text tensors. Dataset fingerprints stream individual records instead of retaining extra identity dictionaries and a complete JSON copy; the necessary file-pair index still scales with image count. Cache formats and resume fingerprints remain unchanged, so caches need not be rebuilt. The terminal displays per-image validation progress.
 
@@ -61,6 +62,16 @@ Linux system/container RAM counters may also include file page cache. After full
 Restoration training also applies this policy when hashing model, VAE, and feature artifacts, including sharded weights, without changing digests or resume compatibility. DINO/VGG ZIP-format PyTorch checkpoints use private source-file memory mappings when loading onto an accelerator, avoiding a complete anonymous CPU checkpoint copy. Legacy pickle files retain ordinary loading. Touched mapped pages may still count toward container RAM.
 
 All eight image families (Z-Image, FLUX.1, FLUX.2, FLUX3, MOSS, Qwen Image, Qwen Image2.1, and Krea2) share these optimizations: training/previews read only cached text conditions, plus FLUX.1 pooled features, preserving Krea2 selected-layer text without transferring unused image/reference latents; RGB decoding avoids extra full-image PIL copies, pads only when necessary, and creates a single HQ crop for synthetic degradation; batch size one avoids an extra image stack, and CPU crops are released after device transfer; generator latent/graph references are cleared before the discriminator phase once backward has completed. No configuration changes are needed. Crop/degradation RNG, loss weights, and model equations are preserved. Model, optimizer, and necessary activation storage are still required.
+
+## MS-SSIM
+
+Enable with `[losses] ms_ssim = 0.1` (an example weight, not a tuned recommendation). The default is `0.0`, which skips computation and preserves existing resume identities. Enabled weights and the numerical policy are included in resume identity. The detached `ms_ssim` metric records the unweighted loss.
+
+The loss is `1 - mean(MS-SSIM)` over samples and RGB channels, using five scales with exponents `[0.0448, 0.2856, 0.3001, 0.2363, 0.1333]`, an 11×11 Gaussian window with sigma 1.5, valid filtering, and K1=0.01/K2=0.03. Between scales it uses 2× average pooling with parity padding for odd dimensions. Both image dimensions must exceed 160 pixels; configuration validation rejects smaller training crops. It does not silently reduce the scale count.
+
+Statistics and reductions run in FP32 even during BF16/FP16 training. RGB is mapped from nominal `[-1,1]` to `[0,1]` without clipping decoder overshoots. Each scale score is clamped to `[1e-6,1]` before fractional powers, avoiding non-finite gradients for negative similarity; gradients saturate below that floor. HQ is detached. No extra feature networks or dependencies are required.
+
+MS-SSIM supervises structure across scales; it is not a dedicated periodic-artifact penalty. Combining it with L1 can retain pixel/color supervision. It is accepted as a standalone image objective, but numerical verification does not establish better restoration quality or guarantee that grids disappear. Tune its weight using held-out images.
 
 ## Wavelet MSE
 
@@ -203,6 +214,8 @@ Based on [OMGSR v2 §3 and supplement §6](https://arxiv.org/html/2508.08227v2):
 - Noise-minus-data models restore as `low - sigma*velocity`; Z-Image's sign is handled at the model boundary.
 - Calibration minimizes the mean absolute per-image SNR difference in equations 18/19. FLUX.1 candidates use the same shifted grid.
 - Frozen DINOv3-ConvNeXt's first three stages provide Dv3CD and multilevel discrimination; the generated-image branch retains gradients.
+
+`[execution] recompute = "block"` also checkpoints DINO downsampling layers and ConvNeXt blocks, reducing activation memory for Dv3CD and generator GAN losses at the cost of extra backward recomputation. HQ features and the frozen backbone during discriminator updates need no image gradients and skip recomputation. Discriminator heads are not checkpointed, avoiding repeated spectral-normalization state updates. Set `recompute = "none"` to disable this memory/time tradeoff. DINO channel normalization uses native LayerNorm with FP32 accumulation for BF16 statistics; small numerical differences from elementwise BF16 normalization are expected.
 
 The paper's 244 comes from FLUX.1-dev at 1K; its SD2.1-base result is 273. The reference Trainer's Z-Image default 121 is not a paper conclusion for Z-Image. UniTunner uses 244 as a common initial configuration value. Recalibrate when changing model, resolution, VAE, data, or degradation distribution.
 

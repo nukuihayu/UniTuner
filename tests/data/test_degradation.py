@@ -10,7 +10,14 @@ import torch
 
 pytest.importorskip("cv2")
 from unitunner.data.degradation.color import adjust_hue
-from unitunner.data.degradation.config import BlurConfig, DegradationConfig, NoiseConfig, SecondStageConfig, StageConfig
+from unitunner.data.degradation.config import (
+    BlurConfig,
+    DegradationConfig,
+    NoiseConfig,
+    SecondNoiseConfig,
+    SecondStageConfig,
+    StageConfig,
+)
 from unitunner.data.degradation.pipeline import (
     _optical_kernel,
     _resize,
@@ -44,10 +51,10 @@ def test_degradation_local_rng_finite_range_and_unchanged_hq(scale, scene, proce
     before_torch, before_numpy, before_python = torch.get_rng_state(), np.random.get_state(), random.getstate()
     settings = DegradationConfig(
         scales=(scale,),
-        processing_probabilities=tuple(float(i == processing) for i in range(3)),
+        processing_probabilities=(float(processing == 0), float(processing == 1), float(processing == 2)),
         color_jitter_probability=1.0,
         gray_probability=0.5,
-        scenario_probabilities=tuple(float(i == scene) for i in range(3)),
+        scenario_probabilities=(float(scene == 0), float(scene == 1), float(scene == 2)),
     )
     low = degrade_image(high, settings, 7)
     torch.testing.assert_close(low, degrade_image(high, settings, 7), rtol=0, atol=0)
@@ -197,9 +204,11 @@ def test_poisson_noise_does_not_depend_on_unrelated_image_colors():
     np.testing.assert_array_equal(a[:32], b[:32])
 
 
-def test_camera_noise_matches_shot_read_variance_in_linear_light():
+@pytest.mark.parametrize("exposure", [1.0, 0.65, 0.4])
+def test_camera_noise_matches_shot_read_variance_in_linear_light(exposure):
     settings = NoiseConfig(
         probabilities=(0.0, 0.0, 1.0),
+        exposure=(exposure, exposure),
         iso_shot=(0.001, 0.001),
         iso_read=(0.00001, 0.00001),
         iso_color_gain=(1.0, 1.0),
@@ -211,7 +220,7 @@ def test_camera_noise_matches_shot_read_variance_in_linear_light():
         noisy = add_noise(image, settings, np.random.default_rng(7))
         decoded = np.where(noisy <= 0.04045, noisy / 12.92, ((noisy + 0.055) / 1.055) ** 2.4)
         assert float(decoded.mean()) == pytest.approx(linear, abs=0.0002)
-        assert float(decoded.var()) == pytest.approx(linear * 0.001 + 0.00001, rel=0.02)
+        assert float(decoded.var()) == pytest.approx(linear * 0.001 / exposure + 0.00001 / exposure**2, rel=0.02)
 
 
 @pytest.mark.parametrize("mode", ["bilinear", "bicubic"])
@@ -245,8 +254,9 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
     monkeypatch.setattr(pipeline, "_compress", encode)
     monkeypatch.setattr(pipeline, "add_noise", noise)
     settings = DegradationConfig(
+        compression_blur_probability=0.0,
         scales=(4,),
-        scenario_probabilities=tuple(float(i == scene) for i in range(3)),
+        scenario_probabilities=(float(scene == 0), float(scene == 1), float(scene == 2)),
         processing_probabilities=(1.0, 0.0, 0.0),
         first=StageConfig(noise_probability=1.0, compression_probability=1.0),
         second=SecondStageConfig(noise_probability=1.0, compression_probability=1.0),
@@ -325,6 +335,7 @@ def test_phone_processing_supports_delivery_and_output_grid_encoding(monkeypatch
 
     monkeypatch.setattr(pipeline, "_compress", capture)
     cfg = DegradationConfig(
+        compression_blur_probability=0.0,
         scales=(4,),
         scenario_probabilities=(1.0, 0.0, 0.0),
         processing_probabilities=(0.0, float(grainy), float(not grainy)),
@@ -394,7 +405,7 @@ def test_output_grid_noise_retains_fine_grain_after_sr_resize(monkeypatch, scale
             blur_probability=0.0,
             noise_probability=1.0,
             compression_probability=0.0,
-            noise={"probabilities": (1.0, 0.0, 0.0), "gaussian_sigma": (8.0, 8.0)},
+            noise=SecondNoiseConfig(probabilities=(1.0, 0.0, 0.0), gaussian_sigma=(8.0, 8.0)),
         ),
     )
     fine, coarse = [], []
@@ -474,3 +485,119 @@ def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
             observed[index].add(tuple(traces[index]))
     assert observed[0] == {("blur", "noise", "resize"), ("blur", "resize", "noise")}
     assert observed[1] == set(permutations(("blur", "resize", "noise")))
+
+
+def test_processing_strength_controls_texture_and_grain():
+    from unitunner.data.degradation.pipeline import _processed_photo
+
+    flat = np.full((96, 96, 3), 0.4, dtype=np.float32)
+
+    def process(image, grainy, strength):
+        return _processed_photo(image, NoiseConfig(), np.random.default_rng(13), 0.8, grainy=grainy, strength=strength)
+
+    np.testing.assert_array_equal(process(flat, True, 0), flat)
+    assert process(flat, True, 2).std() > 1.8 * process(flat, True, 1).std()
+    texture = flat + np.random.default_rng(2).normal(0, 0.02, flat.shape).astype(np.float32)
+    assert process(texture, False, 1).std() < process(texture, False, 0.5).std()
+
+
+def test_recompression_shifts_block_origin_without_shifting_image(monkeypatch):
+    from unitunner.data.degradation import pipeline
+    from unitunner.data.degradation.config import CompressionConfig
+
+    image = np.random.default_rng(3).random((43, 51, 3), dtype=np.float32)
+    calls = []
+
+    def identity_codec(value, codec, quality):
+        calls.append(value.shape)
+        return value.copy()
+
+    monkeypatch.setattr(pipeline, "compress_image", identity_codec)
+    result = pipeline._compress(image, CompressionConfig(recompression_probability=1.0), np.random.default_rng(42), 0.8)
+    assert len(calls) == 2 and calls[1][0] > calls[0][0] and calls[1][1] > calls[0][1]
+    np.testing.assert_array_equal(result, image)
+
+
+def test_mixed_grain_applies_smoothing_before_noise(monkeypatch):
+    from unitunner.data.degradation import pipeline
+
+    calls = []
+    original = pipeline._processed_photo
+
+    def record(*args, **kwargs):
+        calls.append(kwargs["grainy"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_processed_photo", record)
+    cfg = DegradationConfig(processing_probabilities=(0.0, 1.0, 0.0), grain_smear_probability=1.0)
+    high = torch.rand(3, 64, 96)
+    before = high.clone()
+    result = degrade_image(high, cfg, 17)
+    assert calls == [False, True]
+    torch.testing.assert_close(high, before, atol=0, rtol=0)
+    assert result.shape == high.shape and torch.isfinite(result).all()
+
+
+def test_adaptive_smear_preserves_contrast_without_disabling_flat_texture_removal():
+    from unitunner.data.degradation.pipeline import _processed_photo
+
+    image = np.full((96, 128, 3), 0.4, dtype=np.float32)
+    image += np.random.default_rng(4).normal(0, 0.01, image.shape).astype(np.float32)
+    image[:, 64:] += np.tile(np.array([0.0, 0.0, 0.15, 0.15], dtype=np.float32), 16)[None, :, None]
+    uniform = _processed_photo(image, NoiseConfig(), np.random.default_rng(1), 0.8, grainy=False, detail_protection=0.0)
+    adaptive = _processed_photo(
+        image, NoiseConfig(), np.random.default_rng(1), 0.8, grainy=False, detail_protection=0.6
+    )
+    assert np.square(adaptive[:, 72:] - image[:, 72:]).mean() < np.square(uniform[:, 72:] - image[:, 72:]).mean()
+    assert adaptive[8:-8, 8:56].std() < image[8:-8, 8:56].std() * 0.4
+    flat = np.full((32, 32, 3), 0.4, dtype=np.float32)
+    np.testing.assert_allclose(
+        _processed_photo(flat, NoiseConfig(), np.random.default_rng(1), 0.8, grainy=False),
+        flat,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize("exposure", [(0.0, 1.0), (0.5, 1.1), (0.8, 0.5)])
+def test_invalid_sensor_exposure_is_rejected(exposure):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        NoiseConfig(exposure=exposure)
+
+
+@pytest.mark.parametrize("disabled", [None, "blur", "compression", "path"])
+def test_compression_blur_order_and_disable_switches(monkeypatch, disabled):
+    from unitunner.data.degradation import pipeline
+
+    trace = []
+    original_compress, original_filter = pipeline._compress, pipeline._filter
+
+    def encode(*args, **kwargs):
+        trace.append("encode")
+        return original_compress(*args, **kwargs)
+
+    def blur(*args, **kwargs):
+        trace.append("blur")
+        return original_filter(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_compress", encode)
+    monkeypatch.setattr(pipeline, "_filter", blur)
+    cfg = DegradationConfig(
+        compression_blur_probability=0.0 if disabled == "path" else 1.0,
+        scenario_probabilities=(1.0, 0.0, 0.0),
+        processing_probabilities=(1.0, 0.0, 0.0),
+        first=StageConfig(blur_probability=0.0, noise_probability=0.0, compression_probability=0.0),
+        second=SecondStageConfig(
+            blur_probability=0.0 if disabled == "blur" else 1e-12,
+            compression_probability=0.0 if disabled == "compression" else 1e-12,
+            noise_probability=0.0,
+        ),
+        final_sinc_probability=0.0,
+    )
+    image = torch.rand(3, 96, 128)
+    original = image.clone()
+    out = degrade_image(image, cfg, 42)
+    assert trace == (["encode", "blur"] if disabled is None else [])
+    assert out.shape == image.shape and torch.isfinite(out).all()
+    torch.testing.assert_close(image, original, atol=0, rtol=0)

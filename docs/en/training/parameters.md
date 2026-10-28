@@ -416,8 +416,13 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `contrast` | [number, number] | `[0.5, 1.5]` | Contrast multiplier range [lower, upper]. |
 | `saturation` | [number, number] | `[0.0, 1.5]` | Saturation multiplier range [lower, upper]. |
 | `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
-| `scenario_probabilities` | [number, number, number] | `[0.55, 0.3, 0.15]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
-| `processing_probabilities` | [number, number, number] | `[0.65, 0.2, 0.15]` | Standard / residual camera grain / texture smoothing + sharpening probabilities, summing to 1. Independent of scene selection. |
+| `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
+| `processing_probabilities` | [number, number, number] | `[0.3, 0.45, 0.25]` | Standard / residual camera grain / texture smoothing + sharpening probabilities, summing to 1. Independent of scene selection. |
+| `grain_strength` | [number, number] | `[0.75, 1.5]` | Residual grain gain, 0..4. |
+| `smear_strength` | [number, number] | `[0.5, 1.0]` | Texture-smoothing blend, 0..1. |
+| `smear_detail_protection` | number | `0.6` | Local contrast protection, 0..1; zero restores uniform blending. |
+| `grain_smear_probability` | number | `0.45` | Smooth before grain within the grain branch. |
+| `compression_blur_probability` | number | `0.25` | Encode then blur on the LQ grid; disabled when second-stage blur or compression is explicitly off. |
 
 ## `StageConfig`
 
@@ -455,7 +460,7 @@ Sinc, motion and defocus probabilities sum to at most 1. Remaining probability u
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.2, 2.4]` | Sigma at short edge 1024; multiplied by clamp(sqrt(short edge / 1024), 0.5, 1.5). |
+| `sigma` | [number, number] | `[0.4, 2.8]` | Sigma at short edge 1024; multiplied by clamp(sqrt(short edge / 1024), 0.5, 1.5). |
 | `probabilities` | [number, number, number, number, number, number] | `[0.5, 0.25, 0.1, 0.05, 0.07, 0.03]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
 | `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
 | `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
@@ -484,11 +489,12 @@ Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.35, 0.15, 0.5]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `gaussian_sigma` | [number, number] | `[0.5, 6.0]` | Gaussian noise sigma range in 8-bit intensity units. |
+| `gaussian_sigma` | [number, number] | `[1.0, 9.0]` | Gaussian noise sigma range in 8-bit intensity units. |
 | `poisson_scale` | [number, number] | `[0.05, 0.5]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
-| `iso_shot` | [number, number] | `[5e-05, 0.002]` | Linear-light signal-dependent variance coefficient. |
-| `iso_read` | [number, number] | `[1e-06, 4e-05]` | Linear-light signal-independent read variance. |
+| `iso_shot` | [number, number] | `[0.0002, 0.006]` | Linear-light signal-dependent variance coefficient. |
+| `iso_read` | [number, number] | `[5e-06, 0.00015]` | Linear-light signal-independent read variance. |
 | `iso_color_gain` | [number, number] | `[0.92, 1.15]` | ISO color-channel gain range. |
+| `exposure` | [number, number] | `[0.75, 1.0]` | Linear capture exposure before recovery; (0,1]. |
 | `gray_probability` | number | `0.25` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
 
 ## `SecondNoiseConfig`
@@ -503,6 +509,7 @@ Weak residual noise on the delivery or final HQ grid; uses the same scene streng
 | `iso_shot` | [number, number] | `[1e-05, 0.0002]` | Linear-light signal-dependent variance coefficient. |
 | `iso_read` | [number, number] | `[1e-07, 4e-06]` | Linear-light signal-independent read variance. |
 | `iso_color_gain` | [number, number] | `[0.95, 1.05]` | ISO color-channel gain range. |
+| `exposure` | [number, number] | `[1.0, 1.0]` | Linear capture exposure before recovery; (0,1]. |
 | `gray_probability` | number | `0.25` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
 
 ## `CompressionConfig`
@@ -512,7 +519,8 @@ JPEG/WebP/JPEG2000 order. Used only for intermediate web encoding. JPEG2000 is o
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.85, 0.15, 0.0]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `jpeg_quality` | [number, number] | `[60.0, 98.0]` | JPEG quality range, 0..100; lower values increase compression. |
+| `jpeg_quality` | [number, number] | `[45.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
+| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
 | `webp_quality` | [number, number] | `[65.0, 98.0]` | WebP quality range, 0..100. |
 | `jpeg2000_quality` | [number, number] | `[300.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
 
@@ -523,7 +531,8 @@ Final encoding for all scenes. Web samples use the full severity distribution; p
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.8, 0.2, 0.0]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `jpeg_quality` | [number, number] | `[45.0, 98.0]` | JPEG quality range, 0..100; lower values increase compression. |
+| `jpeg_quality` | [number, number] | `[35.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
+| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
 | `webp_quality` | [number, number] | `[50.0, 98.0]` | WebP quality range, 0..100. |
 | `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
 

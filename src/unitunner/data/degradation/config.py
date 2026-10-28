@@ -39,7 +39,7 @@ class BlurConfig(DistributionConfig, frozen=True):
     scaling. Second-stage sigma is measured directly in low-resolution pixels.
     """
 
-    sigma: Range = (0.2, 2.4)
+    sigma: Range = (0.4, 2.8)
     probabilities: Annotated[tuple[float, float, float, float, float, float], AfterValidator(_probabilities)] = (
         0.50,
         0.25,
@@ -69,19 +69,27 @@ class NoiseConfig(DistributionConfig, frozen=True):
     """Gaussian/Poisson/ISO probabilities; sigma is in 8-bit intensity units."""
 
     probabilities: Probabilities = (0.35, 0.15, 0.50)
-    gaussian_sigma: Range = (0.5, 6.0)
+    gaussian_sigma: Range = (1.0, 9.0)
     poisson_scale: Range = (0.05, 0.5)
-    iso_shot: Range = (0.00005, 0.002)
-    iso_read: Range = (0.000001, 0.00004)
+    iso_shot: Range = (0.0002, 0.006)
+    iso_read: Range = (0.000005, 0.00015)
+    exposure: Range = (0.75, 1.0)
     iso_color_gain: Range = (0.92, 1.15)
     gray_probability: Probability = 0.25
+
+    @model_validator(mode="after")
+    def validate_exposure(self) -> Self:
+        if not 0 < self.exposure[0] <= self.exposure[1] <= 1:
+            raise ValueError("Noise exposure must be within (0,1]")
+        return self
 
 
 class CompressionConfig(DistributionConfig, frozen=True):
     """JPEG/WebP/JPEG2000 probabilities and codec-native quality ranges."""
 
     probabilities: Probabilities = (0.85, 0.15, 0.0)
-    jpeg_quality: Range = (60.0, 98.0)
+    recompression_probability: Probability = 0.25
+    jpeg_quality: Range = (45.0, 95.0)
     webp_quality: Range = (65.0, 98.0)
     jpeg2000_quality: Range = (300.0, 900.0)
 
@@ -114,6 +122,7 @@ class StageConfig(DistributionConfig, frozen=True):
 class SecondNoiseConfig(NoiseConfig, frozen=True):
     """Second-stage camera distribution with independently overridable fields."""
 
+    exposure: Range = (1.0, 1.0)
     probabilities: Probabilities = (0.7, 0.1, 0.2)
     gaussian_sigma: Range = (0.2, 2.0)
     poisson_scale: Range = (0.02, 0.15)
@@ -126,7 +135,7 @@ class SecondCompressionConfig(CompressionConfig, frozen=True):
     """Second-stage codec distribution with independently overridable fields."""
 
     probabilities: Probabilities = (0.8, 0.2, 0.0)
-    jpeg_quality: Range = (45.0, 98.0)
+    jpeg_quality: Range = (35.0, 95.0)
     webp_quality: Range = (50.0, 98.0)
     jpeg2000_quality: Range = (250.0, 900.0)
 
@@ -164,8 +173,13 @@ class DegradationConfig(DistributionConfig, frozen=True):
 
     enabled: bool = False
     scales: tuple[Annotated[int, Field(ge=1, le=16)], ...] = (2, 3, 4)
-    scenario_probabilities: Probabilities = (0.55, 0.30, 0.15)
-    processing_probabilities: Probabilities = (0.65, 0.20, 0.15)
+    scenario_probabilities: Probabilities = (0.25, 0.35, 0.40)
+    processing_probabilities: Probabilities = (0.30, 0.45, 0.25)
+    grain_smear_probability: Probability = 0.45
+    compression_blur_probability: Probability = 0.25
+    grain_strength: Range = (0.75, 1.5)
+    smear_strength: Range = (0.5, 1.0)
+    smear_detail_protection: Probability = 0.6
     resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (
         "area",
         "bilinear",
@@ -183,6 +197,8 @@ class DegradationConfig(DistributionConfig, frozen=True):
 
     @model_validator(mode="after")
     def validate_choices(self) -> Self:
+        if self.grain_strength[1] > 4 or self.smear_strength[1] > 1:
+            raise ValueError("grain_strength must be within [0,4] and smear_strength within [0,1]")
         if not self.scales or not self.resize_modes:
             raise ValueError("Degradation scales and resize modes cannot be empty")
         if not -0.5 <= self.hue[0] <= self.hue[1] <= 0.5:

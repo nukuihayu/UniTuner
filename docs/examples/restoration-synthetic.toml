@@ -72,10 +72,10 @@ enabled = true
 scales = [2, 3, 4]
 # 普通照片 / 网络转载 / 低照度，非负且和为 1。
 # Photo / web repost / low-light; nonnegative and summing to one.
-scenario_probabilities = [0.55, 0.30, 0.15]
+scenario_probabilities = [0.25, 0.35, 0.40]
 # 常规 / 残留颗粒 / 纹理涂抹后锐化，可与来源场景组合。
 # Standard / residual grain / texture smoothing + sharpening; combines with source scenes.
-processing_probabilities = [0.65, 0.20, 0.15]
+processing_probabilities = [0.30, 0.45, 0.25]
 
 [method]
 # 训练目标：flow-matching 或 restoration。
