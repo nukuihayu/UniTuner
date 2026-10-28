@@ -179,7 +179,7 @@ sharpen_strength = [0.0, 0.4]
 
 `first.noise.exposure=[0.75,1]` 在线性光域降低采集曝光，加入噪声后恢复；未裁断时方差为 `signal*shot/exposure + read/exposure²`。第二阶段 exposure=[1,1]。这仍是已处理 RGB 上的近似，不是 RAW/demosaicing 模拟。双线性和双三次降采样带抗混叠，统一使用显式像素坐标规则；不会引入几何美颜或人脸形变操作。
 
-编码使用真实 JPEG/WebP/JPEG2000 往返，默认启用 JPEG/WebP。JPEG 质量范围第一阶段 [45,95]、第二阶段 [35,95]；各阶段 `recompression_probability=0.25` 可在移动压缩块原点后重编码，再裁回原图位置。`compression_blur_probability=0.25` 在低清网格编码后模糊已有块效应和振铃，复用第二阶段配置；设为 0 或显式关闭第二阶段 blur/compression 可禁用。其概率独立于普通第二阶段两个开关的非零值。
+编码使用真实 JPEG/WebP/JPEG2000 往返，默认启用 JPEG/WebP。JPEG 质量范围第一阶段 [40,95]、第二阶段 [30,95]；各阶段 `recompression_probability=0.25` 可在移动压缩块原点后重编码，再裁回原图位置。`compression_blur_probability=0.25` 在低清网格编码后模糊已有块效应和振铃，复用第二阶段配置；设为 0 或显式关闭第二阶段 blur/compression 可禁用。其概率独立于普通第二阶段两个开关的非零值。
 
 旧配置请删除 `processing_probabilities` 和 `grain_smear_probability`，改用连续强度范围；这些旧键会明确报错，不会静默忽略。修改分布后重新校准 restoration timestep/sigma，并新开训练；策略版本参与 resume identity。真实配对 LQ 不需要合成退化。样图只验证生成过程和视觉覆盖，不能据此声称恢复训练质量或人脸保真度提升。
 

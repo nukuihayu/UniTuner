@@ -520,10 +520,10 @@ JPEG/WebP/JPEG2000 order. Used only for intermediate web encoding. JPEG2000 is o
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.85, 0.15, 0.0]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `jpeg_quality` | [number, number] | `[45.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
+| `jpeg_quality` | [number, number] | `[40.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
 | `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[65.0, 98.0]` | WebP quality range, 0..100. |
-| `jpeg2000_quality` | [number, number] | `[300.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
+| `webp_quality` | [number, number] | `[60.0, 98.0]` | WebP quality range, 0..100. |
+| `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
 
 ## `SecondCompressionConfig`
 
@@ -532,10 +532,10 @@ Final encoding for all scenes. Web samples use the full severity distribution; p
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.8, 0.2, 0.0]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `jpeg_quality` | [number, number] | `[35.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
+| `jpeg_quality` | [number, number] | `[30.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
 | `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[50.0, 98.0]` | WebP quality range, 0..100. |
-| `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
+| `webp_quality` | [number, number] | `[45.0, 98.0]` | WebP quality range, 0..100. |
+| `jpeg2000_quality` | [number, number] | `[200.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
 
 ## `restore` command
 

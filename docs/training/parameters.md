@@ -520,10 +520,10 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.85, 0.15, 0.0]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `jpeg_quality` | [number, number] | `[45.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
+| `jpeg_quality` | [number, number] | `[40.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
 | `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[65.0, 98.0]` | WebP 质量范围，0..100。 |
-| `jpeg2000_quality` | [number, number] | `[300.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
+| `webp_quality` | [number, number] | `[60.0, 98.0]` | WebP 质量范围，0..100。 |
+| `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
 
 ## `SecondCompressionConfig`
 
@@ -532,10 +532,10 @@ sinc、运动和失焦概率之和不得超过 1，其余概率使用六类混�
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `probabilities` | [number, number, number] | `[0.8, 0.2, 0.0]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `jpeg_quality` | [number, number] | `[35.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
+| `jpeg_quality` | [number, number] | `[30.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
 | `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[50.0, 98.0]` | WebP 质量范围，0..100。 |
-| `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
+| `webp_quality` | [number, number] | `[45.0, 98.0]` | WebP 质量范围，0..100。 |
+| `jpeg2000_quality` | [number, number] | `[200.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
 
 ## `restore` 独立命令
 

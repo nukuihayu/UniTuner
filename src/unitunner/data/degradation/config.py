@@ -89,9 +89,9 @@ class CompressionConfig(DistributionConfig, frozen=True):
 
     probabilities: Probabilities = (0.85, 0.15, 0.0)
     recompression_probability: Probability = 0.25
-    jpeg_quality: Range = (45.0, 95.0)
-    webp_quality: Range = (65.0, 98.0)
-    jpeg2000_quality: Range = (300.0, 900.0)
+    jpeg_quality: Range = (40.0, 95.0)
+    webp_quality: Range = (60.0, 98.0)
+    jpeg2000_quality: Range = (250.0, 900.0)
 
     @model_validator(mode="after")
     def validate_quality(self) -> Self:
@@ -135,9 +135,9 @@ class SecondCompressionConfig(CompressionConfig, frozen=True):
     """Second-stage codec distribution with independently overridable fields."""
 
     probabilities: Probabilities = (0.8, 0.2, 0.0)
-    jpeg_quality: Range = (35.0, 95.0)
-    webp_quality: Range = (50.0, 98.0)
-    jpeg2000_quality: Range = (250.0, 900.0)
+    jpeg_quality: Range = (30.0, 95.0)
+    webp_quality: Range = (45.0, 98.0)
+    jpeg2000_quality: Range = (200.0, 900.0)
 
 
 class SecondBlurConfig(BlurConfig, frozen=True):
