@@ -45,6 +45,7 @@ from unitunner.training.losses.wavelet import WaveletLoss
 from unitunner.training.methods.discriminator import MultilevelDiscriminator
 from unitunner.training.methods.mid_timestep import flow_target, restoration_sigma
 from unitunner.training.methods.snr_calibration import calibration_rng, estimate_mid_timestep
+from unitunner.training.methods.vae_execution import checkpoint_vae_blocks
 from unitunner.training.session import TrainingSession
 
 
@@ -126,6 +127,8 @@ class RestorationMethod:
         self.encoder = (
             session.own(EncoderAdapters(self.vae.encoder, rank=options.encoder_rank)) if options.encoder_rank else None
         )
+        if config.execution.recompute == "block":
+            checkpoint_vae_blocks(self.vae, session)
         self.modules: dict[str, nn.Module] = {"restoration": self.state}
         if self.encoder is not None:
             self.modules["encoder"] = self.encoder

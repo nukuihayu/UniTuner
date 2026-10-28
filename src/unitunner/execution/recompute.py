@@ -40,14 +40,20 @@ class RecomputeInstallation[R: Tensor | tuple[Tensor, ...], **P]:
     backward completes and restores only its own forward mutation.
     """
 
-    def __init__(self, region: ModelRegion, *, interval: int = 1, attention_offload: bool = False) -> None:
+    def __init__(
+        self, region: ModelRegion, *, interval: int = 1, attention_offload: bool = False, require_training: bool = True
+    ) -> None:
         if interval < 1:
             raise ValueError("Recompute interval must be positive")
         self.region: ModelRegion = region
         original: Callable[P, R] = region.module.forward
 
         def installed(*args: P.args, **kwargs: P.kwargs) -> R:
-            if region.logical_index % interval == 0 and region.module.training and torch.is_grad_enabled():
+            if (
+                region.logical_index % interval == 0
+                and (region.module.training or not require_training)
+                and torch.is_grad_enabled()
+            ):
                 # Pass actual tensors so Torch captures CUDA RNG for replay.
                 # Its reserved-option stub cannot narrow native ParamSpec kwargs.
                 if not attention_offload:

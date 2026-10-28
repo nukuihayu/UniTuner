@@ -85,7 +85,8 @@ def _vae(family):
 @pytest.mark.parametrize("mode", ["full", "lora"])
 @pytest.mark.parametrize("device_name", ["cpu", "cuda"])
 @pytest.mark.parametrize("precision", ["bf16", "fp16"])
-def test_all_image_restoration_bf16_updates(tmp_path, family, mode, device_name, precision):
+@pytest.mark.parametrize("recompute", ["none", "block"])
+def test_all_image_restoration_bf16_updates(tmp_path, family, mode, device_name, precision, recompute):
     if device_name == "cuda" and (not torch.cuda.is_available() or not torch.cuda.is_bf16_supported()):
         pytest.skip("BF16-capable CUDA unavailable")
     device = torch.device(device_name)
@@ -126,6 +127,7 @@ weight = 0.5
 levels = 2
 [execution]
 precision = "{precision}"
+recompute = "{recompute}"
 [train]
 parameter_mode = "full"
 ''')

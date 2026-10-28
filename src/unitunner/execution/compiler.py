@@ -24,10 +24,20 @@ def _compile_graph(
     *,
     preserve_precision: bool,
 ) -> Callable[..., tuple[CompilerInput, ...]]:
-    """Preserve native AMP rounding only for this compilation."""
+    """Scope precision and memory policy to this compilation, including backward."""
     return cast(
         Callable[..., tuple[CompilerInput, ...]],
-        compile_inductor(graph, inputs, options={"emulate_precision_casts": preserve_precision}),
+        compile_inductor(
+            graph,
+            inputs,
+            options={
+                "emulate_precision_casts": preserve_precision,
+                # Avoid private graph pools with variable buckets and swapped weights.
+                "triton.cudagraphs": False,
+                # Keep pointwise epilogues fused instead of storing intermediates.
+                "epilogue_fusion": True,
+            },
+        ),
     )
 
 
@@ -68,8 +78,8 @@ class CompilerInstallation[R: Tensor | tuple[Tensor, ...], **P]:
             co_name=f"compiled_training_{id(self)}", co_qualname=f"compiled_training_{id(self)}"
         )
         provider = (
-            partial(_compile_graph, preserve_precision=True)
-            if backend == "inductor" and precision in ("bf16", "fp16")
+            partial(_compile_graph, preserve_precision=precision in ("bf16", "fp16"))
+            if backend == "inductor"
             else backend
         )
         training = torch.compile(training_boundary, backend=provider, fullgraph=fullgraph, dynamic=True)

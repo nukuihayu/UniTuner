@@ -217,6 +217,10 @@ FLUX3 distilled 的训练目标时间与源时间相同，沿用原 finetuning �
 
 `[execution] recompute = "block"` 同时对 DINO 的降采样层和 ConvNeXt 块启用激活重算，减少 Dv3CD 与生成器 GAN 分支的激活显存，以额外反向重算为代价。HQ 特征和判别器更新中的冻结骨干不需要图像梯度，不执行重算；判别头也不重算，以避免重复更新 spectral normalization 状态。设置 `recompute = "none"` 可关闭这项时间与显存交换。 DINO 通道归一化使用原生 LayerNorm，BF16 统计以 FP32 累积；与逐元素 BF16 归一化相比允许小幅数值差异。
 
+启用 `recompute = "block"` 时，图像恢复还会重算 VAE 的无状态残差、空间注意力及适用的采样块，降低高分辨率训练的激活显存；VAE 保持 eval，解码器权重仍冻结，编码器 LoRA 梯度保留。Z-Image、FLUX 家族和 Qwen Image 2.1 支持残差块重算；Qwen Image/Krea2 的时间历史块保持原路径，仅重算无状态空间注意力。重算增加计算耗时，且不能消除大卷积工作区或 DiT 注意力的显存需求。
+
+训练 Inductor 编译按图设置 `triton.cudagraphs=false` 和 `epilogue_fusion=true`，避免 CUDA Graph 私有内存池并保留逐元素融合；不修改进程全局配置。当前编译入口针对 DiT，不会自动编译 VAE/DINO。GEMM 最大调优、坐标下降调优和 1×1 卷积转矩阵乘不作为默认优化；它们的收益依赖具体图与硬件，可能增加首次编译时间。
+
 论文的244来自 FLUX.1-dev、1K分辨率；SD2.1-base 的结果是273。Trainer 的 Z-Image 默认121，
 也不是论文对 Z-Image 的结论。本项目按配置约定统一起始默认244；换模型、分辨率、VAE、数据或退化分布后，
 应使用对应数据的校准结果，不宣称默认244普适最优。DDPM 的公式7使用 alpha-bar 重建，
