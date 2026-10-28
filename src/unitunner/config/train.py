@@ -32,6 +32,12 @@ class TrainConfig(BaseModel):
     accumulation_steps: int = Field(default=1, gt=0, description="Microbatches accumulated per optimizer update")
     max_grad_norm: float = Field(default=1.0, ge=0, description="Maximum global gradient norm; 0 disables clipping")
     seed: int = 42
+    skip_dataset_validation: bool = Field(
+        default=False, description="Trust existing image caches and skip full dataset content validation at startup"
+    )
+    dataset_validation_workers: int = Field(
+        default=4, ge=1, le=32, description="Parallel image dataset validation workers; 1 selects serial validation"
+    )
     lr_schedule: Literal["constant", "linear", "cosine"] = "constant"
     warmup_updates: int = Field(
         default=0, ge=0, description="Effective updates for linear warmup; must be smaller than max_updates"

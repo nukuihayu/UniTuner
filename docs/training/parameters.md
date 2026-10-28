@@ -153,6 +153,8 @@ batch_size = 16
 | `accumulation_steps` | integer；> 0 | `1` | 每次有效更新累计的 microbatch 数；降低单批显存需求但会增加一次更新耗时。 |
 | `max_grad_norm` | number；≥ 0 | `1.0` | 全局梯度范数裁剪阈值；0 关闭。 |
 | `seed` | integer | `42` | 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。 |
+| `skip_dataset_validation` | boolean | `false` | 图像训练启动时信任已有缓存，跳过完整数据内容校验；保留清单、配对、模型与形状检查。 |
+| `dataset_validation_workers` | integer; 1..32 | `4` | 并行校验线程数，1 为串行；任务有界排队，不改变样本顺序和续训标识。 |
 | `lr_schedule` | "constant", "linear", "cosine" | `"constant"` | constant 固定、linear 线性衰减、cosine 余弦衰减；均支持 warmup。 |
 | `warmup_updates` | integer；≥ 0 | `0` | 学习率线性预热的有效更新数；必须小于 max_updates。 |
 

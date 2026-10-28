@@ -9,7 +9,7 @@ from pydantic import JsonValue
 from unitunner.artifacts.hashing import canonical_sha256, file_sha256
 from unitunner.artifacts.tensors import TensorReader
 from unitunner.config.datasets import DataConfig
-from unitunner.data.cache.storage import CacheEntry, load_latent_manifest
+from unitunner.data.cache.storage import CacheEntry, load_latent_manifest, read_latent_manifest
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +26,8 @@ def index_cached_images(
     family: str,
     variant: str,
     version: str | None,
+    skip_validation: bool = False,
+    validation_workers: int = 4,
 ) -> tuple[dict[tuple[int, ...], list[CachedImage]], dict[tuple[int, ...], int], str]:
     """Validate family/variant/version and group each dataset by complete tensor geometry.
 
@@ -41,7 +43,11 @@ def index_cached_images(
         if source.cache_directory is None:
             raise ValueError("Image source requires a cache_directory")
         directory = Path(source.cache_directory)
-        manifest = load_latent_manifest(directory)
+        manifest = (
+            read_latent_manifest(directory)
+            if skip_validation
+            else load_latent_manifest(directory, validation_workers=validation_workers)
+        )
         if manifest.family != family or manifest.version != version:
             raise ValueError("Training cache family/version differs from the selected model")
         if family == "moss-image" and manifest.variant != ("edit" if variant == "edit" else None):

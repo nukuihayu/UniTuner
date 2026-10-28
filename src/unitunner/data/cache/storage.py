@@ -14,6 +14,7 @@ from unitunner.artifacts.atomic import atomic_output
 from unitunner.artifacts.hashing import file_sha256
 from unitunner.artifacts.tensors import TensorReader, save_tensors
 from unitunner.data.cache.schema import CacheIdentity
+from unitunner.data.validation import ordered_validation_map
 
 
 class CacheEntry(BaseModel):
@@ -286,11 +287,14 @@ def validate_latent_entry(
     return identity
 
 
-def load_latent_manifest(directory: Path) -> LatentManifest:
+def load_latent_manifest(directory: Path, *, validation_workers: int = 4) -> LatentManifest:
     """Preflight immutable cache files once before entering the training hot loop."""
     manifest = read_latent_manifest(directory)
-    for entry in manifest.entries:
-        validate_latent_entry(directory, manifest, entry)
+    def validate(entry: CacheEntry) -> None:
+        validate_latent_entry(directory, manifest, entry, release_cache=True)
+
+    for _ in ordered_validation_map(validate, manifest.entries, workers=validation_workers):
+        pass
     return manifest
 
 

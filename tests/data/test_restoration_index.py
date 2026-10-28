@@ -38,7 +38,8 @@ def dataset(tmp_path):
 
 
 @pytest.mark.parametrize("synthetic", (False, True))
-def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(dataset, monkeypatch, synthetic):
+@pytest.mark.parametrize("workers", (1, 4))
+def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(dataset, monkeypatch, synthetic, workers):
     high, low, cache, records = dataset
     degradation = DegradationConfig(enabled=True) if synthetic else None
     if synthetic:
@@ -64,7 +65,7 @@ def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(
     monkeypatch.setattr(storage, "file_sha256", scan)
     monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
     pairs, digest = index_restoration_pairs(
-        high, None if synthetic else low, cache, family="z-image", degradation=degradation
+        high, None if synthetic else low, cache, family="z-image", degradation=degradation, validation_workers=workers
     )
     assert len(opened) == len(high)
     assert len(scanned) == len(high) * (2 if synthetic else 3)
@@ -108,3 +109,65 @@ def test_index_still_rejects_invalid_sources_and_caches(dataset, changed):
         storage.save_latent_manifest(manifest.model_copy(update={"entries": (wrong, *manifest.entries[1:])}), cache)
     with pytest.raises(ValueError):
         index_restoration_pairs(high, low, cache, family=family)
+
+
+@pytest.mark.parametrize("synthetic", (False, True))
+def test_trusted_index_skips_full_scans_and_preserves_resume_digest(dataset, monkeypatch, synthetic):
+    high, low, cache, _ = dataset
+    degradation = DegradationConfig(enabled=True) if synthetic else None
+    kwargs = {"family": "z-image", "degradation": degradation}
+    expected, digest = index_restoration_pairs(high, None if synthetic else low, cache, **kwargs)
+    scans = []
+
+    def scan(path, **options):
+        assert path in low, "Trusted indexing must not hash HQ images or cache payloads"
+        scans.append(path)
+        return file_sha256(path, **options)
+
+    def no_validation(*args, **kwargs):
+        raise AssertionError("Full record validation must be skipped")
+
+    # Trusted mode deliberately accepts changed HQ/captions, using cached source
+    # identities. The caller promises those contents still match their caches.
+    high[0].write_bytes(b"changed")
+    high[0].with_suffix(".txt").write_text("changed")
+    monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
+    monkeypatch.setattr("unitunner.data.datasets.restoration.validate_latent_entry", no_validation)
+    monkeypatch.setattr(storage.TensorReader, "read", no_validation)
+    actual, actual_digest = index_restoration_pairs(
+        high, None if synthetic else low, cache, skip_validation=True, **kwargs
+    )
+    assert actual == expected and actual_digest == digest
+    assert sorted(scans) == ([] if synthetic else sorted(low))
+
+
+@pytest.mark.parametrize("changed", ("count", "duplicate", "family"))
+def test_trusted_index_keeps_structural_checks(dataset, changed):
+    high, low, cache, _ = dataset
+    family = "z-image"
+    if changed == "count":
+        high, low = high[:-1], low[:-1]
+    elif changed == "duplicate":
+        high = (high[0], high[0], high[2])
+    else:
+        family = "flux"
+    with pytest.raises(ValueError):
+        index_restoration_pairs(high, low, cache, family=family, skip_validation=True)
+
+
+def test_trusted_cached_image_index_skips_hashes_but_preserves_batches(dataset, monkeypatch):
+    from unitunner.config.datasets import DataConfig, DatasetConfig
+    from unitunner.data.datasets import cached_images
+
+    _, _, cache, _ = dataset
+    config = DataConfig(groups={"main": DatasetConfig(source="unused", cache_directory=str(cache))})
+    kwargs = {"family": "z-image", "variant": "turbo", "version": None}
+    expected = cached_images.index_cached_images(config, **kwargs)
+
+    def no_validation(*args, **kwargs):
+        raise AssertionError("Full cache validation must be skipped")
+
+    monkeypatch.setattr(cached_images, "load_latent_manifest", no_validation)
+    assert cached_images.index_cached_images(config, skip_validation=True, **kwargs) == expected
+    with pytest.raises(ValueError, match="family/version"):
+        cached_images.index_cached_images(config, family="flux", variant="dev", version=None, skip_validation=True)

@@ -9,8 +9,11 @@ from pydantic import JsonValue
 from torch import Tensor
 
 from unitunner.artifacts.hashing import canonical_sequence_sha256, canonical_sha256, file_sha256
+from unitunner.artifacts.tensors import TensorReader
+from unitunner.data.cache.schema import CacheIdentity
 from unitunner.data.cache.storage import CacheEntry, read_latent_manifest, validate_latent_entry
 from unitunner.data.degradation.config import DegradationConfig
+from unitunner.data.validation import ordered_validation_map
 from unitunner.progress import progress
 
 
@@ -43,12 +46,17 @@ def index_restoration_pairs(
     family: str | None = None,
     caption_extension: str | None = None,
     prompt: str | None = None,
+    skip_validation: bool = False,
+    validation_workers: int = 4,
 ) -> tuple[tuple[AlignedImagePair, ...], str]:
     """Match unique stems or synthetic HQ sources, pin captions and hash numerical inputs.
 
     Inputs are explicitly ordered discovered image files. A cache produced from a
     different source/caption list is rejected before training; basename coincidence
     never suffices. Low and high file bytes both participate in the returned digest.
+    With skip_validation, trust the cached source identity instead of rereading HQ
+    and captions or checking record hashes. Paired LQ still requires hashing for
+    resume identity. Manifest and structural checks remain mandatory.
     """
     high = {path.stem for path in high_files}
     synthetic = degradation is not None and degradation.enabled
@@ -67,12 +75,19 @@ def index_restoration_pairs(
         raise ValueError("Restoration caption cache family differs from the selected model")
     if len(manifest.entries) != len(high_files):
         raise ValueError("Restoration source count differs from caption cache manifest")
+    if manifest.family == "qwen-image" and manifest.variant != "original":
+        raise ValueError("Qwen restoration captions require an original-variant cache")
     pairs = []
 
-    def records() -> Iterator[JsonValue]:
-        for path, entry in zip(
-            progress(high_files, "[train] Validating restoration pairs"), manifest.entries, strict=True
-        ):
+    def validate(item: tuple[Path, CacheEntry]) -> tuple[AlignedImagePair, JsonValue]:
+        path, entry = item
+        if skip_validation:
+            with TensorReader(cache / entry.file) as reader:
+                encoded = reader.metadata().get("unitunner.cache.identity")
+                if encoded is None:
+                    raise ValueError("Caption cache record is missing its content identity")
+                source = CacheIdentity.model_validate_json(encoded).source_sha256
+        else:
             caption_path = path.with_suffix(caption_extension or ".txt")
             caption = (
                 prompt
@@ -86,8 +101,6 @@ def index_restoration_pairs(
             if manifest.family in ("flux2", "flux3"):
                 content["references"] = []
             if manifest.family == "qwen-image":
-                if manifest.variant != "original":
-                    raise ValueError("Qwen restoration captions require an original-variant cache")
                 content = {
                     "target": content["image"],
                     "caption_utf8": content["caption_utf8"],
@@ -100,12 +113,26 @@ def index_restoration_pairs(
             identity = validate_latent_entry(cache, manifest, entry, release_cache=True)
             if identity.source_sha256 != source:
                 raise ValueError("Restoration source/caption contents differ from their cache identity; rebuild cache")
-            pairs.append(AlignedImagePair(None if synthetic else low[path.stem], path, entry, cache, degradation))
-            yield {
-                "high": source,
-                "low": None if synthetic else file_sha256(low[path.stem], release_cache=True),
-                "cache": entry.sha256,
-            }
+        pair = AlignedImagePair(None if synthetic else low[path.stem], path, entry, cache, degradation)
+        return pair, {
+            "high": source,
+            "low": None if synthetic else file_sha256(low[path.stem], release_cache=True),
+            "cache": entry.sha256,
+        }
+
+    def records() -> Iterator[JsonValue]:
+        results = ordered_validation_map(
+            validate, zip(high_files, manifest.entries, strict=True), workers=validation_workers
+        )
+        try:
+            for _ in progress(
+                high_files, "[train] Indexing restoration pairs" if skip_validation else "[train] Validating restoration pairs"
+            ):
+                pair, record = next(results)
+                pairs.append(pair)
+                yield record
+        finally:
+            results.close()
 
     digest = canonical_sequence_sha256(
         records(),

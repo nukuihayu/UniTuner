@@ -38,6 +38,8 @@ def build_resume_identity(
         section: {name for name, omitted in defaults.items() if getattr(getattr(config, section), name) in omitted}
         for section, defaults in default_policies.items()
     }
+    # Startup validation does not change the numerical training policy.
+    fields["train"].update(("skip_dataset_validation", "dataset_validation_workers"))
     if config.model.family != ModelFamily.MINIMAX_H3:
         fields["method"].add("minimax_h3")
     if config.execution.quantization == "none":

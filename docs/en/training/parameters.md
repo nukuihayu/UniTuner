@@ -153,6 +153,8 @@ Alternatively pass `--cache.batch-size 16` to the cache command. Shared training
 | `accumulation_steps` | integer；> 0 | `1` | Microbatches per optimizer update; trades more work per update for smaller individual batches. |
 | `max_grad_norm` | number；≥ 0 | `1.0` | Global gradient-norm clipping threshold; 0 disables clipping. |
 | `seed` | integer | `42` | Random seed for recipe comparisons; resume restores RNG from its state file. |
+| `skip_dataset_validation` | boolean | `false` | Trust existing image caches at startup and skip full content validation; retain manifest, pairing, model and shape checks. |
+| `dataset_validation_workers` | integer; 1..32 | `4` | Concurrent validation workers; 1 is serial. Bounded prefetch preserves sample order and resume identity. |
 | `lr_schedule` | "constant", "linear", "cosine" | `"constant"` | constant, linear decay or cosine decay; all support warmup. |
 | `warmup_updates` | integer；≥ 0 | `0` | Effective updates for linear LR warmup; must be smaller than max_updates. |
 

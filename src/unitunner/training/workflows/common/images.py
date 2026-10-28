@@ -128,6 +128,8 @@ def train(
     if device.type == "cuda" and device.index is None:
         device = torch.device("cuda", torch.cuda.current_device())
     torch.manual_seed(config.train.seed)
+    if not restoration and config.train.skip_dataset_validation:
+        status("[train] Indexing trusted image caches (full dataset validation skipped)")
     cached_groups, batch_sizes, dataset_digest = (
         ({}, {}, "")
         if restoration
@@ -136,6 +138,8 @@ def train(
             family=config.model.family,
             variant=config.model.variant,
             version=config.model.version,
+            skip_validation=config.train.skip_dataset_validation,
+            validation_workers=config.train.dataset_validation_workers,
         )
     )
     cached_plan = (

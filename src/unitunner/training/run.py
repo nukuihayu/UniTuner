@@ -40,7 +40,11 @@ def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
         return 0
     restoration_data = None
     if config.method.kind == "restoration":
-        status("[train] Indexing restoration pairs and validating caption caches")
+        status(
+            "[train] Indexing restoration pairs using trusted caption caches (full dataset validation skipped)"
+            if config.train.skip_dataset_validation
+            else "[train] Indexing restoration pairs and validating caption caches"
+        )
         if find_spec("PIL") is None:
             raise ValueError("Image restoration training requires uv sync --extra media")
         discover = cast(Callable[..., tuple[Path, ...]], import_module("unitunner.data.media.image").discover_images)
@@ -70,6 +74,8 @@ def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
                 family=config.model.family,
                 caption_extension=source.caption_extension,
                 prompt=source.prompt,
+                skip_validation=config.train.skip_dataset_validation,
+                validation_workers=config.train.dataset_validation_workers,
             )
             for _ in range(source.repeats):
                 pairs.extend(indexed)

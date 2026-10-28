@@ -133,6 +133,7 @@ def test_cached_training_resume_and_export(tmp_path, monkeypatch, algorithm, gro
         ).read_bytes()
         resumed = config.model_copy(
             update={
+                "train": config.train.model_copy(update={"skip_dataset_validation": True}),
                 "output": config.output.model_copy(
                     update={"directory": str(tmp_path / "resumed"), "save_precision": "bf16"}
                 )

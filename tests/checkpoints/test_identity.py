@@ -28,6 +28,19 @@ def test_resume_identity_pins_math_not_output():
     assert identity(config) != identity(decay)
 
 
+def test_dataset_validation_policy_does_not_change_resume_identity():
+    config = load_training_config(EXAMPLE)
+    trusted = load_training_config(
+        EXAMPLE, overrides={"train": {"skip_dataset_validation": True, "dataset_validation_workers": 8}}
+    )
+    assert not config.train.skip_dataset_validation
+    assert config.train.dataset_validation_workers == 4
+    assert trusted.train.skip_dataset_validation
+    assert build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64) == (
+        build_resume_identity(trusted, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)
+    )
+
+
 def test_provenance_needs_no_deleted_cli_attributes():
     provenance = Provenance(
         model_family="z-image",
@@ -48,9 +61,9 @@ def test_provenance_needs_no_deleted_cli_attributes():
 def test_execution_defaults_pin_image_and_wan_numerical_identities():
     """Pin compiler and dataset policies that determine numerical continuation."""
     published = {
-        "flow.toml": "7d945df7cfbcb62bb218c8037a9052621b4104be6f22473c1ccecb4de289f447",
-        "wan-flow.toml": "414f1b6645c465162c27e7f9b710b6fcb9a27eb3070d86d35af640f1df0b203f",
-        "restoration.toml": "f4c8e37ceefe0da4ded663c0058a3fb599ff61aee1cb0f13d46589c251adb1d1",
+        "flow.toml": "4a25dbfefe8fcbd2d79373c4bff09086cdce16fff09be0605866bb47bb5f314c",
+        "wan-flow.toml": "fa26924e6c17fe34393d041315943ab18546078347fb6f3ee1904899227f6aff",
+        "restoration.toml": "4d019406e108b2e8bb73d76228dd143c4f7b6fdf5364e91defd63d9dc5a159f4",
     }
     for name, expected in published.items():
         config = load_training_config(EXAMPLE.with_name(name))
