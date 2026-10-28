@@ -40,6 +40,8 @@ cache_directory = "/data/cache"
 # [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
 # 推荐从 1024 开始；1536 使用 [1536,1536]，第一阶段模糊按短边温和缩放，第二阶段使用 LQ 像素。
 # Start at 1024; use [1536,1536] for 1536. Acquisition blur scales gently with the short edge; delivery blur uses LQ pixels.
+# 从原图裁出训练切片后按连续倍率退化；不把整张图缩成切片。
+# Crop the training patch before degradation with continuously sampled factors.
 resolution = [1024,1024]
 # 每个 microbatch 的样本数；显存不足先减此项。
 # Samples per microbatch; reduce this first when activations exceed GPU memory.
@@ -67,15 +69,21 @@ horizontal_flip_probability = 0.5
 # 启用该组的合成退化；真实 LQ 配对任务不添加此表。
 # Enable synthetic degradation for this group; omit this table for real paired LQ data.
 enabled = true
-# 合成降采样倍率候选；仅在主动构造 LQ 时调整。
-# Candidate synthetic downsampling factors; adjust only when generating LQ inputs.
-scales = [2, 3, 4]
+# 合成降采样倍率区间；按对数均匀分布连续采样。
+# Synthetic downsampling factor range, sampled continuously in log space.
+scale_range = [1.0, 8.0]
+# 可选离散小数倍率；填写后覆盖 scale_range。
+# Optional explicit fractional factors override scale_range.
+# scales = [2.5, 4.0, 6.0, 8.0]
 # 普通照片 / 网络转载 / 低照度，非负且和为 1。
 # Photo / web repost / low-light; nonnegative and summing to one.
 scenario_probabilities = [0.25, 0.35, 0.40]
-# 常规 / 残留颗粒 / 纹理涂抹后锐化，可与来源场景组合。
-# Standard / residual grain / texture smoothing + sharpening; combines with source scenes.
-processing_probabilities = [0.30, 0.45, 0.25]
+# 连续平滑、颗粒与锐化；某项设为 [0,0] 可关闭。
+# Continuous smoothing, grain and sharpening; set a range to [0,0] to disable it.
+smear_strength = [0.0, 0.8]
+grain_strength = [0.0, 1.5]
+grain_scale_range = [1.0, 4.0]
+sharpen_strength = [0.0, 0.4]
 
 [method]
 # 训练目标：flow-matching 或 restoration。

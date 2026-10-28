@@ -44,14 +44,15 @@ def test_kernels_preserve_dc_symmetry_and_sinc_negative_lobes():
 
 @pytest.mark.parametrize("scale", [1, 4, 16])
 @pytest.mark.parametrize("scene", [0, 1, 2])
-@pytest.mark.parametrize("processing", [0, 1, 2])
-def test_degradation_local_rng_finite_range_and_unchanged_hq(scale, scene, processing):
+@pytest.mark.parametrize("strengths", [(0.0, 0.0), (0.2, 0.7), (0.7, 0.2)])
+def test_degradation_local_rng_finite_range_and_unchanged_hq(scale, scene, strengths):
     high = torch.from_numpy(np.random.default_rng(42).random((3, 64, 80), dtype=np.float32))
     original = high.clone()
     before_torch, before_numpy, before_python = torch.get_rng_state(), np.random.get_state(), random.getstate()
     settings = DegradationConfig(
         scales=(scale,),
-        processing_probabilities=(float(processing == 0), float(processing == 1), float(processing == 2)),
+        smear_strength=(strengths[0], strengths[0]),
+        grain_strength=(strengths[1], strengths[1]),
         color_jitter_probability=1.0,
         gray_probability=0.5,
         scenario_probabilities=(float(scene == 0), float(scene == 1), float(scene == 2)),
@@ -257,7 +258,9 @@ def test_only_web_reposts_encode_twice_and_low_light_processes_camera_noise(monk
         compression_blur_probability=0.0,
         scales=(4,),
         scenario_probabilities=(float(scene == 0), float(scene == 1), float(scene == 2)),
-        processing_probabilities=(1.0, 0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
         first=StageConfig(noise_probability=1.0, compression_probability=1.0),
         second=SecondStageConfig(noise_probability=1.0, compression_probability=1.0),
     )
@@ -294,7 +297,9 @@ def test_scale_sampling_is_uniform_without_favoring_the_largest_factor(monkeypat
     settings = DegradationConfig(
         scales=scales,
         scenario_probabilities=(1.0, 0.0, 0.0),
-        processing_probabilities=(1.0, 0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
         first=StageConfig(blur_probability=0.0, noise_probability=0.0),
         second=SecondStageConfig(blur_probability=0.0, noise_probability=0.0, compression_probability=1.0),
     )
@@ -307,30 +312,29 @@ def test_scale_sampling_is_uniform_without_favoring_the_largest_factor(monkeypat
         assert count == pytest.approx(256, rel=0.2)
 
 
-def test_phone_processing_retains_grain_or_suppresses_texture_without_flattening_edges():
-    from unitunner.data.degradation.pipeline import _processed_photo
+def test_texture_suppression_preserves_edges_and_grain_preserves_mean():
+    from unitunner.data.degradation.pipeline import _residual_grain, _smooth_texture
 
     flat = np.full((128, 128, 3), 0.4, dtype=np.float32)
-    grainy = _processed_photo(flat, NoiseConfig(), np.random.default_rng(7), 0.8, grainy=True)
+    grainy = _residual_grain(flat, NoiseConfig(), np.random.default_rng(7), 0.8, strength=1)
     assert grainy.std() > 0.005
     assert abs(grainy.mean() - flat.mean()) < 0.01
     texture = flat.copy()
     texture[:, 64:] = 0.7
     texture += np.random.default_rng(8).normal(0, 0.015, texture.shape).astype(np.float32)
-    smoothed = _processed_photo(texture, NoiseConfig(), np.random.default_rng(7), 0.8, grainy=False)
+    smoothed = _smooth_texture(texture, 0.8, strength=1)
     assert smoothed[8:-8, 8:56].std() < texture[8:-8, 8:56].std() * 0.4
     assert smoothed[:, 68:].mean() - smoothed[:, :60].mean() > 0.25
 
 
-@pytest.mark.parametrize("grainy", [False, True])
-def test_phone_processing_supports_delivery_and_output_grid_encoding(monkeypatch, grainy):
+def test_continuous_processing_supports_delivery_and_output_grid_encoding(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     encoded = []
     original = pipeline._compress
 
     def capture(image, settings, rng, severity):
-        encoded.append(image.copy())
+        encoded.append(image.shape[:2])
         return original(image, settings, rng, severity)
 
     monkeypatch.setattr(pipeline, "_compress", capture)
@@ -338,14 +342,12 @@ def test_phone_processing_supports_delivery_and_output_grid_encoding(monkeypatch
         compression_blur_probability=0.0,
         scales=(4,),
         scenario_probabilities=(1.0, 0.0, 0.0),
-        processing_probabilities=(0.0, float(grainy), float(not grainy)),
         second=SecondStageConfig(compression_probability=1.0),
     )
     for seed in range(32):
         low = degrade_image(torch.full((3, 128, 192), 0.4), cfg, seed)
         assert low.shape == (3, 128, 192)
-    expected = {(64, 96), (128, 192)} if grainy else {(32, 48), (128, 192)}
-    assert {image.shape[:2] for image in encoded} == expected
+    assert set(encoded) == {(32, 48), (128, 192)}
 
 
 @pytest.mark.parametrize("shape", [(45, 70), (9, 13)])
@@ -397,7 +399,9 @@ def test_output_grid_noise_retains_fine_grain_after_sr_resize(monkeypatch, scale
     cfg = DegradationConfig(
         scales=(scale,),
         scenario_probabilities=(1.0, 0.0, 0.0),
-        processing_probabilities=(1.0, 0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
         resize_modes=("bilinear",),
         final_sinc_probability=0.0,
         first=StageConfig(blur_probability=0.0, noise_probability=0.0),
@@ -428,7 +432,9 @@ def test_disabling_noise_and_extra_processing_does_not_inject_noise(monkeypatch)
     monkeypatch.setattr(pipeline, "add_noise", forbidden)
     cfg = DegradationConfig(
         scales=(4, 8),
-        processing_probabilities=(1.0, 0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
         first=StageConfig(noise_probability=0.0),
         second=SecondStageConfig(noise_probability=0.0),
     )
@@ -445,7 +451,9 @@ def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
     cfg = DegradationConfig(
         scales=(4,),
         scenario_probabilities=(1.0, 0.0, 0.0),
-        processing_probabilities=(1.0, 0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
         final_sinc_probability=0.0,
         first=StageConfig(blur_probability=1.0, noise_probability=1.0),
         second=SecondStageConfig(blur_probability=1.0, noise_probability=1.0, compression_probability=0.0),
@@ -487,18 +495,21 @@ def test_random_order_keeps_optical_blur_first_and_varies_delivery(monkeypatch):
     assert observed[1] == set(permutations(("blur", "resize", "noise")))
 
 
-def test_processing_strength_controls_texture_and_grain():
-    from unitunner.data.degradation.pipeline import _processed_photo
+def test_processing_gains_are_continuous_and_zero_preserves_image():
+    from unitunner.data.degradation.pipeline import _residual_grain, _smooth_texture
 
-    flat = np.full((96, 96, 3), 0.4, dtype=np.float32)
-
-    def process(image, grainy, strength):
-        return _processed_photo(image, NoiseConfig(), np.random.default_rng(13), 0.8, grainy=grainy, strength=strength)
-
-    np.testing.assert_array_equal(process(flat, True, 0), flat)
-    assert process(flat, True, 2).std() > 1.8 * process(flat, True, 1).std()
-    texture = flat + np.random.default_rng(2).normal(0, 0.02, flat.shape).astype(np.float32)
-    assert process(texture, False, 1).std() < process(texture, False, 0.5).std()
+    image = np.full((64, 64, 3), 0.4, dtype=np.float32)
+    image += np.random.default_rng(4).normal(0, 0.015, image.shape).astype(np.float32)
+    for operation in [
+        lambda gain: _smooth_texture(image, 0.8, strength=gain),
+        lambda gain: _residual_grain(
+            image, NoiseConfig(), np.random.default_rng(13), 0.8, strength=gain, spatial_scale=2.7
+        ),
+    ]:
+        np.testing.assert_array_equal(operation(0), image)
+        half, full = operation(0.5), operation(1.0)
+        np.testing.assert_allclose(half - image, 0.5 * (full - image), atol=1e-7)
+        assert np.square(operation(1e-5) - image).mean() < 1e-10
 
 
 def test_recompression_shifts_block_origin_without_shifting_image(monkeypatch):
@@ -518,44 +529,42 @@ def test_recompression_shifts_block_origin_without_shifting_image(monkeypatch):
     np.testing.assert_array_equal(result, image)
 
 
-def test_mixed_grain_applies_smoothing_before_noise(monkeypatch):
+def test_continuous_processing_smooths_before_adding_residual_grain(monkeypatch):
     from unitunner.data.degradation import pipeline
 
     calls = []
-    original = pipeline._processed_photo
+    smooth, grain = pipeline._smooth_texture, pipeline._residual_grain
 
-    def record(*args, **kwargs):
-        calls.append(kwargs["grainy"])
-        return original(*args, **kwargs)
+    def record_smooth(*args, **kwargs):
+        calls.append("smooth")
+        return smooth(*args, **kwargs)
 
-    monkeypatch.setattr(pipeline, "_processed_photo", record)
-    cfg = DegradationConfig(processing_probabilities=(0.0, 1.0, 0.0), grain_smear_probability=1.0)
+    def record_grain(*args, **kwargs):
+        calls.append("grain")
+        return grain(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_smooth_texture", record_smooth)
+    monkeypatch.setattr(pipeline, "_residual_grain", record_grain)
     high = torch.rand(3, 64, 96)
     before = high.clone()
-    result = degrade_image(high, cfg, 17)
-    assert calls == [False, True]
+    result = degrade_image(high, DegradationConfig(), 17)
+    assert calls == ["smooth", "grain"]
     torch.testing.assert_close(high, before, atol=0, rtol=0)
     assert result.shape == high.shape and torch.isfinite(result).all()
 
 
 def test_adaptive_smear_preserves_contrast_without_disabling_flat_texture_removal():
-    from unitunner.data.degradation.pipeline import _processed_photo
+    from unitunner.data.degradation.pipeline import _smooth_texture
 
     image = np.full((96, 128, 3), 0.4, dtype=np.float32)
     image += np.random.default_rng(4).normal(0, 0.01, image.shape).astype(np.float32)
     image[:, 64:] += np.tile(np.array([0.0, 0.0, 0.15, 0.15], dtype=np.float32), 16)[None, :, None]
-    uniform = _processed_photo(image, NoiseConfig(), np.random.default_rng(1), 0.8, grainy=False, detail_protection=0.0)
-    adaptive = _processed_photo(
-        image, NoiseConfig(), np.random.default_rng(1), 0.8, grainy=False, detail_protection=0.6
-    )
+    uniform = _smooth_texture(image, 0.8, strength=1, detail_protection=0.0)
+    adaptive = _smooth_texture(image, 0.8, strength=1, detail_protection=0.6)
     assert np.square(adaptive[:, 72:] - image[:, 72:]).mean() < np.square(uniform[:, 72:] - image[:, 72:]).mean()
     assert adaptive[8:-8, 8:56].std() < image[8:-8, 8:56].std() * 0.4
     flat = np.full((32, 32, 3), 0.4, dtype=np.float32)
-    np.testing.assert_allclose(
-        _processed_photo(flat, NoiseConfig(), np.random.default_rng(1), 0.8, grainy=False),
-        flat,
-        atol=1e-6,
-    )
+    np.testing.assert_allclose(_smooth_texture(flat, 0.8, strength=1), flat, atol=1e-6)
 
 
 @pytest.mark.parametrize("exposure", [(0.0, 1.0), (0.5, 1.1), (0.8, 0.5)])
@@ -586,7 +595,9 @@ def test_compression_blur_order_and_disable_switches(monkeypatch, disabled):
     cfg = DegradationConfig(
         compression_blur_probability=0.0 if disabled == "path" else 1.0,
         scenario_probabilities=(1.0, 0.0, 0.0),
-        processing_probabilities=(1.0, 0.0, 0.0),
+        smear_strength=(0.0, 0.0),
+        grain_strength=(0.0, 0.0),
+        sharpen_strength=(0.0, 0.0),
         first=StageConfig(blur_probability=0.0, noise_probability=0.0, compression_probability=0.0),
         second=SecondStageConfig(
             blur_probability=0.0 if disabled == "blur" else 1e-12,
@@ -601,3 +612,84 @@ def test_compression_blur_order_and_disable_switches(monkeypatch, disabled):
     assert trace == (["encode", "blur"] if disabled is None else [])
     assert out.shape == image.shape and torch.isfinite(out).all()
     torch.testing.assert_close(image, original, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize("factor", [2.5, 4, 6, 8])
+def test_coarse_grid_smoothing_preserves_more_texture(factor):
+    from unitunner.data.degradation.pipeline import _smooth_texture
+
+    image = np.full((64, 64, 3), 0.4, dtype=np.float32)
+    image += np.random.default_rng(4).normal(0, 0.015, image.shape).astype(np.float32)
+    baseline = _smooth_texture(image, 0.8, strength=0.7)
+    limited = _smooth_texture(image, 0.8, strength=0.7, downsample_factor=factor)
+    assert baseline.std() < limited.std() < image.std()
+    assert np.square(limited - image).mean() < np.square(baseline - image).mean()
+
+
+def test_continuous_scale_and_processing_sampling_cover_intermediate_values():
+    from unitunner.data.degradation.pipeline import _sample_processing, _sample_scale
+
+    cfg = DegradationConfig()
+    rng = np.random.default_rng(37)
+    scales = np.array([_sample_scale(cfg, rng) for _ in range(2048)])
+    assert np.all((scales >= 1) & (scales <= 8))
+    assert np.median(scales) == pytest.approx(math.sqrt(8), rel=0.08)
+    assert len(np.unique(scales.round(2))) > 400
+    draws = np.array([_sample_processing(cfg, rng) for _ in range(2048)])
+    assert np.all((draws >= 0) & (draws <= [0.8, 1.5, 4, 0.4]))
+    assert np.all(draws[:, 2] >= 1)
+    assert np.corrcoef(draws[:, 0], draws[:, 1])[0, 1] < -0.1
+    assert np.any((draws[:, 0] > 0.5) & (draws[:, 1] > 0.4))
+    assert np.any((draws[:, 0] < 0.1) & (draws[:, 1] < 0.1))
+
+
+@pytest.mark.parametrize("scale", [1.0, 2.5, 4.0, 6.0, 8.0, 11.7, 16.0])
+def test_fractional_scale_uses_rounded_delivery_grid_and_preserves_hq(monkeypatch, scale):
+    from unitunner.data.degradation import pipeline
+
+    grids = []
+    original = pipeline._smooth_texture
+
+    def capture(image, *args, **kwargs):
+        grids.append(image.shape[:2])
+        return original(image, *args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "_smooth_texture", capture)
+    high = torch.from_numpy(np.random.default_rng(15).random((3, 65, 97), dtype=np.float32))
+    before = high.clone()
+    cfg = DegradationConfig(scales=(scale,))
+    low = degrade_image(high, cfg, 12)
+    assert grids == [(int(65 / scale), int(97 / scale))]
+    assert low.shape == high.shape and low.dtype == torch.float32
+    assert torch.isfinite(low).all() and 0 <= low.min() <= low.max() <= 1
+    torch.testing.assert_close(high, before, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"scale_range": (0.5, 8.0)},
+        {"scale_range": (8.0, 2.0)},
+        {"scale_range": (1.0, float("nan"))},
+        {"scales": ()},
+        {"scales": (17.0,)},
+        {"grain_scale_range": (0.0, 2.0)},
+        {"sharpen_strength": (0.0, 2.0)},
+        {"processing_probabilities": (0.3, 0.45, 0.25)},
+        {"grain_smear_probability": 0.45},
+    ],
+)
+def test_invalid_or_removed_processing_settings_fail_explicitly(kwargs):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        DegradationConfig(**kwargs)
+
+
+def test_explicit_scale_candidates_override_continuous_range_and_roundtrip():
+    from unitunner.data.degradation.pipeline import _sample_scale
+
+    cfg = DegradationConfig(scales=(1.5, 2.75, 6.0), scale_range=(8.0, 16.0))
+    restored = DegradationConfig.model_validate_json(cfg.model_dump_json())
+    rng = np.random.default_rng(0)
+    assert {_sample_scale(restored, rng) for _ in range(100)} == {1.5, 2.75, 6.0}

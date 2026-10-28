@@ -405,7 +405,8 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Enable synthetic degradation for this group; omit this table for real paired LQ data. |
-| `scales` | [integer, …] | `[2, 3, 4]` | Candidate synthetic downsampling factors; adjust only when generating LQ inputs. |
+| `scales` | [number, …] | unset | Optional explicit factors, 1..16 including fractions; sampled uniformly, overrides scale_range. |
+| `scale_range` | [number, number] | `[1.0, 8.0]` | Continuous factors, log-uniform; bounds within 1..16. |
 | `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | Downsampling uses antialiasing for bilinear/bicubic; enlargement omits area when other modes exist. Nearest is opt-in. |
 | `first` | object | `subtable` | First-stage blur, resize, noise and compression distributions. |
 | `second` | object | `subtable` | Independent second-stage blur, resize, noise and compression distributions. |
@@ -417,11 +418,11 @@ Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-
 | `saturation` | [number, number] | `[0.0, 1.5]` | Saturation multiplier range [lower, upper]. |
 | `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
-| `processing_probabilities` | [number, number, number] | `[0.3, 0.45, 0.25]` | Standard / residual camera grain / texture smoothing + sharpening probabilities, summing to 1. Independent of scene selection. |
-| `grain_strength` | [number, number] | `[0.75, 1.5]` | Residual grain gain, 0..4. |
-| `smear_strength` | [number, number] | `[0.4, 0.8]` | Texture-smoothing blend, 0..1. |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | Residual grain gain, 0..4. |
+| `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
+| `smear_strength` | [number, number] | `[0.0, 0.8]` | Texture-smoothing blend, 0..1; attenuated by min(1, 2/d) at actual downsampling factor d. |
+| `sharpen_strength` | [number, number] | `[0.0, 0.4]` | Continuous delivery sharpening gain, 0..1; [0,0] disables it. |
 | `smear_detail_protection` | number | `0.6` | Local contrast protection, 0..1; zero restores uniform blending. |
-| `grain_smear_probability` | number | `0.45` | Smooth before grain within the grain branch. |
 | `compression_blur_probability` | number | `0.25` | Encode then blur on the LQ grid; disabled when second-stage blur or compression is explicitly off. |
 
 ## `StageConfig`

@@ -405,7 +405,8 @@ batch_size = 16
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | 启用该组的合成退化；真实 LQ 配对任务不添加此表。 |
-| `scales` | [integer, …] | `[2, 3, 4]` | 合成降采样倍率候选；仅在主动构造 LQ 时调整。 |
+| `scales` | [number, …] | unset | 可选的显式倍率列表，支持 1～16 的小数；等概率抽取，优先于 scale_range。 |
+| `scale_range` | [number, number] | `[1.0, 8.0]` | 连续倍率区间，按对数均匀分布采样；上下界在 1～16 内。 |
 | `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | bilinear/bicubic 降采样启用抗混叠；放大时有其他候选则不选 area。nearest 仅显式启用。 |
 | `first` | object | `子表` | 第一阶段的模糊、缩放、噪声和压缩分布。 |
 | `second` | object | `子表` | 第二阶段的独立模糊、缩放、噪声和压缩分布。 |
@@ -417,11 +418,11 @@ batch_size = 16
 | `saturation` | [number, number] | `[0.0, 1.5]` | 饱和度倍率范围 [下界, 上界]。 |
 | `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
 | `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
-| `processing_probabilities` | [number, number, number] | `[0.3, 0.45, 0.25]` | 常规 / 残留相机颗粒 / 纹理涂抹后锐化的概率，和为 1；独立于场景选择。 |
-| `grain_strength` | [number, number] | `[0.75, 1.5]` | Residual grain gain, 0..4. |
-| `smear_strength` | [number, number] | `[0.4, 0.8]` | Texture-smoothing blend, 0..1. |
+| `grain_strength` | [number, number] | `[0.0, 1.5]` | 残余颗粒增益，0～4；[0,0] 关闭。 |
+| `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |
+| `smear_strength` | [number, number] | `[0.0, 0.8]` | 连续纹理平滑混合强度，0～1；按实际降采样倍率 d 乘以 min(1,2/d)。 |
+| `sharpen_strength` | [number, number] | `[0.0, 0.4]` | 连续交付锐化强度，范围 0～1；[0,0] 关闭。 |
 | `smear_detail_protection` | number | `0.6` | 局部对比度保护，0～1；0 恢复均匀混合。 |
-| `grain_smear_probability` | number | `0.45` | Smooth before grain within the grain branch. |
 | `compression_blur_probability` | number | `0.25` | 在 LQ 网格先编码后模糊；第二阶段显式关闭模糊或压缩时禁用。 |
 
 ## `StageConfig`

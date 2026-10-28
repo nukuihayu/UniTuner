@@ -172,14 +172,15 @@ class DegradationConfig(DistributionConfig, frozen=True):
     """
 
     enabled: bool = False
-    scales: tuple[Annotated[int, Field(ge=1, le=16)], ...] = (2, 3, 4)
+    scales: tuple[Annotated[float, Field(ge=1, le=16)], ...] | None = None
+    scale_range: Range = (1.0, 8.0)
     scenario_probabilities: Probabilities = (0.25, 0.35, 0.40)
-    processing_probabilities: Probabilities = (0.30, 0.45, 0.25)
-    grain_smear_probability: Probability = 0.45
     compression_blur_probability: Probability = 0.25
-    grain_strength: Range = (0.75, 1.5)
-    smear_strength: Range = (0.4, 0.8)
+    grain_strength: Range = (0.0, 1.5)
+    smear_strength: Range = (0.0, 0.8)
     smear_detail_protection: Probability = 0.6
+    grain_scale_range: Range = (1.0, 4.0)
+    sharpen_strength: Range = (0.0, 0.4)
     resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (
         "area",
         "bilinear",
@@ -199,7 +200,13 @@ class DegradationConfig(DistributionConfig, frozen=True):
     def validate_choices(self) -> Self:
         if self.grain_strength[1] > 4 or self.smear_strength[1] > 1:
             raise ValueError("grain_strength must be within [0,4] and smear_strength within [0,1]")
-        if not self.scales or not self.resize_modes:
+        if not 1 <= self.scale_range[0] <= self.scale_range[1] <= 16:
+            raise ValueError("scale_range must be within [1,16]")
+        if not 1 <= self.grain_scale_range[0] <= self.grain_scale_range[1] <= 16:
+            raise ValueError("grain_scale_range must be within [1,16]")
+        if self.sharpen_strength[1] > 1:
+            raise ValueError("sharpen_strength must be within [0,1]")
+        if self.scales == () or not self.resize_modes:
             raise ValueError("Degradation scales and resize modes cannot be empty")
         if not -0.5 <= self.hue[0] <= self.hue[1] <= 0.5:
             raise ValueError("Hue range must be ordered within [-0.5,0.5]")

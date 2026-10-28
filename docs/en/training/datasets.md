@@ -143,37 +143,45 @@ Omit degradation when real LQ images already exist. To synthesize LQ, use datase
 
 ### Synthetic super-resolution degradation
 
-Synthetic degradation preserves the HQ framing, brightness and color as supervision while modeling detail loss and processing artifacts in low-resolution photos. Fog, rain, scratches and exposure shifts are not enabled. Prefer sharp, low-noise source photos with minimal compression: existing damage accumulates with synthetic degradation.
-
-| Scene | Default share | Related degradation |
-| --- | --- | --- |
-| Photo | 55% | Mild optical blur, downsampling, weak noise, optional final encoding |
-| Web repost | 30% | Intermediate encoding, resizing, stronger final compression and more frequent mild sharpening |
-| Low-light photo | 15% | Linear-light signal-dependent shot/read noise, edge-preserving denoising and chroma smoothing before downsampling/encoding; no target exposure change |
-
-Factors in `scales = [2, 3, 4]` are sampled uniformly, about 33.33% each; `[2, 3, 4, 8]` gives 25% each with no preference for the largest factor. Shared severity follows Beta(2,3), favoring mild/moderate damage while retaining stronger samples. Blur, noise and compression vary slightly around that shared draw. Factor selection does not determine severity. Scene proportions are adjustable training priors, not measured real-world frequencies.
+Synthetic degradation crops the training patch from HQ before creating same-size LQ; it does not resize the entire source into a patch. HQ remains unchanged. For 1536 crops:
 
 ```toml
+[dataset.groups.main]
+resolution = [1536, 1536]
+enable_bucket = false
+
 [dataset.groups.main.degradation]
 enabled = true
-scales = [2, 3, 4]
-# Photo / web repost / low-light; use [0.0, 1.0, 0.0] for web-only data.
-scenario_probabilities = [0.25, 0.35, 0.40]
-processing_probabilities = [0.30, 0.45, 0.25]
+scale_range = [1.0, 8.0]
+smear_strength = [0.0, 0.8]
+grain_strength = [0.0, 1.5]
+grain_scale_range = [1.0, 4.0]
+sharpen_strength = [0.0, 0.4]
 ```
 
-Acquisition keeps optical blur first; noise runs before or after acquisition resizing with equal probability, with immediate denoising after low-light noise. Only web samples may be encoded at this stage. Delivery randomly orders resizing, local blur and noise. When second-stage noise is enabled for a sample, half runs in that stage and half is deferred until after enlargement to HQ dimensions, without adding the second-stage noise twice. When enlargement is still needed, final encoding runs before or after it with equal probability. If the grain path has already enlarged to HQ dimensions, encoding remains on that grid. This covers output-size fine grain and compression artifacts at different scales. Each stage may also repeat encoding as described below. JPEG/WebP are defaults; JPEG2000 is opt-in.
+Factors are sampled continuously and uniformly in log space within `scale_range`, supporting 1..16 including fractional values such as 2.3 and 5.7. With [1,8], intervals [1,2], [2,4] and [4,8] have equal probability. Explicit `scales=[2.5,4,6,8]` instead samples those candidates uniformly and takes precedence over scale_range. Delivery dimensions are floor(H/factor) and floor(W/factor), so actual factors have pixel-rounding error. A 1536 crop at 4x/6x/8x uses 384/256/192 grids before enlargement back to 1536.
 
-First-stage `blur.sigma = [0.4, 2.8]` uses a 1024 short-edge reference, multiplied by `clamp(sqrt(min(H,W)/1024), 0.5, 1.5)`: about `[0.490, 3.429]` for square 1536 inputs. This bounded growth is a training prior, not an optical law. Second-stage `[0.15, 0.65]` uses pixels of the current operation grid directly and does not grow with HQ dimensions. Centered motion and circular defocus kernels preserve pair alignment. Sinc cutoffs use the local pixel grid; final sinc probability is 0.1 with 7–21 pixel support.
+There are no standard/grain/smoothing classes. Every sample uses the same processing sequence with continuous smoothing, residual grain, grain footprint and sharpening. Denoising u and independent grain retention v follow Beta(1.5,2). Position within the smoothing range is u; position within the grain range is v(1−0.5u). Stronger denoising tends to leave less grain, while both can coexist. Sharpening is uniform within its configured range. These distributions are synthetic priors, not camera calibration. Set a strength range to [0,0] to disable that operation; disabling residual grain does not disable noise in first/second stages.
 
-Bilinear/bicubic downsampling is antialiased; default enlargement uses bilinear/bicubic. All resizing shares one coordinate implementation: `scale_factor` calls use `recompute_scale_factor=True` to derive coordinates from rounded output dimensions, with explicit `align_corners=False` for bilinear/bicubic. This reduces systematic drift across resizes; it does not remove filtering errors or arbitrary pair misalignment. Mild sharpening on the current delivery grid has probability 0.3 for photo/low-light and 0.6 for web, with amount 0.1–0.4. See the [parameter reference](parameters.md#degradationconfig) for noise and codec units. Low-light processing approximates a processed RGB pipeline; it is not a complete RAW/demosaicing simulation. Use real paired LQ directly without added synthetic degradation. Recalibrate restoration timesteps after changing distributions; the synthetic dataset identity also changes. Earlier degradation runs cannot resume as an identical trajectory; a new run can reuse text caches and start from existing weights.
+| Source scene | Default share | Related processing |
+| --- | --- | --- |
+| Photo | 25% | Optical blur, resizing, weaker acquisition noise, delivery encoding |
+| Web repost | 35% | Intermediate encoding, resizing, stronger delivery compression |
+| Low light | 40% | Linear-light shot/read noise, edge-preserving denoising and chroma smoothing |
 
-Default processing mixes standard (30%), grain (45%) and smoothing (25%). Grain is generated at half or full delivery resolution and mixes fine shot/read residuals with correlated grain. `grain_strength=[0.75,1.5]` controls amplitude (allowed 0..4). Smoothing uses one moderate edge-preserving pass plus chroma smoothing to limit waxy patches from repeated filtering at low resolution; `smear_strength=[0.4,0.8]` controls the blend (allowed 0..1). Within the grain branch, `grain_smear_probability=0.45` first smooths the low-resolution image before adding grain, representing photos with both erased texture and residual noise.
+Source scenes still control acquisition noise and historical encoding tendencies, without selecting exclusive processing branches. Shared damage severity follows Beta(2,2); blur, acquisition noise and codec quality vary around it. Continuous denoising and residual grain vary separately instead of all damage always increasing together.
 
-Each selected codec stage has `recompression_probability=0.25`: an extra real encode/decode with shifted block origin, cropped back without moving scene geometry. The final codec runs before or after enlargement. Default JPEG quality is [45,95] for stage one and [35,95] for stage two. Source scenarios mix photo/web/low-light at [0.25,0.35,0.40], and severity uses Beta(2,2). These are stronger processed-RGB priors, not a calibrated RAW pipeline or a measured fit to the reference portraits.
+Acquisition begins with optical blur, then randomly orders noise and resizing. Low-light noise is followed by camera denoising; web samples can have intermediate encoding. Stage two randomly orders resizing, local blur and noise. Half of selected stage-two noise is deferred until final enlargement, never added twice. On the delivery grid, optional compression-then-blur and sinc precede continuous content-protected smoothing and sharpening. Final encoding can precede or follow enlargement. Residual grain is added at HQ dimensions; when encoding precedes enlargement, grain represents post-delivery processing residue.
 
-Both styles are active when synthetic degradation is enabled; HQ remains unchanged. Explicit TOML values override defaults. Recalibrate sigma after changing the distribution. A versioned degradation policy participates in resume identity, preventing silent exact continuation across this change. Full-resolution filtering and repeated codecs cost additional CPU time. Set processing to [1,0,0] to skip grain/smoothing, or set recompression_probability=0 in both compression stages to skip extra encodes.
+`grain_scale_range=[1,4]` samples the noise-grid reduction relative to the output uniformly in log space. Only the noise residual is enlarged and added to the picture; image structure is not resampled to change grain footprint. Grain combines fine luminance and more broadly correlated chroma components, with continuously controlled amplitude.
 
+First-stage blur sigma defaults to [0.4,2.8], scaled by `clamp(sqrt(min(H,W)/1024),0.5,1.5)`: about [0.490,3.429] for square 1536 inputs. Second-stage sigma=[0.15,0.65] uses current-grid pixels. Smoothing uses one moderate edge-preserving pass; `smear_detail_protection=0.6` protects high-contrast contours. Actual downsampling factor d multiplies extra smoothing by `min(1,2/d)`, limiting strong shrinking combined with strong smearing. At 4x/6x/8x, smoothing retains 1/2, 1/3 and 1/4 of its sampled strength. This cannot restore details already lost to downsampling.
+
+`first.noise.exposure=[0.75,1]` lowers linear-light exposure before noise and recovers it afterward. Away from clipping, recovered variance is `signal*shot/exposure + read/exposure²`. Stage-two exposure is [1,1]. This is a processed-RGB approximation, not RAW/demosaicing simulation. Bilinear/bicubic downsampling is antialiased and uses consistent pixel-coordinate rules. No geometric beautification or face warping is introduced.
+
+Encoding uses real JPEG/WebP/JPEG2000 round trips; JPEG/WebP are defaults. JPEG ranges are [45,95] in stage one and [35,95] in stage two. Each codec stage has `recompression_probability=0.25`, shifting codec-block origin before re-encoding and cropping back without moving scene geometry. `compression_blur_probability=0.25` encodes then blurs existing blocks/ringing on the LQ grid using stage-two settings. Zero disables it; explicitly disabling stage-two blur or compression also disables it. Otherwise its probability is independent of the ordinary stage probabilities.
+
+Remove old `processing_probabilities` and `grain_smear_probability` settings and use continuous strength ranges. Old keys fail explicitly rather than being ignored. Recalibrate restoration timesteps/sigma and start a new run after distribution changes; the policy version participates in resume identity. Real paired LQ needs no synthetic degradation. Example images validate generation and visual coverage, not improved restoration training or facial fidelity.
 
 ## Editing, references, masks and layers
 
@@ -222,19 +230,3 @@ Every cache invocation fully rebuilds and replaces the old cache only after succ
 ---
 
 [Documentation](../README.md) · [Parameter reference](parameters.md) · [Troubleshooting](../troubleshooting.md)
-
-
-### Content-adaptive phone processing
-
-The updated camera branch samples `first.noise.exposure=[0.75,1.0]` in linear light, adds shot/read noise, then recovers exposure. Away from clipping, recovered variance is `signal*shot/exposure + read/exposure²`: this changes noise without deliberately darkening the target. Second-stage exposure defaults to [1,1]. Set exposure to [1,1] to disable exposure recovery. This remains a processed-RGB approximation, not RAW sensor calibration.
-
-Grain uses a wider correlation radius for chroma than luminance. Its default gain is reduced to [0.75,1.5] to avoid compounding sensor noise and delivery grain excessively. `smear_detail_protection=0.6` (range 0..1) continuously reduces smoothing in locally high-contrast areas; low-contrast microtexture is still removed. Set it to 0 for the previous uniform smoothing blend. No semantic face masks, geometric beautification, synthetic watermarks or periodic texture are introduced.
-
-A clean DIV2K portrait and a separate scene were tested with eight fixed default seeds each. This verifies image generation and illustrates distribution coverage, not quantitative matching to reference photos or improved restoration training. Same seed across policy versions does not preserve individual random decisions. Full-size PNGs and native-pixel crops should be used to inspect grain; scaled previews hide it. The numerical policy is version 5 and requires a new run/recalibration.
-
-
-### Compression followed by blur
-
-`compression_blur_probability=0.25` adds a historical encoding followed immediately by optical filtering on the LQ grid, before phone processing and the final delivery encode. It uses `second.compression` and `second.blur` settings. This softens existing codec blocks/ringing rather than producing only freshly sharpened compression artifacts. Set the probability to zero to disable this path; explicitly setting either second-stage blur or compression probability to zero also disables it. Otherwise this path has its own sampling probability, not the product of the ordinary second-stage probabilities.
-
-Default processing now selects standard/grain/smoothing at [0.30,0.45,0.25]. Within grain, 45% first applies texture smoothing: the expected mixed share rises from 12.25% to 20.25%, while standalone smoothing drops from 40% to 25%. These are marginal sampling probabilities, not mutually exclusive full degradation recipes; blur/noise/compression may coexist elsewhere. Existing contrast protection remains enabled. No facial landmarks or geometric transformations are introduced, and reduced apparent facial distortion is not guaranteed for every low-resolution sample.

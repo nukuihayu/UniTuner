@@ -141,7 +141,7 @@ def _resize(
     )
 
 
-def _resize_scale(stage: StageConfig, rng: np.random.Generator, scale: int) -> float:
+def _resize_scale(stage: StageConfig, rng: np.random.Generator, scale: float) -> float:
     """Sample up/down/identity scale, limiting downscale by the selected degradation factor."""
     direction = int(rng.choice(3, p=stage.resize_probabilities))
     if direction == 0:
@@ -207,34 +207,20 @@ def _camera_processing(image: Pixels, severity: float) -> Pixels:
     return (luminance + chroma).clip(0, 1).astype(np.float32)
 
 
-def _processed_photo(
+def _smooth_texture(
     image: Pixels,
-    settings: NoiseConfig,
-    rng: np.random.Generator,
     severity: float,
     *,
-    grainy: bool,
-    strength: float = 1.0,
+    strength: float,
     detail_protection: float = 0.6,
+    downsample_factor: float = 1.0,
 ) -> Pixels:
-    """Residual camera grain or texture suppression in a processed phone photo.
-
-    Operates on the delivery grid, with no semantic masks or geometry changes.
-    Grain is only partially denoised; texture smoothing preserves larger edges.
-    """
+    """Continuously suppress microtexture, limiting extra blur on coarse grids."""
     if strength == 0:
         return image.copy()
-    if grainy:
-        noisy = add_noise(image, settings, rng, camera=True, severity=severity, strength=0.8 + 0.4 * severity)
-        residual = noisy - image
-        # Mix fine sensor grain with spatially correlated residual noise, not a tiled pattern.
-        luminance = (residual * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(2, keepdims=True)
-        fine = cv2.GaussianBlur(luminance[..., 0], (0, 0), 0.65)[..., None]
-        chroma = cv2.GaussianBlur(residual - luminance, (0, 0), 0.8 + severity)
-        # Chroma blotches have a broader footprint than luminance grain.
-        residual = 0.65 * residual + 0.7 * fine + (0.8 + severity) * chroma
-        noisy = (image + strength * residual).clip(0, 1).astype(np.float32)
-        return (0.85 * noisy + 0.15 * _camera_processing(noisy, severity)).astype(np.float32)
+    # Limit extra texture suppression on coarse grids: downsampling already
+    # removes detail, and every delivery pixel covers a larger HQ footprint.
+    strength *= min(1.0, 2.0 / max(1.0, downsample_factor))
     # A single moderate pass removes microtexture without repeatedly flattening
     # mid-frequency facial and hair detail on the already downsampled grid.
     smooth = np.asarray(
@@ -248,6 +234,60 @@ def _processed_photo(
     # local-contrast map: no face masks, hard patch boundaries or geometric warp.
     blend = strength * (1 - detail_protection * variance / (variance + 0.0009))
     return (image + blend[..., None] * (smooth - image)).clip(0, 1).astype(np.float32)
+
+
+def _residual_grain(
+    image: Pixels,
+    settings: NoiseConfig,
+    rng: np.random.Generator,
+    severity: float,
+    *,
+    strength: float,
+    spatial_scale: float = 1.0,
+) -> Pixels:
+    """Add continuously scaled residual grain without resampling image structure.
+
+    Only the noise residual is enlarged from its sampled grid. This avoids
+    tying additional image blur to whether a tiny grain gain is nonzero.
+    """
+    if strength == 0:
+        return image.copy()
+    height, width = image.shape[:2]
+    shape = (max(1, int(width / spatial_scale)), max(1, int(height / spatial_scale)))
+    source = np.asarray(cv2.resize(image, shape, interpolation=cv2.INTER_AREA), dtype=np.float32)
+    noisy = add_noise(source, settings, rng, camera=True, severity=severity, strength=0.8 + 0.4 * severity)
+    residual = noisy - source
+    luminance = (residual * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(2, keepdims=True)
+    fine = cv2.GaussianBlur(luminance[..., 0], (0, 0), 0.65)[..., None]
+    chroma = cv2.GaussianBlur(residual - luminance, (0, 0), 0.8 + severity)
+    residual = 0.65 * residual + 0.7 * fine + (0.8 + severity) * chroma
+    # Partial denoising acts on residual noise, never on the underlying picture.
+    residual = 0.85 * residual + 0.15 * cv2.GaussianBlur(residual, (0, 0), 0.6)
+    residual = cv2.resize(residual, (width, height), interpolation=cv2.INTER_LINEAR)
+    return (image + strength * residual).clip(0, 1).astype(np.float32)
+
+
+def _sample_processing(settings: DegradationConfig, rng: np.random.Generator) -> tuple[float, float, float, float]:
+    """Continuous denoising, residual grain, grain footprint and sharpening.
+
+    More denoising tends to leave less grain, but the independent retention draw
+    allows clean, grainy, softened and intermediate outcomes without class labels.
+    Configured strength bounds are respected, including fixed/zero endpoints.
+    """
+    denoising = float(rng.beta(1.5, 2.0))
+    retention = float(rng.beta(1.5, 2.0)) * (1 - 0.5 * denoising)
+    smooth = settings.smear_strength[0] + np.ptp(settings.smear_strength) * denoising
+    grain = settings.grain_strength[0] + np.ptp(settings.grain_strength) * retention
+    footprint = math.exp(rng.uniform(math.log(settings.grain_scale_range[0]), math.log(settings.grain_scale_range[1])))
+    sharpening = _sample(settings.sharpen_strength, rng)
+    return float(smooth), float(grain), footprint, sharpening
+
+
+def _sample_scale(settings: DegradationConfig, rng: np.random.Generator) -> float:
+    """Explicit candidates are uniform; a continuous range is uniform in log scale."""
+    if settings.scales is not None:
+        return float(rng.choice(settings.scales))
+    return math.exp(rng.uniform(math.log(settings.scale_range[0]), math.log(settings.scale_range[1])))
 
 
 def _sharpen(image: Pixels, amount: float) -> Pixels:
@@ -350,7 +390,8 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     severity = float(rng.beta(2, 2))
     noise_strength = {"photo": 0.35, "web": 0.5, "low-light": 1.0}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
-    scale = int(rng.choice(settings.scales))
+    scale = _sample_scale(settings, rng)
+    smear_strength, grain_strength, grain_scale, sharpening = _sample_processing(settings, rng)
     late_noise = False
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
@@ -389,7 +430,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                             image = _camera_processing(image, severity)
         if index == 0 and scene == "web" and rng.random() < stage.compression_probability:
             image = _compress(image, stage.compression, rng, codec_severity)
-    image = _resize(image, height // scale, width // scale, rng, settings).clip(0, 1)
+    image = _resize(image, int(height / scale), int(width / scale), rng, settings).clip(0, 1)
     # Blur already-encoded blocks/ringing on the delivery grid. This is an
     # additional historical transcode, before the existing final delivery codec.
     # Honor explicitly disabled second-stage blur/compression switches.
@@ -404,46 +445,24 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     if rng.random() < settings.final_sinc_probability:
         size = int(rng.choice(np.arange(7, 22, 2)))
         image = _filter(image, sinc_kernel(size, float(rng.uniform(math.pi / 2, math.pi)))).clip(0, 1)
-    processing = str(rng.choice(("standard", "grainy", "smoothed"), p=settings.processing_probabilities))
-    if processing == "grainy":
-        if rng.random() < settings.grain_smear_probability:
-            image = _processed_photo(
-                image,
-                settings.first.noise,
-                rng,
-                severity,
-                grainy=False,
-                strength=_sample(settings.smear_strength, rng, severity),
-                detail_protection=settings.smear_detail_protection,
-            )
-        # Some delivery copies retain grain at full resolution instead of interpolated coarse noise.
-        divisor = 1 if rng.random() < 0.5 else 2
-        image = _resize(
-            image, max(image.shape[0], height // divisor), max(image.shape[1], width // divisor), rng, settings
-        ).clip(0, 1)
-    if processing != "standard":
-        strength = _sample(
-            settings.grain_strength if processing == "grainy" else settings.smear_strength, rng, severity
-        )
-        image = _processed_photo(
-            image,
-            settings.first.noise,
-            rng,
-            severity,
-            grainy=processing == "grainy",
-            strength=strength,
-            detail_protection=settings.smear_detail_protection,
-        )
-    if processing == "smoothed":
-        image = _sharpen(image, float(rng.uniform(0.4, 0.8)))
-    elif rng.random() < (0.6 if scene == "web" else 0.3):
-        image = _sharpen(image, float(rng.uniform(0.1, 0.4)))
+    image = _smooth_texture(
+        image,
+        severity,
+        strength=smear_strength,
+        detail_protection=settings.smear_detail_protection,
+        downsample_factor=max(height / image.shape[0], width / image.shape[1]),
+    )
+    if sharpening > 0:
+        image = _sharpen(image, sharpening)
     encode = rng.random() < settings.second.compression_probability
     encode_before_resize = rng.random() < 0.5
     if encode and encode_before_resize:
         image = _compress(image, settings.second.compression, rng, codec_severity)
     if image.shape[:2] != (height, width):
         image = _resize(image, height, width, rng, settings).clip(0, 1)
+    image = _residual_grain(
+        image, settings.first.noise, rng, severity, strength=grain_strength, spatial_scale=grain_scale
+    )
     if late_noise:
         image = add_noise(image, settings.second.noise, rng, strength=noise_strength, severity=severity)
     if encode and not encode_before_resize:
