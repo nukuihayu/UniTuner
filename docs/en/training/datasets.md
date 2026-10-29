@@ -173,7 +173,7 @@ The pipeline restores Real-ESRGAN's fixed ordering while preserving the original
 1. Optional source USM; stage one blur/sinc → resize → noise → compression.
 2. Optional stage two blur/sinc → resize → noise.
 3. Equal-probability native-LQ delivery: resize + final sinc → compression, or compression → resize + final sinc.
-4. Quantize native LQ to 8-bit, then separately bicubic-align to HQ for same-size restoration. No further noise or encoding follows alignment.
+4. Complete degradation on native LQ, bicubic-align to HQ, then clamp and quantize to 8-bit, following HYPIR restoration ordering. No further noise or encoding follows alignment. Diagnostic native output quantizes on the LQ grid; enlarging it is not equivalent to the training output.
 
 ```toml
 [dataset.groups.synthetic.degradation]
@@ -192,7 +192,7 @@ Reference blur sigma is [0.2,3]/[0.2,1.5], with base support 7..21 and 80% secon
 
 The project extension `high_scale_protection=true` prevents excessive secondary downsampling beyond x4. With `r=min(1,4/scale)`, second-stage downsample draws become `s'=1-(1-s)*r`: the lower bounds at x4/x6/x8 are 0.30/0.533/0.65. Final sinc uses spatial multiplier `max(0.5,k*r)`. Both blur stages, noise amplitudes and codec qualities remain unchanged; x1..x4 are unaffected. Disable this option as well as resolution adaptation for the original fixed-parameter baseline. Independent operator RNG streams keep geometry and codecs stable when noise categories change.
 
-[HYPIR 2025](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) retains the standard two-stage ranges, 0.1/0.1/0.8 sinc probabilities and resize_back, supporting native LQ followed by alignment. These extensions have not been validated by restoration training metrics.
+[HYPIR 2025](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) retains the standard two-stage ranges, 0.1/0.1/0.8 sinc probabilities and resize_back. Its [batch transform](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/dataset/batch_transform.py) and [noise implementation](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/utils/degradation.py) were checked: clipping follows noise addition (only the Poisson sampling signal is first quantized/clipped), final quantization follows alignment, and stage-two dimensions use an integer target before the random resize factor. HYPIR trains at 512 with x4; our default reference of 400 comes from Real-ESRGAN's pre-crop and is not the same preset. HYPIR also sharpens the supervised GT, while we preserve original HQ and sharpen only the degradation source. CPU codecs differ from GPU DiffJPEG. Independent per-image draws remove the need for its queue compensating for batch-shared resize choices. This is not pixel-exact or full training-distribution parity; extensions have not been validated by restoration training metrics.
 
 Each noise pass selects exactly one category: 5% correlated luminance grain, otherwise equally likely Gaussian/Poisson. Gaussian sigma is [1,30]/[1,25], Poisson scale [0.05,3]/[0.05,2.5], gray probability 40%. Poisson follows BasicSR's quantized unique-level convention. Grain is a local extension with sigma [1,8]/255, not a third pass. Two-stage probability of any grain is 9.75%.
 

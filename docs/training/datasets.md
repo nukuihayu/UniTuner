@@ -173,7 +173,7 @@ skip_dataset_validation = true
 1. 对退化源执行可选 USM；第一阶段 blur/sinc → resize → noise → compression。
 2. 第二阶段可选 blur/sinc → resize → noise。
 3. 等概率执行「回最终 LQ 尺寸 + final sinc → compression」或「compression → 回最终 LQ 尺寸 + final sinc」。
-4. 在真实 LQ 网格量化到 8-bit，然后单独用 bicubic 放大到 HQ 尺寸，满足同尺寸 restoration 训练接口。对齐放大后不再增加噪声、压缩或滤波。
+4. 在真实 LQ 网格完成退化，然后用 bicubic 放大到 HQ 尺寸，最后裁剪并量化到 8-bit，与 HYPIR 的 restoration 顺序一致。对齐放大后不再增加噪声或压缩。诊断用 native 输出直接在 LQ 网格量化，不应再拿它放大来代替训练输出。
 
 ```toml
 [dataset.groups.synthetic.degradation]
@@ -205,7 +205,7 @@ noise 每次只选一种：默认 grain 5%，其余 95% 在 Gaussian/Poisson 中
 
 现代方法核查与采用范围：
 
-- [HYPIR 2025 配置](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) 继续使用标准两阶段范围、0.1/0.1/0.8 sinc 和 resize_back，支持先生成 LQ 再对齐的实现选择。
+- [HYPIR 2025 配置](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) 继续使用标准两阶段范围、0.1/0.1/0.8 sinc 和 resize_back。已核对 [batch_transform.py](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/dataset/batch_transform.py) 和 [噪声代码](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/utils/degradation.py)：加噪后才 clip（Poisson 的采样信号单独量化/clip），对齐放大后才最终量化；第二阶段尺寸先取整目标网格，再乘随机 resize 系数。HYPIR 的固定训练尺寸为 512、倍率为 x4，本项目默认 400 参考分辨率来自 Real-ESRGAN 的预裁块，二者并非相同预设。HYPIR 同时将 USM 后的图作为 GT，本项目仅锐化退化源、保留原始 HQ 监督；HYPIR 使用 GPU DiffJPEG，本项目使用真实 CPU 编解码。这里逐样本独立采样，不需要 HYPIR 为批内共享 resize 参数设计的样本队列。不承诺逐像素或完整训练分布一致。
 
 - [ResShift 配置](https://github.com/zsyOAOA/ResShift/blob/master/configs/realsr_swinunet_realesrgan256.yaml) 保留 Real-ESRGAN 参数并增加 second_order_prob=0.5、use_sharp=false。本项目提供 `second_order_probability` 和 `use_usm` 选项，默认仍为 1.0/true。
 - [BSRGAN](https://github.com/cszn/BSRGAN) 扩展摄像噪声和随机排列；为保持官方顺序，本版本没有引入 shuffle/ISP。

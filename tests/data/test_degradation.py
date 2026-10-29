@@ -48,19 +48,18 @@ def test_finite_deterministic_output_immutable_hq_and_local_rng(scale, shape):
     np.testing.assert_array_equal(states[1][1], np.random.get_state()[1])
     assert states[1][2:] == np.random.get_state()[2:]
     assert states[2] == random.getstate()
-    assert trace[-1]["op"] == "alignment"
+    assert trace[-1]["op"] == "quantize"
 
 
 @pytest.mark.parametrize("scale", [2, 4, 6, 8, 16])
-def test_native_lq_quantized_before_deterministic_alignment(scale):
+def test_native_and_aligned_outputs_are_quantized(scale):
     high = torch.from_numpy(np.random.default_rng(4).random((3, 129, 193), dtype=np.float32))
     cfg = DegradationConfig(scales=(float(scale),), output_mode="native")
     low = degrade_image(high, cfg, 29)
     assert low.shape == (3, 129 // scale, 193 // scale)
     torch.testing.assert_close(low * 255, (low * 255).round(), atol=2e-5, rtol=0)
-    expected = F.interpolate(low[None], size=(129, 193), mode="bicubic", align_corners=False)[0].clamp(0, 1)
     aligned = degrade_image(high, cfg.model_copy(update={"output_mode": "aligned"}), 29)
-    torch.testing.assert_close(aligned, expected, atol=0, rtol=0)
+    torch.testing.assert_close(aligned * 255, (aligned * 255).round(), atol=2e-5, rtol=0)
 
 
 def test_fixed_two_stage_order_and_native_delivery_both_branches():
@@ -83,22 +82,23 @@ def test_fixed_two_stage_order_and_native_delivery_both_branches():
         assert len([e for e in trace if e["op"] == "noise"]) == 2
         assert all(e["shape"] != [128, 192] for e in trace[8:] if e["op"] == "compression")
     assert tails == {
-        ("delivery_resize", "final_sinc", "compression", "native_lq", "alignment"),
-        ("compression", "delivery_resize", "final_sinc", "native_lq", "alignment"),
+        ("delivery_resize", "final_sinc", "compression", "native_lq", "alignment", "quantize"),
+        ("compression", "delivery_resize", "final_sinc", "native_lq", "alignment", "quantize"),
     }
 
 
-def test_native_resize_matches_independent_torch_reference_without_damage():
+@pytest.mark.parametrize("output_mode", ["native", "aligned"])
+def test_native_resize_matches_independent_torch_reference_without_damage(output_mode):
     cfg = DegradationConfig(
         scales=(4.0,),
         use_usm=False,
-        output_mode="native",
+        output_mode=output_mode,
         final_sinc_probability=0,
         resize_modes=("bilinear",),
         first=StageConfig(blur_probability=0, noise_probability=0, compression_probability=0),
         second=SecondStageConfig(blur_probability=0, noise_probability=0, compression_probability=0),
     )
-    high = torch.from_numpy(np.random.default_rng(3).random((3, 128, 192), dtype=np.float32))
+    high = torch.from_numpy(np.random.default_rng(3).random((3, 129, 193), dtype=np.float32))
     trace = []
     actual = degrade_image(high, cfg, 8, trace=trace)
     reference = high[None]
@@ -108,6 +108,8 @@ def test_native_resize_matches_independent_torch_reference_without_damage():
                 reference = F.interpolate(reference, scale_factor=event["factor"], mode="bilinear", align_corners=False)
             else:
                 reference = F.interpolate(reference, size=event["shape"], mode="bilinear", align_corners=False)
+    if output_mode == "aligned":
+        reference = F.interpolate(reference, size=high.shape[-2:], mode="bicubic", align_corners=False)
     reference = (reference[0] * 255).round().clamp(0, 255) / 255
     torch.testing.assert_close(actual, reference, rtol=0, atol=0)
 
@@ -242,6 +244,29 @@ def test_high_scale_protection_preserves_x4_and_limits_secondary_downsampling(sc
         assert [(e["kind"], e["parameter"]) for e in before if e["op"] == "noise"] == [
             (e["kind"], e["parameter"]) for e in after if e["op"] == "noise"
         ]
+
+
+@pytest.mark.parametrize("gaussian", [False, True])
+@pytest.mark.parametrize("gray", [False, True])
+def test_noise_matches_hypir_add_then_clip_semantics(gaussian, gray):
+    # Include bicubic/sinc overshoot: pre-clipping would change the residual.
+    source = np.random.default_rng(2).uniform(-0.15, 1.15, (48, 64, 3)).astype(np.float32)
+    cfg = NoiseConfig(grain_probability=0, gaussian_probability=float(gaussian), gray_probability=float(gray))
+    actual = add_noise(source, cfg, np.random.default_rng(17))
+    rng = np.random.default_rng(17)
+    rng.random(3)  # grain, Gaussian and gray choices
+    if gaussian:
+        sigma = rng.uniform(1, 30)
+        residual = rng.normal(0, sigma / 255, (48, 64, 1 if gray else 3))
+    else:
+        signal = (source * np.array([0.2989, 0.5870, 0.1140])).sum(2, keepdims=True) if gray else source
+        signal = np.clip(np.round(signal * 255), 0, 255) / 255
+        levels = 2 ** math.ceil(math.log2(np.unique(signal).size))
+        amplitude = rng.uniform(0.05, 3)
+        residual = (rng.poisson(signal * levels) / levels - signal) * amplitude
+    expected = np.clip(source + residual, 0, 1).astype(np.float32)
+    np.testing.assert_array_equal(actual, expected)
+    assert not np.array_equal(actual, np.clip(source.clip(0, 1) + residual, 0, 1).astype(np.float32))
 
 
 def test_gaussian_noise_uses_full_official_sigma():

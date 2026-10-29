@@ -1,7 +1,7 @@
 """Real-ESRGAN two-order degradation, with explicit optional extensions.
 
-All stochastic state is local. Native LQ is completed and quantized before
-the separate deterministic alignment resize used by same-size restoration.
+All stochastic state is local. Native LQ is completed before the separate
+alignment resize; HYPIR-style final quantization follows that resize.
 """
 
 import math
@@ -147,7 +147,9 @@ def add_noise(
     trace: list[dict] | None = None,
 ) -> Pixels:
     """Select exactly one of Gaussian, Poisson or correlated luminance grain."""
-    source = image.clip(0, 1)
+    # HYPIR adds noise to the un-clipped interpolation/filter result, then clips.
+    # Only the Poisson sampling signal is quantized and clipped beforehand.
+    source = image
     grain = rng.random() < settings.grain_probability
     if grain:
         sigma = _sample(settings.grain_sigma, rng)
@@ -321,7 +323,7 @@ def degrade_image(
         resize = _resize_scale(stage, resize_rng)
         if index == 2 and resize < 1:
             resize = 1.0 - (1.0 - resize) * relief
-        base_h, base_w = (height, width) if index == 1 else (height / scale, width / scale)
+        base_h, base_w = (height, width) if index == 1 else target
         image = _resize(
             image,
             max(1, int(base_h * resize)),
@@ -356,13 +358,14 @@ def degrade_image(
         if compression:
             image = _compress(image, settings.second.compression, streams[7], trace)
         image = delivery(image)
-    image = (image * 255).round().clip(0, 255).astype(np.float32) / 255
     record("native_lq", image)
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     # Same-size restoration contract; interpolation is not another degradation.
     if settings.output_mode == "aligned":
-        value = F.interpolate(value[None], size=(height, width), mode="bicubic", align_corners=False)[0].clamp(0, 1)
+        value = F.interpolate(value[None], size=(height, width), mode="bicubic", align_corners=False)[0]
         record("alignment", value.permute(1, 2, 0).numpy())
+    value = (value * 255).round().clamp(0, 255) / 255
+    record("quantize", value.permute(1, 2, 0).numpy())
     if rng.random() < settings.gray_probability:
         value = image_ops.rgb_to_grayscale(value, num_output_channels=3)
     if rng.random() < settings.color_jitter_probability:
