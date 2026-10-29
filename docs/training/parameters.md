@@ -454,7 +454,7 @@ batch_size = 16
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `blur` | object | `子表` | 模糊核与参数分布子表。 |
-| `blur_probability` | number | `0.8` | 本阶段应用模糊的概率，0..1。 |
+| `blur_probability` | number | `0.8` | x4 基准下本阶段应用模糊的概率，0..1；x4 以上按 `4/scale` 动态降低。 |
 | `resize_probabilities` | [number, number, number] | `[0.3, 0.4, 0.3]` | 放大/缩小/不变的概率，依此顺序，非负且和为 1。 |
 | `resize_range` | [number, number] | `[0.3, 1.2]` | 缩放倍率范围，需为正且覆盖 1。 |
 | `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
@@ -486,7 +486,7 @@ blur 使用 Gaussian／广义 Gaussian／平台核的各向同性与各向异性
 
 ## `NoiseConfig`
 
-概率顺序为 Gaussian/Poisson/ISO。低照度采集固定使用线性光 shot/read 噪声。场景标准差倍率：普通 1.0、转载 1.0、低照度 1.15。
+概率顺序为 Gaussian/Poisson/ISO。低照度采集固定使用线性光 shot/read 噪声。场景标准差倍率：普通 1.0、转载 1.0、低照度 1.15。阶段内噪声再按实际执行网格相对目标尺寸的平方根缩放；最终 HQ 细噪声不缩放。
 
 | 字段 | 类型／可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |

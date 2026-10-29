@@ -25,6 +25,8 @@ from unitunner.data.degradation.config import (
 
 type Pixels = NDArray[np.float32]
 
+_REALESRGAN_REFERENCE_SCALE = 4.0
+
 
 def _resolution_scale(resolution: int) -> float:
     """Scale spatial kernels from a 1024-pixel short-edge reference."""
@@ -33,6 +35,24 @@ def _resolution_scale(resolution: int) -> float:
     ratio = resolution / 1024
     exponent = 0.25 if ratio < 1 else 0.5
     return float(np.clip(ratio**exponent, 0.5, 2.0))
+
+
+def _noise_grid_gain(shape: tuple[int, int], target: tuple[int, int]) -> float:
+    """Temper noise added on coarse grids before it is enlarged to the target."""
+    ratio = min(shape) / min(target)
+    return math.sqrt(float(np.clip(ratio, 1 / 16, 1)))
+
+
+def _scale_degradation_gain(scale: float) -> float:
+    """Retain Real-ESRGAN x4 strength while avoiding excess explicit damage above x4."""
+    if scale <= 0:
+        raise ValueError("Degradation scale must be positive")
+    return min(1.0, _REALESRGAN_REFERENCE_SCALE / scale)
+
+
+def _blur_grid_gain(resolution: int, target_resolution: int, scale: float) -> float:
+    """Map x4 blur parameters onto the selected scale and the layer's actual grid."""
+    return _scale_degradation_gain(scale) * min(1.0, resolution / target_resolution)
 
 
 def _scaled_odd_size(size: int, scale: float) -> int:
@@ -76,11 +96,19 @@ def _sample(bounds: tuple[float, float], rng: np.random.Generator, level: float 
 
 
 def mixed_blur_kernel(
-    rng: np.random.Generator, settings: BlurConfig, resolution: int, *, severity: float | None = None
+    rng: np.random.Generator,
+    settings: BlurConfig,
+    resolution: int,
+    *,
+    severity: float | None = None,
+    target_resolution: int | None = None,
+    degradation_scale: float = _REALESRGAN_REFERENCE_SCALE,
 ) -> Pixels:
     """Sample a PSF scaled to the layer input's current short edge."""
     size = int(rng.choice(np.arange(11, 42, 2)))
     spatial_scale = _resolution_scale(resolution)
+    if target_resolution is not None:
+        spatial_scale *= _blur_grid_gain(resolution, target_resolution, degradation_scale)
     size = _scaled_odd_size(size, spatial_scale)
     kind = int(rng.choice(6, p=settings.probabilities))
     sigma_x = _sample(settings.sigma, rng, severity) * spatial_scale
@@ -376,8 +404,10 @@ def _compression_after_resize_probability(acquisition_level: float) -> float:
     return 0.55 + 0.30 * float(np.clip(acquisition_level, 0, 1))
 
 
-def _sharpen(image: Pixels, amount: float) -> Pixels:
+def _sharpen(image: Pixels, amount: float, *, target_shape: tuple[int, int] | None = None) -> Pixels:
     """Model mild delivery sharpening in LQ only; leave the supervision target intact."""
+    if target_shape is not None:
+        amount *= _noise_grid_gain(image.shape[:2], target_shape)
     smooth = cv2.GaussianBlur(image, (0, 0), 0.7 * _resolution_scale(min(image.shape[:2])))
     return (image + amount * (image - smooth)).clip(0, 1).astype(np.float32)
 
@@ -477,6 +507,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
     noise_strength = {"photo": 1.0, "web": 1.0, "low-light": 1.15}[scene]
     codec_severity = severity if scene == "web" else severity * 0.5
     scale = _sample_scale(settings, rng)
+    scale_gain = _scale_degradation_gain(scale)
     smear_strength, grain_strength, grain_scale, sharpening, noise_gain = _sample_processing(settings, rng, severity)
     noise_strength *= noise_gain
     selected_noise = tuple(
@@ -495,7 +526,10 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
 
     for index, stage in enumerate((settings.first, settings.second)):
         resize = _resize_scale(stage, rng, scale)
-        blur = rng.random() < stage.blur_probability
+        # Keep official x4 coverage. At larger factors the resize itself removes
+        # more bandwidth, so reduce the optional second blur along with sigma.
+        blur_probability = stage.blur_probability * (1.0 if index == 0 else scale_gain)
+        blur = rng.random() < blur_probability
         noise = selected_noise[index] and not (index == 1 and late_noise)
         compression = index == 0 and scene == "web" and rng.random() < stage.compression_probability
         active = tuple(
@@ -508,7 +542,14 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
             match layer:
                 case "blur":
                     reference = min(image.shape[:2])
-                    kernel = mixed_blur_kernel(rng, stage.blur, reference, severity=severity)
+                    kernel = mixed_blur_kernel(
+                        rng,
+                        stage.blur,
+                        reference,
+                        severity=severity,
+                        target_resolution=min(height, width),
+                        degradation_scale=scale,
+                    )
                     image = _filter(image, kernel).clip(0, 1)
                 case "resize":
                     h, w = image.shape[:2] if index == 0 else (height / scale, width / scale)
@@ -516,11 +557,12 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                         image, int(h * resize), int(w * resize), rng, settings, factor=resize if index == 0 else None
                     ).clip(0, 1)
                 case "noise":
+                    grid_gain = _noise_grid_gain(image.shape[:2], (height, width))
                     image = add_noise(
                         image,
                         stage.noise,
                         rng,
-                        strength=noise_strength * noise_gains[index],
+                        strength=noise_strength * noise_gains[index] * grid_gain,
                         camera=scene == "low-light" and index == 0,
                         severity=severity,
                         chroma_scale=settings.second_noise_chroma_scale if index == 1 else 1.0,
@@ -552,7 +594,7 @@ def degrade_image(high: torch.Tensor, settings: DegradationConfig, seed: int) ->
                     downsample_factor=max(height / value.shape[0], width / value.shape[1]),
                 )
             case "sharpen":
-                return _sharpen(value, sharpening)
+                return _sharpen(value, sharpening, target_shape=(height, width))
             case "noise":
                 if grain_strength > 0:
                     reduction = max(height / value.shape[0], width / value.shape[1])

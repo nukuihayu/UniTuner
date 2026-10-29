@@ -20,6 +20,8 @@ from unitunner.data.degradation.config import (
 )
 from unitunner.data.degradation.pipeline import (
     _resize,
+    _resolution_scale,
+    _scale_degradation_gain,
     add_noise,
     compress_image,
     degrade_image,
@@ -150,6 +152,35 @@ def test_spatial_blur_tracks_image_scale(resolution):
     assert measured_sigma == pytest.approx(expected, rel=0.08)
     assert kernel.shape[0] % 2 == 1
     assert kernel.sum() == pytest.approx(1, abs=1e-6)
+
+
+@pytest.mark.parametrize("factor", [2, 4, 6, 8])
+def test_blur_on_resized_grid_bounds_output_space_width(factor):
+    gaussian = BlurConfig(sigma=(3.0, 3.0), probabilities=(1.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    target = 1024
+    resolution = target // factor
+    kernel = mixed_blur_kernel(
+        np.random.default_rng(23),
+        gaussian,
+        resolution,
+        target_resolution=target,
+        degradation_scale=factor,
+    )
+    axis = np.arange(kernel.shape[0]) - kernel.shape[0] // 2
+    output_sigma = np.sqrt((kernel * axis[None, :] ** 2).sum()) * factor
+    expected_upper_bound = 3 * _resolution_scale(resolution) * _scale_degradation_gain(factor)
+    assert output_sigma <= expected_upper_bound * 1.12
+    assert output_sigma < expected_upper_bound * factor
+
+
+@pytest.mark.parametrize("factor,expected", [(1, 1.0), (2, 1.0), (4, 1.0), (6, 2 / 3), (8, 0.5), (16, 0.25)])
+def test_realesrgan_x4_strength_tapers_only_above_reference_scale(factor, expected):
+    assert _scale_degradation_gain(factor) == pytest.approx(expected)
+
+
+def test_realesrgan_scale_gain_rejects_nonpositive_factors():
+    with pytest.raises(ValueError, match="positive"):
+        _scale_degradation_gain(0)
 
 
 def test_each_blur_layer_uses_its_actual_input_short_edge(monkeypatch):
@@ -408,11 +439,11 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
 def test_second_stage_noise_covers_delivery_and_final_fine_grids(monkeypatch, scale):
     from unitunner.data.degradation import pipeline
 
-    shapes = []
+    calls = []
     original = pipeline.add_noise
 
     def capture(image, settings, rng, **kwargs):
-        shapes.append(image.shape[:2])
+        calls.append((image.shape[:2], kwargs["strength"]))
         return original(image, settings, rng, **kwargs)
 
     monkeypatch.setattr(pipeline, "add_noise", capture)
@@ -435,13 +466,31 @@ def test_second_stage_noise_covers_delivery_and_final_fine_grids(monkeypatch, sc
     )
     observed = set()
     for seed in range(32):
-        shapes.clear()
+        calls.clear()
         low = degrade_image(torch.full((3, 128, 192), 0.5), cfg, seed)
-        assert len(shapes) == 1  # Deferring noise must not add it twice.
-        observed.add(shapes[0])
+        assert len(calls) == 1  # Deferring noise must not add it twice.
+        shape, strength = calls[0]
+        observed.add(shape)
+        assert strength == pytest.approx(pipeline._noise_grid_gain(shape, (128, 192)))
         assert (low[:, :, 1:] - low[:, :, :-1]).std().item() > 0
     assert (128, 192) in observed
     assert any(shape != (128, 192) for shape in observed)
+
+
+@pytest.mark.parametrize(
+    "shape,target,expected",
+    [
+        ((1024, 1536), (1024, 1536), 1.0),
+        ((256, 384), (1024, 1536), 0.5),
+        ((128, 192), (1024, 1536), math.sqrt(1 / 8)),
+        ((64, 96), (1024, 1536), 0.25),
+        ((2048, 3072), (1024, 1536), 1.0),
+    ],
+)
+def test_noise_grid_gain_tempers_resized_noise(shape, target, expected):
+    from unitunner.data.degradation.pipeline import _noise_grid_gain
+
+    assert _noise_grid_gain(shape, target) == pytest.approx(expected)
 
 
 def test_two_stage_noise_preserves_one_unit_of_variance_budget(monkeypatch):
@@ -455,14 +504,24 @@ def test_two_stage_noise_preserves_one_unit_of_variance_budget(monkeypatch):
 
     monkeypatch.setattr(pipeline, "add_noise", noise)
     cfg = DegradationConfig(
-        scales=(4.0,),
+        scales=(1.0,),
         scenario_probabilities=(1.0, 0.0, 0.0),
         noise_strength=(1.0, 1.0),
         grain_strength=(0.0, 0.0),
         smear_strength=(0.0, 0.0),
         sharpen_strength=(0.0, 0.0),
-        first=StageConfig(blur_probability=0.0, noise_probability=1.0, compression_probability=0.0),
-        second=SecondStageConfig(blur_probability=0.0, noise_probability=1.0, compression_probability=0.0),
+        first=StageConfig(
+            blur_probability=0.0,
+            resize_probabilities=(0.0, 0.0, 1.0),
+            noise_probability=1.0,
+            compression_probability=0.0,
+        ),
+        second=SecondStageConfig(
+            blur_probability=0.0,
+            resize_probabilities=(0.0, 0.0, 1.0),
+            noise_probability=1.0,
+            compression_probability=0.0,
+        ),
         final_sinc_probability=0.0,
     )
     for seed in range(16):

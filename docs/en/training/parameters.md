@@ -454,7 +454,7 @@ Delivery randomly orders resizing, local blur and noise. Stage-two noise may ins
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
 | `blur` | object | `subtable` | Blur kernel and parameter distribution table. |
-| `blur_probability` | number | `0.8` | Probability of applying blur in this stage, 0..1. |
+| `blur_probability` | number | `0.8` | Blur probability at the x4 reference, 0..1; above x4 it scales by `4/scale`. |
 | `resize_probabilities` | [number, number, number] | `[0.3, 0.4, 0.3]` | Upscale/downscale/unchanged probabilities in that order, nonnegative and summing to 1. |
 | `resize_range` | [number, number] | `[0.3, 1.2]` | Positive resize-factor range spanning 1. |
 | `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
@@ -486,7 +486,7 @@ Same kernel selection and resolution adaptation as BlurConfig; sigma uses a 1024
 
 ## `NoiseConfig`
 
-Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/read noise. Scene standard-deviation multipliers: photo 1.0, web 1.0, low-light 1.15.
+Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/read noise. Scene standard-deviation multipliers: photo 1.0, web 1.0, low-light 1.15. In-stage noise is additionally square-root scaled for its actual execution grid relative to the target; final-HQ fine noise is not scaled down.
 
 | Field | Type / choices | Default | Meaning |
 | --- | --- | --- | --- |
