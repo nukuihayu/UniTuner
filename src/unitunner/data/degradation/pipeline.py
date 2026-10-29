@@ -27,10 +27,21 @@ type Pixels = NDArray[np.float32]
 
 
 def _resolution_scale(resolution: int, reference: int = 512, exponent: float = 0.5) -> float:
-    """One HQ-derived spatial multiplier; never multiply again after resize."""
+    """Resolution multiplier with gentle low-resolution scaling and an upper cap."""
     if resolution < 1 or reference < 1:
         raise ValueError("Resolutions must be positive")
     return float(np.clip((resolution / reference) ** exponent, 0.5, 2.0))
+
+
+def _grid_spatial_scale(spatial: float, short_side: int, settings: DegradationConfig) -> float:
+    """Limit HQ kernel enlargement on a smaller execution grid.
+
+    Retain the official pixel-scale kernel below the reference resolution when
+    HQ is larger; never attenuate it into an unrepresentable subpixel kernel.
+    Low-resolution HQ retains its existing gentle adaptation.
+    """
+    grid = _resolution_scale(short_side, settings.reference_resolution, settings.resolution_exponent)
+    return min(spatial, max(1.0, grid))
 
 
 def _scaled_odd_size(size: int, scale: float) -> int:
@@ -147,13 +158,22 @@ def _resize(
 
 
 def _resize_scale(stage: StageConfig, rng: np.random.Generator) -> float:
-    """Sample the official unrestricted stage resize range."""
+    """Sample stage strength; the caller bounds the resulting execution grid."""
     direction = int(rng.choice(3, p=stage.resize_probabilities))
     if direction == 0:
         return float(rng.uniform(1, stage.resize_range[1]))
     if direction == 1:
         return float(rng.uniform(stage.resize_range[0], 1))
     return 1.0
+
+
+def _bounded_resize_size(base: tuple[int, int], factor: float, target: tuple[int, int]) -> tuple[int, int]:
+    """Never destroy more spatial resolution than the requested native LQ grid.
+
+    Apply to both stages, including explicit legacy HYPIR ranges. Checking the
+    actual integer dimensions also covers fractional factors and odd aspect ratios.
+    """
+    return max(target[0], int(base[0] * factor)), max(target[1], int(base[1] * factor))
 
 
 def add_noise(
@@ -351,12 +371,15 @@ def degrade_pair(
         if blur_rng.random() >= stage.blur_probability:
             return value
         is_sinc = blur_rng.random() < stage.sinc_probability
+        kernel_scale = _grid_spatial_scale(spatial, min(value.shape[:2]), settings)
         kernel = (
-            _resolution_sinc_kernel(blur_rng, spatial, stage=True)
+            _resolution_sinc_kernel(blur_rng, kernel_scale, stage=True)
             if is_sinc
-            else mixed_blur_kernel(blur_rng, stage.blur, spatial)
+            else mixed_blur_kernel(blur_rng, stage.blur, kernel_scale)
         )
-        record("stage_sinc" if is_sinc else "blur", value, stage=index, kernel=kernel.tolist())
+        record(
+            "stage_sinc" if is_sinc else "blur", value, stage=index, spatial_scale=kernel_scale, kernel=kernel.tolist()
+        )
         return _filter(value, kernel)
 
     for index, stage in enumerate((settings.first, settings.second), 1):
@@ -367,28 +390,31 @@ def degrade_pair(
         resize_rng, noise_rng, codec_rng = streams[(index - 1) * 4 + 1 : index * 4]
         resize = _resize_scale(stage, resize_rng)
         base_h, base_w = (height, width) if index == 1 else target
+        requested_shape = (max(1, int(base_h * resize)), max(1, int(base_w * resize)))
+        resize_shape = _bounded_resize_size((base_h, base_w), resize, target)
+        bounded = resize_shape != requested_shape
         image = _resize(
             image,
-            max(1, int(base_h * resize)),
-            max(1, int(base_w * resize)),
+            *resize_shape,
             resize_rng,
             settings,
-            factor=resize if index == 1 else None,
+            factor=resize if index == 1 and not bounded else None,
         )
-        record("resize", image, stage=index, factor=resize)
+        record("resize", image, stage=index, factor=resize, requested_shape=list(requested_shape), bounded=bounded)
         if noise_rng.random() < stage.noise_probability:
             image = add_noise(image, stage.noise, noise_rng, trace=trace)
         if index == 1 and codec_rng.random() < stage.compression_probability:
             image = _compress(image, stage.compression, codec_rng, trace)
 
     sinc = streams[8].random() < settings.final_sinc_probability
-    kernel = _resolution_sinc_kernel(streams[8], spatial) if sinc else None
+    final_spatial = _grid_spatial_scale(spatial, min(target), settings)
+    kernel = _resolution_sinc_kernel(streams[8], final_spatial) if sinc else None
 
     def delivery(value: Pixels) -> Pixels:
         value = _resize(value, *target, streams[9], settings)
         record("delivery_resize", value)
         if kernel is not None:
-            record("final_sinc", value, kernel=kernel.tolist())
+            record("final_sinc", value, spatial_scale=final_spatial, kernel=kernel.tolist())
             value = _filter(value, kernel)
         return value
 

@@ -36,7 +36,7 @@ class BlurConfig(DistributionConfig, frozen=True):
     """Gaussian, generalized-Gaussian and plateau blur kernels.
 
     Spatial ranges use the configured HQ reference resolution; the pipeline
-    computes one spatial multiplier for both stages and final sinc.
+    computes an HQ multiplier and caps extra enlargement on smaller grids.
     """
 
     sigma: Range = (0.2, 3.0)
@@ -61,11 +61,11 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """HYPIR acquisition noise: exactly one Gaussian or Poisson draw."""
+    """OMGSR acquisition noise: exactly one Gaussian or Poisson draw."""
 
     gaussian_probability: Probability = 0.5
-    gaussian_sigma: Range = (1.0, 30.0)
-    poisson_scale: Range = (0.05, 3.0)
+    gaussian_sigma: Range = (1.0, 15.0)
+    poisson_scale: Range = (0.05, 2.0)
     gray_probability: Probability = 0.40
 
 
@@ -83,8 +83,8 @@ class CompressionConfig(DistributionConfig, frozen=True):
     probabilities: Probabilities = (0.85, 0.10, 0.05)
     jpeg_backend: Literal["diffjpeg", "opencv"] = "diffjpeg"
     recompression_probability: Probability = 0.0
-    jpeg_quality: Range = (30.0, 95.0)
-    webp_quality: Range = (45.0, 98.0)
+    jpeg_quality: Range = (60.0, 95.0)
+    webp_quality: Range = (60.0, 98.0)
     jpeg2000_quality: Range = (250.0, 900.0)
 
     @model_validator(mode="after")
@@ -103,7 +103,7 @@ class StageConfig(DistributionConfig, frozen=True):
     blur_probability: Probability = 1.0
     sinc_probability: Probability = 0.1
     resize_probabilities: Probabilities = (0.2, 0.7, 0.1)
-    resize_range: Range = (0.15, 1.5)
+    resize_range: Range = (0.3, 1.5)
     noise_probability: Probability = 1.0
     compression_probability: Probability = 1.0
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
@@ -120,16 +120,17 @@ class SecondNoiseConfig(NoiseConfig, frozen=True):
     """Second-stage camera distribution with independently overridable fields."""
 
     gaussian_probability: Probability = 0.5
-    gaussian_sigma: Range = (1.0, 25.0)
-    poisson_scale: Range = (0.05, 2.5)
+    gaussian_sigma: Range = (1.0, 12.0)
+    poisson_scale: Range = (0.05, 1.0)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):
     """Second-stage codec distribution with independently overridable fields."""
 
     probabilities: Probabilities = (0.8, 0.15, 0.05)
-    jpeg_quality: Range = (30.0, 95.0)
-    webp_quality: Range = (45.0, 98.0)
+    # OMGSR samples up to 100; keep DiffJPEG quantization tables nonsingular.
+    jpeg_quality: Range = (60.0, 99.0)
+    webp_quality: Range = (60.0, 98.0)
     jpeg2000_quality: Range = (200.0, 900.0)
 
 
@@ -143,10 +144,10 @@ class SecondStageConfig(StageConfig, frozen=True):
     """Second-stage defaults also apply when TOML overrides only one nested field."""
 
     blur: SecondBlurConfig = Field(default_factory=SecondBlurConfig)
-    blur_probability: Probability = 0.8
+    blur_probability: Probability = 0.5
     sinc_probability: Probability = 0.1
     resize_probabilities: Probabilities = (0.3, 0.4, 0.3)
-    resize_range: Range = (0.3, 1.2)
+    resize_range: Range = (0.6, 1.2)
     noise_probability: Probability = 1.0
     compression_probability: Probability = 1.0
     noise: SecondNoiseConfig = Field(default_factory=SecondNoiseConfig)

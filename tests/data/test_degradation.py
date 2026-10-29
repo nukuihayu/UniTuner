@@ -25,6 +25,8 @@ from unitunner.data.degradation.config import (
     StageConfig,
 )
 from unitunner.data.degradation.pipeline import (
+    _bounded_resize_size,
+    _grid_spatial_scale,
     _resize,
     _resize_scale,
     _resolution_scale,
@@ -36,6 +38,31 @@ from unitunner.data.degradation.pipeline import (
     mixed_blur_kernel,
     sinc_kernel,
 )
+
+
+def test_omgsr_reference_defaults_survive_partial_nested_codec_overrides():
+    """Validate against the pinned upstream preset, including inherited nested defaults."""
+    source = json.loads((Path(__file__).parent / "fixtures/omgsr_degradation.json").read_text())
+    reference = source["parameters"]
+    cfg = DegradationConfig.model_validate({"second": {"compression": {"probabilities": (1.0, 0.0, 0.0)}}})
+    for suffix, stage in (("", cfg.first), ("2", cfg.second)):
+        assert list(stage.resize_range) == reference["resize_range" + suffix]
+        assert list(stage.resize_probabilities) == reference["resize_prob" + suffix]
+        assert list(stage.noise.gaussian_sigma) == reference["noise_range" + suffix]
+        assert list(stage.noise.poisson_scale) == reference["poisson_scale_range" + suffix]
+        assert stage.noise.gaussian_probability == reference["gaussian_noise_prob" + suffix]
+        assert stage.noise.gray_probability == reference["gray_noise_prob" + suffix]
+        kernel = reference["kernel_info"]
+        assert list(stage.blur.sigma) == kernel["blur_sigma" + suffix]
+        assert list(stage.blur.probabilities) == kernel["kernel_prob" + suffix]
+        assert list(stage.blur.generalized_beta) == kernel["betag_range" + suffix]
+        assert list(stage.blur.plateau_beta) == kernel["betap_range" + suffix]
+        assert stage.sinc_probability == kernel["sinc_prob" + suffix]
+    assert cfg.second.blur_probability == reference["second_blur_prob"]
+    assert cfg.final_sinc_probability == reference["kernel_info"]["final_sinc_prob"]
+    assert list(cfg.first.compression.jpeg_quality) == reference["jpeg_range"]
+    assert cfg.second.compression.jpeg_quality == (reference["jpeg_range2"][0], 99.0)
+    assert cfg.second.compression.jpeg_quality[1] < reference["jpeg_range2"][1]
 
 
 @pytest.mark.parametrize("scale", [1, 2, 4, 6, 8, 16])
@@ -115,7 +142,7 @@ def test_native_resize_matches_independent_torch_reference_without_damage(output
     reference = high[None]
     for event in trace:
         if event["op"] in ("resize", "delivery_resize"):
-            if event.get("stage") == 1:
+            if event.get("stage") == 1 and not event["bounded"]:
                 reference = F.interpolate(reference, scale_factor=event["factor"], mode="bilinear", align_corners=False)
             else:
                 reference = F.interpolate(reference, size=event["shape"], mode="bilinear", align_corners=False)
@@ -158,7 +185,7 @@ def test_sinc_is_untapered_official_circular_filter():
     assert kernel.sum() == pytest.approx(1, abs=1e-6)
 
 
-def test_stage_sinc_replaces_blur_and_uses_same_hq_multiplier():
+def test_stage_sinc_replaces_blur_with_official_support_when_scaling_disabled():
     cfg = DegradationConfig(
         scales=(8.0,),
         resolution_exponent=0,
@@ -179,9 +206,105 @@ def test_stage_sinc_replaces_blur_and_uses_same_hq_multiplier():
 
 def test_resize_ranges_not_clipped_to_selected_sr_factor():
     rng = np.random.default_rng(0)
-    stage = StageConfig(resize_probabilities=(0.0, 1.0, 0.0))
+    stage = StageConfig(resize_probabilities=(0.0, 1.0, 0.0), resize_range=(0.15, 1.5))
     draws = [_resize_scale(stage, rng) for _ in range(1000)]
     assert min(draws) < 0.16 and max(draws) > 0.99
+
+
+@pytest.mark.parametrize(
+    "hq,grid,expected",
+    [(128, 32, 0.5), (512, 128, 1), (1280, 320, 1), (1280, 640, math.sqrt(1.25)), (4096, 1024, math.sqrt(2))],
+)
+def test_late_kernel_enlargement_tracks_execution_grid(hq, grid, expected):
+    cfg = DegradationConfig()
+    assert _grid_spatial_scale(_resolution_scale(hq), grid, cfg) == pytest.approx(expected)
+
+
+def test_default_resize_tail_is_milder_but_official_ranges_remain_configurable():
+    cfg = DegradationConfig()
+    assert cfg.first.resize_range == (0.3, 1.5)
+    assert cfg.second.resize_range == (0.6, 1.2)
+    official = cfg.model_copy(
+        update={
+            "first": StageConfig(resize_range=(0.15, 1.5)),
+            "second": SecondStageConfig(resize_range=(0.3, 1.2)),
+        }
+    )
+    for stage, lower in ((cfg.second, 0.6), (official.second, 0.3)):
+        draws = [_resize_scale(stage, np.random.default_rng(seed)) for seed in range(1000)]
+        assert min(draws) >= lower and min(draws) < lower + 0.01
+
+
+def test_native_sinc_caps_extra_hq_enlargement_without_changing_codec_draws():
+    cfg = DegradationConfig(
+        scales=(4.0,),
+        reference_resolution=64,
+        final_sinc_probability=1,
+        first=StageConfig(blur_probability=0),
+        second=SecondStageConfig(blur_probability=0),
+    )
+    trace = []
+    degrade_image(torch.full((3, 160, 160), 0.5), cfg, 16, trace=trace)
+    assert trace[0]["spatial_scale"] == pytest.approx(math.sqrt(2.5))
+    final = next(e for e in trace if e["op"] == "final_sinc")
+    assert final["shape"] == [40, 40] and final["spatial_scale"] == 1
+    unscaled = []
+    degrade_image(torch.full((3, 160, 160), 0.5), cfg.model_copy(update={"resolution_exponent": 0}), 16, trace=unscaled)
+    assert [e for e in trace if e["op"] == "compression"] == [e for e in unscaled if e["op"] == "compression"]
+
+
+@pytest.mark.parametrize("shape", [(32, 49), (257, 389)])
+@pytest.mark.parametrize("scale", [1.0, 2.5, 4.0, 6.0, 8.0, 16.0])
+def test_extreme_explicit_ranges_cannot_undershoot_native_lq(shape, scale):
+    cfg = DegradationConfig(
+        scales=(scale,),
+        first=StageConfig(
+            resize_probabilities=(0.0, 1.0, 0.0),
+            resize_range=(0.01, 1.0),
+            blur_probability=0,
+            noise_probability=0,
+            compression_probability=0,
+        ),
+        second=SecondStageConfig(
+            resize_probabilities=(0.0, 1.0, 0.0),
+            resize_range=(0.01, 1.0),
+            blur_probability=0,
+            noise_probability=0,
+            compression_probability=0,
+        ),
+        final_sinc_probability=0,
+        final_grain=GrainConfig(probability=0),
+    )
+    high = torch.full((3, *shape), 0.5)
+    target = [max(1, int(side / scale)) for side in shape]
+    bounded = False
+    for seed in range(12):
+        trace = []
+        degrade_image(high, cfg, seed, trace=trace)
+        for event in trace:
+            if event["op"] == "resize":
+                assert all(actual >= minimum for actual, minimum in zip(event["shape"], target, strict=True))
+                bounded |= event["bounded"]
+        assert next(e for e in trace if e["op"] == "native_lq")["shape"] == target
+    assert bounded
+
+
+def test_no_extreme_resize_across_resolutions_factors_and_random_samples():
+    checked = 0
+    for short in (32, 256, 512, 1024, 1280, 2048, 4096):
+        shape = (short, short * 3 // 2 + 1)
+        for scale in (1.0, 2.0, 2.5, 4.0, 6.0, 8.0, 16.0):
+            target = (max(1, int(shape[0] / scale)), max(1, int(shape[1] / scale)))
+            for index, stage in enumerate(
+                (StageConfig(resize_range=(0.15, 1.5)), SecondStageConfig(resize_range=(0.3, 1.2)))
+            ):
+                rng = np.random.default_rng(19)
+                base = shape if index == 0 else target
+                for _ in range(1000):
+                    grid = _bounded_resize_size(base, _resize_scale(stage, rng), target)
+                    assert grid[0] >= target[0] and grid[1] >= target[1]
+                    checked += 1
+    assert checked == 98_000
 
 
 @pytest.mark.parametrize("codec,quality", [("diffjpeg", 95), ("jpeg", 95), ("webp", 95), ("jpeg2000", 900)])
@@ -314,7 +437,7 @@ def test_reference_kernel_does_not_depend_on_sr_factor():
 
 
 @pytest.mark.parametrize("scale", [2.0, 4.0, 6.0, 8.0, 16.0])
-def test_secondary_resize_uses_unmodified_hypir_draw_at_every_sr_factor(scale):
+def test_secondary_resize_keeps_draw_but_bounds_actual_grid_at_every_sr_factor(scale):
     source = torch.from_numpy(np.random.default_rng(1).random((3, 128, 192), dtype=np.float32))
     cfg = DegradationConfig(scales=(scale,))
     trace = []
@@ -323,7 +446,9 @@ def test_secondary_resize_uses_unmodified_hypir_draw_at_every_sr_factor(scale):
     raw_rng = np.random.default_rng(np.random.SeedSequence(13).spawn(12)[5])
     raw_resize = _resize_scale(cfg.second, raw_rng)
     assert resize["factor"] == pytest.approx(raw_resize, abs=1e-15)
-    assert resize["shape"] == [max(1, int((128 // scale) * raw_resize)), max(1, int((192 // scale) * raw_resize))]
+    target = (int(128 // scale), int(192 // scale))
+    assert resize["requested_shape"] == [max(1, int(target[0] * raw_resize)), max(1, int(target[1] * raw_resize))]
+    assert resize["shape"] == list(_bounded_resize_size(target, raw_resize, target))
 
 
 @pytest.mark.parametrize("gaussian", [False, True])

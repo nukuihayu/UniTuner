@@ -403,13 +403,13 @@ Weighted DWT band MSE. In restoration this compares decoded RGB output to detach
 
 ## `DegradationConfig`
 
-HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment extension. See [datasets](datasets.md). 旧阶段 grain 字段迁移到 final_grain。
+HYPIR stage ordering with OMGSR noise/blur/JPEG defaults and bounded resize; final grain is a 10% post-alignment extension. See [datasets](datasets.md). 旧阶段 grain 字段迁移到 final_grain。
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
 | `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
-| `reference_resolution / resolution_exponent` | `512 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
+| `reference_resolution / resolution_exponent` | `512 / 0.5` | HQ scale capped on smaller execution grids; exponent=0 disables adaptation / HQ 系数按实际执行网格限制额外放大 |
 | `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
 | `use_usm / sharpen_target` | `false / true` | USM off by default; optional HYPIR USM uses fixed support 51 / 默认关闭 USM，启用后可同时锐化监督 GT |
 | `final_grain` | `subtable` | GrainConfig after alignment / 回原尺寸后的 grain |
@@ -427,7 +427,7 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | BlurConfig / NoiseConfig / CompressionConfig |
 | `blur_probability / sinc_probability` | `1.0 / 0.1` | Stage filter probability / conditional sinc replacement probability / 阶段滤波及条件 sinc 概率 |
-| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.15,1.5]` | Up/down/keep, unrestricted by SR factor / 升降保持，不按总倍率裁限 |
+| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.3,1.5]` | Up/down/keep; grid bounded by native LQ / 升降保持，实际尺寸不得低于最终 LQ |
 | `noise_probability / compression_probability` | `1.0 / 1.0` | Each runs once at its fixed position / 固定顺序各一次 |
 
 ## `SecondStageConfig`
@@ -435,15 +435,15 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
-| `blur_probability / sinc_probability` | `0.8 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
-| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.3,1.2]` | Relative to HQ/scale / 相对最终 LQ |
+| `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | Relative to HQ/scale; no undershoot / 相对最终 LQ，不允许中途缩得更小 |
 | `noise_probability / compression_probability` | `1.0 / 1.0` | Final compression exchanges with native resize+sinc / 末端压缩只与 resize+sinc 整组交换 |
 
 ## `BlurConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `sigma` | `[0.2,3.0]` | Uniform reference-pixel sigma, multiplied once by HQ spatial scale / 独立均匀 sigma |
+| `sigma` | `[0.2,3.0]` | Uniform reference-pixel sigma; enlargement capped by execution grid / 独立均匀 sigma，按执行网格限制额外放大 |
 | `probabilities` | `[0.45,0.25,0.12,0.03,0.12,0.03]` | Isotropic/anisotropic Gaussian, generalized, plateau / 各向同性与异性六类 |
 | `generalized_beta / plateau_beta` | `[0.5,4] / [1,2]` | Official beta distributions / 官方 beta 分布 |
 
@@ -458,14 +458,14 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `gaussian_probability` | `0.5` | Gaussian vs Poisson / 两种采集噪声的选择概率 |
-| `gaussian_sigma / poisson_scale` | `[1,30] / [0.05,3]` | Official standard deviation (8-bit units) / Poisson amplitude / 官方幅度 |
+| `gaussian_sigma / poisson_scale` | `[1,15] / [0.05,2]` | OMGSR standard deviation (8-bit units) / Poisson amplitude / OMGSR 幅度 |
 | `gray_probability` | `0.4` | Gray vs color Gaussian/Poisson / 灰度噪声概率 |
 
 ## `SecondNoiseConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `gaussian_sigma / poisson_scale` | `[1,25] / [0.05,2.5]` | Other fields inherited / 其余继承 |
+| `gaussian_sigma / poisson_scale` | `[1,12] / [0.05,1]` | Other fields inherited / 其余继承 |
 
 ## `GrainConfig`
 
@@ -480,7 +480,7 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | --- | --- | --- |
 | `probabilities` | `[0.85,0.10,0.05]` | JPEG / WebP / JPEG2000 |
 | `jpeg_backend` | `diffjpeg` | HYPIR float JPEG; opencv selects real JPEG / 默认浮点 JPEG，可切换真实编码器 |
-| `jpeg_quality / webp_quality / jpeg2000_quality` | `[30,95] / [45,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
+| `jpeg_quality / webp_quality / jpeg2000_quality` | `[60,95] / [60,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
 | `recompression_probability` | `0` | Optional extra encoding, disabled in baseline / 默认关闭额外重编码 |
 
 ## `SecondCompressionConfig`
@@ -488,6 +488,7 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `probabilities` | `[0.8,0.15,0.05]` | JPEG / WebP / JPEG2000 |
+| `jpeg_quality` | `[60,99]` | OMGSR range capped below DiffJPEG quality 100 / 避开质量 100 的除零奇点 |
 | `jpeg2000_quality` | `[200,900]` | Other quality fields inherited / 其余质量区间继承 |
 
 ## `restore` command
