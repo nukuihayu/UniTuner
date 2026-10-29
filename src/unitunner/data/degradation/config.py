@@ -61,11 +61,11 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """HYPIR acquisition noise: exactly one Gaussian or Poisson draw."""
+    """Real-ESRGAN acquisition noise with a moderately reduced upper tail."""
 
     gaussian_probability: Probability = 0.5
-    gaussian_sigma: Range = (1.0, 30.0)
-    poisson_scale: Range = (0.05, 3.0)
+    gaussian_sigma: Range = (1.0, 25.0)
+    poisson_scale: Range = (0.05, 2.5)
     gray_probability: Probability = 0.40
 
 
@@ -117,8 +117,8 @@ class SecondNoiseConfig(NoiseConfig, frozen=True):
     """Second-stage camera distribution with independently overridable fields."""
 
     gaussian_probability: Probability = 0.5
-    gaussian_sigma: Range = (1.0, 25.0)
-    poisson_scale: Range = (0.05, 2.5)
+    gaussian_sigma: Range = (1.0, 18.0)
+    poisson_scale: Range = (0.05, 1.8)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):

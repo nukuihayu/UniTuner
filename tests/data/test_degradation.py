@@ -292,7 +292,13 @@ def test_fixed_scale_adaptation_limits_secondary_downsampling(scale):
 def test_noise_matches_hypir_add_then_clip_semantics(gaussian, gray):
     # Include bicubic/sinc overshoot: pre-clipping would change the residual.
     source = np.random.default_rng(2).uniform(-0.15, 1.15, (48, 64, 3)).astype(np.float32)
-    cfg = NoiseConfig(gaussian_probability=float(gaussian), gray_probability=float(gray))
+    # Explicit official ranges keep this a semantics check independent of defaults.
+    cfg = NoiseConfig(
+        gaussian_probability=float(gaussian),
+        gray_probability=float(gray),
+        gaussian_sigma=(1.0, 30.0),
+        poisson_scale=(0.05, 3.0),
+    )
     actual = add_noise(source, cfg, np.random.default_rng(17))
     rng = np.random.default_rng(17)
     rng.random(2)  # Gaussian and gray choices
