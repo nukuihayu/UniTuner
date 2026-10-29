@@ -273,23 +273,19 @@ def test_reference_kernel_does_not_depend_on_sr_factor():
 
 
 @pytest.mark.parametrize("scale", [2.0, 4.0, 6.0, 8.0, 16.0])
-def test_high_scale_protection_preserves_x4_and_limits_secondary_downsampling(scale):
+def test_fixed_scale_adaptation_limits_secondary_downsampling(scale):
     source = torch.from_numpy(np.random.default_rng(1).random((3, 128, 192), dtype=np.float32))
     cfg = DegradationConfig(scales=(scale,))
-    before, after = [], []
-    old = degrade_image(source, cfg.model_copy(update={"high_scale_protection": False}), 13, trace=before)
-    new = degrade_image(source, cfg, 13, trace=after)
+    trace = []
+    degrade_image(source, cfg, 13, trace=trace)
+    resize = next(e for e in trace if e["op"] == "resize" and e.get("stage") == 2)
+    raw_rng = np.random.default_rng(np.random.SeedSequence(13).spawn(12)[5])
+    raw_resize = _resize_scale(cfg.second, raw_rng)
     if scale <= 4:
-        torch.testing.assert_close(old, new, atol=0, rtol=0)
-        assert before == after
+        assert resize["factor"] == pytest.approx(raw_resize, abs=1e-15)
     else:
-        resize = next(e for e in after if e["op"] == "resize" and e.get("stage") == 2)
         assert resize["factor"] >= 1 - 0.7 * 4 / scale
-        previous = next(e for e in before if e["op"] == "resize" and e.get("stage") == 2)
-        assert resize["shape"][0] > previous["shape"][0]
-        assert [(e["kind"], e["parameter"]) for e in before if e["op"] == "noise"] == [
-            (e["kind"], e["parameter"]) for e in after if e["op"] == "noise"
-        ]
+        assert resize["factor"] > raw_resize
 
 
 @pytest.mark.parametrize("gaussian", [False, True])
@@ -341,18 +337,19 @@ def test_grid_adaptation_scales_noise_before_clipping_without_changing_draws(sca
         output_size=(128 * scale, 192 * scale),
         trace=after_trace,
     )
-    np.testing.assert_allclose(after - source, (before - source) / scale, atol=6e-8, rtol=0)
+    attenuation = scale**0.85
+    np.testing.assert_allclose(after - source, (before - source) / attenuation, atol=6e-8, rtol=0)
     assert after_trace[0]["parameter"] == before_trace[0]["parameter"]
-    assert after_trace[0]["effective_parameter"] == pytest.approx(before_trace[0]["parameter"] / scale)
-    assert after_trace[0]["noise_rms_255"] == pytest.approx(before_trace[0]["noise_rms_255"] / scale)
+    assert after_trace[0]["effective_parameter"] == pytest.approx(before_trace[0]["parameter"] / attenuation)
+    assert after_trace[0]["noise_rms_255"] == pytest.approx(before_trace[0]["noise_rms_255"] / attenuation)
     if gaussian:
-        assert after.std() * 255 == pytest.approx(10 / scale, rel=0.025)
+        assert after.std() * 255 == pytest.approx(10 / attenuation, rel=0.025)
 
 
 def test_noise_grid_gain_uses_actual_rectangular_grid_and_never_amplifies():
-    assert _noise_grid_gain((64, 128), (256, 256)) == pytest.approx(math.sqrt(1 / 8))
+    assert _noise_grid_gain((64, 128), (256, 256)) == pytest.approx((1 / 8) ** 0.425)
     assert _noise_grid_gain((2048, 3072), (1024, 1536)) == 1
-    assert _noise_grid_gain((89, 89), (1024, 1024)) == pytest.approx(89 / 1024)
+    assert _noise_grid_gain((89, 89), (1024, 1024)) == pytest.approx((89 / 1024) ** 0.85)
     with pytest.raises(ValueError):
         _noise_grid_gain((0, 128), (256, 256))
 
@@ -376,14 +373,19 @@ def test_x8_pipeline_limits_gaussian_tail_on_actual_lq_grid():
         output_mode="native",
     )
     source = torch.full((3, 256, 384), 0.5)
-    before, after = [], []
-    old = degrade_image(source, cfg.model_copy(update={"noise_grid_adaptation": False}), 18, trace=before)
-    new = degrade_image(source, cfg, 18, trace=after)
-    noise = next(e for e in after if e["op"] == "noise")
-    assert noise["shape"] == [32, 48] and noise["grid_gain"] == 0.125
-    assert noise["parameter"] == 25 and noise["effective_parameter"] == 3.125
-    assert new.std() < old.std() * 0.14
-    assert [e for e in before if e["op"] != "noise"] == [e for e in after if e["op"] != "noise"]
+    trace = []
+    result = degrade_image(source, cfg, 18, trace=trace)
+    noise = next(e for e in trace if e["op"] == "noise")
+    assert noise["shape"] == [32, 48] and noise["grid_gain"] == pytest.approx(8**-0.85)
+    assert noise["parameter"] == 25
+    assert noise["effective_parameter"] == pytest.approx(25 / 8**0.85)
+    assert result.std() * 255 == pytest.approx(25 / 8**0.85, rel=0.06)
+
+
+@pytest.mark.parametrize("removed", ["high_scale_protection", "noise_grid_adaptation"])
+def test_removed_adaptation_switches_are_rejected(removed):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        DegradationConfig.model_validate({removed: True})
 
 
 def test_optional_second_order_skip_keeps_final_lq_delivery():

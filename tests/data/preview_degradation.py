@@ -13,11 +13,9 @@ from unitunner.data.degradation.pipeline import degrade_image, degrade_pair
 
 
 def baseline(config: DegradationConfig) -> DegradationConfig:
-    """Official fixed-pixel distributions using this CPU codec implementation."""
+    """Fixed blur kernels and JPEG only; built-in scale/noise adaptation remains."""
     data = config.model_dump()
     data["resolution_exponent"] = 0.0
-    data["high_scale_protection"] = False
-    data["noise_grid_adaptation"] = False
     data["final_grain"]["probability"] = 0.0
     for name in ("first", "second"):
         data[name]["compression"]["probabilities"] = (1.0, 0.0, 0.0)
@@ -46,12 +44,9 @@ def main() -> None:
         for scale in (4, 6, 8):
             seed = 13 + index
             cfg = DegradationConfig(scales=(float(scale),))
-            old_trace, trace, before_trace = [], [], []
+            old_trace, trace = [], []
             high = tensor(source)
             reference = degrade_image(high, baseline(cfg), seed, trace=old_trace)
-            before = degrade_image(
-                high, cfg.model_copy(update={"high_scale_protection": False}), seed, trace=before_trace
-            )
             result, target = degrade_pair(high, cfg, seed, trace=trace)
             picture(target).save(args.output / f"source_{index}_target.png")
             assert result.shape == high.shape and torch.isfinite(result).all()
@@ -60,12 +55,11 @@ def main() -> None:
             stem = f"source_{index}_x{scale}_seed{seed}"
             for suffix, im in zip(("hq", "baseline", "adapted", "native"), images, strict=True):
                 im.save(args.output / f"{stem}_{suffix}.png")
-            picture(before).save(args.output / f"{stem}_before.png")
             pair = Image.new("RGB", (3072, 1060), "#dddddd")
             pair_draw = ImageDraw.Draw(pair)
             for column, (title, im) in enumerate(
                 zip(
-                    ("HQ", "Fixed HYPIR parameters (CPU codecs)", "After: resolution + scale protection"),
+                    ("HQ", "Fixed kernels / JPEG only", "Current degradation"),
                     (source, picture(reference), picture(result)),
                     strict=True,
                 )
@@ -74,9 +68,7 @@ def main() -> None:
                 pair.paste(im, (column * 1024, 36))
             pair.save(args.output / f"{stem}_comparison.png")
             rows.append((f"image {index + 1} / x{scale} / seed {seed}", images))
-            records.append(
-                {"sample": stem, "baseline_trace": old_trace, "before_trace": before_trace, "adapted_trace": trace}
-            )
+            records.append({"sample": stem, "baseline_trace": old_trace, "adapted_trace": trace})
     tile, label = 280, 35
     canvas = Image.new("RGB", (4 * tile, len(rows) * (tile + label)), "#dddddd")
     draw = ImageDraw.Draw(canvas)
@@ -84,7 +76,7 @@ def main() -> None:
         y = row * (tile + label)
         for column, (title, im) in enumerate(
             zip(
-                ("HQ", "Fixed HYPIR parameters*", "HYPIR + scale / final grain", "Native LQ (nearest zoom)"),
+                ("HQ", "Fixed kernels / JPEG only*", "Current / final grain", "Native LQ (nearest zoom)"),
                 images,
                 strict=True,
             )
@@ -109,7 +101,7 @@ def main() -> None:
             records.append({"resolution": size, "scale": scale, "trace": trace})
     (args.output / "traces.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
     print(f"Saved {len(rows)} visual samples and 25 resolution/scale checks to {args.output}")
-    print("*Fixed official parameter distribution via CPU OpenCV codecs, not pixel-exact GPU DiffJPEG.")
+    print("*Fixed kernels/JPEG-only reference retains built-in scale/noise adaptation; not a native HYPIR run.")
 
 
 if __name__ == "__main__":

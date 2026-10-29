@@ -146,15 +146,16 @@ def _resize_scale(stage: StageConfig, rng: np.random.Generator) -> float:
 
 
 def _noise_grid_gain(shape: tuple[int, int], output_size: tuple[int, int]) -> float:
-    """Reduce noise amplitude by the square root of its output pixel footprint.
+    """Gently reduce noise amplitude as its output pixel footprint grows.
 
     This is an engineering normalization, not an exact interpolation/noise model.
-    An isotropic x8 enlargement maps one noisy pixel onto 64 output pixels,
-    giving an amplitude factor of 1/8. Larger source grids are never amplified.
+    Use the inverse linear enlargement to the power 0.85 rather than 1.0,
+    retaining more noise at small grids. Larger grids are never amplified.
     """
     if min(*shape, *output_size) < 1:
         raise ValueError("Noise grids must have positive dimensions")
-    return min(1.0, math.sqrt((shape[0] / output_size[0]) * (shape[1] / output_size[1])))
+    ratio = math.sqrt((shape[0] / output_size[0]) * (shape[1] / output_size[1]))
+    return min(1.0, ratio**0.85)
 
 
 def add_noise(
@@ -329,7 +330,7 @@ def degrade_pair(
     target = (max(1, int(height / scale)), max(1, int(width / scale)))
     # Official presets target x4. Avoid multiplying their intermediate loss of
     # detail by another x1.5/x2 at x6/x8. Keep x1..x4 exactly unchanged.
-    relief = min(1.0, 4.0 / scale) if settings.high_scale_protection else 1.0
+    relief = min(1.0, 4.0 / scale)
 
     def record(op: str, value: Pixels, **params) -> None:
         if trace is not None:
@@ -382,7 +383,7 @@ def degrade_pair(
                 image,
                 stage.noise,
                 noise_rng,
-                output_size=(height, width) if settings.noise_grid_adaptation else None,
+                output_size=(height, width),
                 trace=trace,
             )
         if index == 1 and codec_rng.random() < stage.compression_probability:

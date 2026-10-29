@@ -410,8 +410,6 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
 | `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
 | `reference_resolution / resolution_exponent` | `512 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
-| `high_scale_protection` | `true` | Above x4, narrow second downsampling and reduce final sinc footprint; false restores baseline / x4 以上限制过度缩小和末端低通 |
-| `noise_grid_adaptation` | `true` | Scale acquisition residual by min(1,sqrt(current_area/output_area)) before clipping; final grain unaffected / 按实际执行网格抑制粗颗粒 |
 | `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
 | `use_usm / sharpen_target` | `false / true` | USM disabled; sharpen_target applies only when enabled / 默认关闭 USM，启用后才应用目标锐化设置 |
 | `final_grain` | `subtable` | GrainConfig after alignment / 回原尺寸后的 grain |

@@ -158,8 +158,6 @@ class DegradationConfig(DistributionConfig, frozen=True):
     scale_range: Range = (1.0, 8.0)
     reference_resolution: Annotated[int, Field(ge=32)] = 512
     resolution_exponent: Annotated[float, Field(ge=0, le=1)] = 0.5
-    high_scale_protection: bool = True
-    noise_grid_adaptation: bool = True
     second_order_probability: Probability = 1.0
     use_usm: bool = False
     sharpen_target: bool = True
