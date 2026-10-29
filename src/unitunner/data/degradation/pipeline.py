@@ -21,6 +21,7 @@ from unitunner.data.degradation.config import (
     NoiseConfig,
     StageConfig,
 )
+from unitunner.data.degradation.diffjpeg import diffjpeg
 
 type Pixels = NDArray[np.float32]
 
@@ -103,8 +104,18 @@ def mixed_blur_kernel(
 
 
 def _filter(image: Pixels, kernel: Pixels) -> Pixels:
-    """Convolve each channel using reflect-101 borders, preserving float32 output."""
-    return np.asarray(cv2.filter2D(image, -1, kernel, borderType=cv2.BORDER_REFLECT_101), dtype=np.float32)
+    """HYPIR reflect-padded Torch convolution, extended to tiny LQ grids."""
+    radius = kernel.shape[0] // 2
+    value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)[None]
+    if radius < min(image.shape[:2]):
+        value = F.pad(value, (radius, radius, radius, radius), mode="reflect")
+    else:
+        # Torch reflect requires pad < side; periodic reflection preserves the
+        # same border rule when arbitrary SR factors produce smaller grids.
+        padded = np.pad(image, ((radius, radius), (radius, radius), (0, 0)), mode="reflect")
+        value = torch.from_numpy(np.ascontiguousarray(padded)).permute(2, 0, 1)[None]
+    weight = torch.from_numpy(np.ascontiguousarray(kernel))[None, None].repeat(3, 1, 1, 1)
+    return F.conv2d(value, weight, groups=3)[0].permute(1, 2, 0).contiguous().numpy()
 
 
 def _resize(
@@ -191,16 +202,16 @@ def add_grain(
     sigma = _sample(settings.sigma, rng)
     radius = _sample(settings.correlation, rng)
     noise = rng.standard_normal(image.shape[:2]).astype(np.float32)
-    noise = cv2.GaussianBlur(noise, (0, 0), max(0.05, radius))
+    noise = np.asarray(cv2.GaussianBlur(noise, (0, 0), max(0.05, radius)), dtype=np.float32)
     noise -= noise.mean()
     noise /= max(float(noise.std()), 1e-8)
     if trace is not None:
         trace.append({"op": "grain", "sigma": sigma, "correlation": radius, "shape": list(image.shape[:2])})
-    return image + noise[..., None] * (sigma / 255)
+    return (image + noise[..., None] * (sigma / 255)).astype(np.float32)
 
 
-def compress_image(image: Pixels, codec: str, quality: int) -> Pixels:
-    """Perform a real RGB 8-bit JPEG/WebP/JPEG2000 round trip without silent fallback.
+def compress_image(image: Pixels, codec: str, quality: float) -> Pixels:
+    """Perform float DiffJPEG or a real JPEG/WebP/JPEG2000 round trip.
 
     JPEG/WebP quality uses 0..100, JPEG2000 uses OpenCV's 0..1000 compression
     scale. Input/output are CPU HWC float32 [0,1]. Unavailable codecs and failed
@@ -216,6 +227,8 @@ def compress_image(image: Pixels, codec: str, quality: int) -> Pixels:
         or not np.isfinite(image).all()
     ):
         raise ValueError("Compression requires nonempty finite HWC RGB float32 pixels")
+    if codec == "diffjpeg":
+        return diffjpeg(image, quality)
     formats = {
         "jpeg": (".jpg", cv2.IMWRITE_JPEG_QUALITY, 100),
         "webp": (".webp", cv2.IMWRITE_WEBP_QUALITY, 100),
@@ -226,6 +239,7 @@ def compress_image(image: Pixels, codec: str, quality: int) -> Pixels:
     extension, option, maximum = formats[codec]
     if not 0 <= quality <= maximum:
         raise ValueError(f"Invalid {codec} quality: {quality}")
+    quality = round(quality)
     rgb = (image * 255).round().clip(0, 255).astype(np.uint8)
     height, width = rgb.shape[:2]
     if codec == "jpeg2000" and min(height, width) < 32:
@@ -252,25 +266,32 @@ def _compress(
     index = int(rng.choice(3, p=settings.probabilities))
     bounds = (settings.jpeg_quality, settings.webp_quality, settings.jpeg2000_quality)[index]
     codec = ("jpeg", "webp", "jpeg2000")[index]
-    quality = round(_sample(bounds, rng))
+    if codec == "jpeg" and settings.jpeg_backend == "diffjpeg":
+        codec = "diffjpeg"
+    quality = _sample(bounds, rng)
+    if codec != "diffjpeg":
+        quality = round(quality)
     result = compress_image(image.clip(0, 1), codec, quality)
     if trace is not None:
         trace.append({"op": "compression", "codec": codec, "quality": quality, "shape": list(image.shape[:2])})
     if settings.recompression_probability > 0 and rng.random() < settings.recompression_probability:
-        quality = round(_sample(bounds, rng))
+        quality = _sample(bounds, rng)
+        if codec != "diffjpeg":
+            quality = round(quality)
         result = compress_image(result, codec, quality)
         if trace is not None:
             trace.append({"op": "recompression", "codec": codec, "quality": quality, "shape": list(image.shape[:2])})
     return result
 
 
-def _usm(image: Pixels, spatial_scale: float) -> Pixels:
-    """BasicSR-style thresholded USM on the degradation source only."""
-    radius = _scaled_odd_size(51, spatial_scale)
-    blur = cv2.GaussianBlur(image, (radius, radius), 0)
+def _usm(image: Pixels) -> Pixels:
+    """HYPIR's fixed 51-pixel USM, weight 0.5 and threshold 10."""
+    axis = cv2.getGaussianKernel(51, 0)
+    kernel = (axis @ axis.T).astype(np.float32)
+    blur = _filter(image, kernel)
     residual = image - blur
     mask = (np.abs(residual) * 255 > 10).astype(np.float32)
-    soft = cv2.GaussianBlur(mask, (radius, radius), 0)
+    soft = _filter(mask, kernel)
     sharp = (image + 0.5 * residual).clip(0, 1)
     return (soft * sharp + (1 - soft) * image).astype(np.float32)
 
@@ -310,9 +331,6 @@ def degrade_pair(
     scale = _sample_scale(settings, rng)
     spatial = _resolution_scale(min(height, width), settings.reference_resolution, settings.resolution_exponent)
     target = (max(1, int(height / scale)), max(1, int(width / scale)))
-    # Official presets target x4. Avoid multiplying their intermediate loss of
-    # detail by another x1.5/x2 at x6/x8. Keep x1..x4 exactly unchanged.
-    relief = min(1.0, 4.0 / scale)
 
     def record(op: str, value: Pixels, **params) -> None:
         if trace is not None:
@@ -320,7 +338,7 @@ def degrade_pair(
 
     record("source", image, scale=scale, spatial_scale=spatial, target=list(target))
     if settings.use_usm:
-        image = _usm(image, spatial)
+        image = _usm(image)
         record("usm", image)
     target_high = (
         torch.from_numpy(image.copy()).permute(2, 0, 1).contiguous()
@@ -348,8 +366,6 @@ def degrade_pair(
         image = blur(image, stage, index)
         resize_rng, noise_rng, codec_rng = streams[(index - 1) * 4 + 1 : index * 4]
         resize = _resize_scale(stage, resize_rng)
-        if index == 2 and resize < 1:
-            resize = 1.0 - (1.0 - resize) * relief
         base_h, base_w = (height, width) if index == 1 else target
         image = _resize(
             image,
@@ -366,7 +382,7 @@ def degrade_pair(
             image = _compress(image, stage.compression, codec_rng, trace)
 
     sinc = streams[8].random() < settings.final_sinc_probability
-    kernel = _resolution_sinc_kernel(streams[8], max(0.5, spatial * relief)) if sinc else None
+    kernel = _resolution_sinc_kernel(streams[8], spatial) if sinc else None
 
     def delivery(value: Pixels) -> Pixels:
         value = _resize(value, *target, streams[9], settings)

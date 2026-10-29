@@ -168,22 +168,31 @@ The switch itself does not change resume identity, allowing unchanged data to re
 
 ### Synthetic super-resolution degradation
 
-Based on [HYPIR's dataset implementation](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset), retaining scale adaptation, real JPEG and 10% final grain.
+The default follows [HYPIR's official configuration and transform](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset), with explicit extensions for dimensions/SR factors, codecs and 10% final grain.
 
-1. Crop/paired flip, then use original HQ by default; USM is disabled. Explicit use_usm=true enables sharpening (weight 0.5, threshold 10, reference support 51). When enabled, sharpen_target=true also sharpens supervised GT; false preserves original supervision. Input is immutable.
-2. First blur/sinc → resize → Gaussian/Poisson → JPEG.
-3. Second optional blur/sinc → resize → Gaussian/Poisson.
-4. Equal-probability native [resize+sinc] → JPEG or JPEG → [resize+sinc].
-5. Bicubic back to HQ, **one grain pass with 10% probability**, then clipping and 8-bit quantization. Grain never participates in acquisition noise and is not subsequently resized or compressed.
+1. Crop/paired flip, then use original HQ for both the degradation source and supervised GT: USM is off by default. Explicit `use_usm=true` enables HYPIR USM (fixed support 51, weight 0.5, threshold 10); `sharpen_target=true` also sharpens supervised GT, while false sharpens only the degradation source.
+2. Blur/sinc → resize → Gaussian/Poisson → compression.
+3. Optional second blur/sinc → resize → Gaussian/Poisson.
+4. Equal-probability native [resize+sinc] → compression or compression → [resize+sinc].
+5. Bicubic to HQ, one luminance grain pass with 10% probability, then clipping and 8-bit quantization.
 
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
-scales = [2.0, 4.0, 6.0, 8.0]
+scale_range = [1.0, 8.0]
+# scales = [2.0, 4.0, 6.0, 8.0]
 reference_resolution = 512
 resolution_exponent = 0.5
 use_usm = false
 sharpen_target = true
+
+[dataset.groups.synthetic.degradation.first.compression]
+probabilities = [0.85, 0.10, 0.05]
+jpeg_backend = "diffjpeg"
+
+[dataset.groups.synthetic.degradation.second.compression]
+probabilities = [0.8, 0.15, 0.05]
+jpeg_backend = "diffjpeg"
 
 [dataset.groups.synthetic.degradation.final_grain]
 probability = 0.1
@@ -191,23 +200,19 @@ sigma = [1.0, 8.0]
 correlation = [0.3, 0.8]
 ```
 
-HYPIR uses fixed pixel kernels at 512 and x4. Our extension computes `k=clamp((HQ_short/reference_resolution)^resolution_exponent,0.5,2)` once: 256/512/1024/1280/2048 gives 0.707/1/1.414/1.581/2. It scales sigma, support and inverse sinc cutoff, not noise amplitudes or JPEG 8×8 blocks.
+HYPIR's baseline is 512/x4. Stage-one resize probabilities are [0.2,0.7,0.1] (up/down/keep), range [0.15,1.5]; stage two uses [0.3,0.4,0.3] and [0.3,1.2] relative to `floor(HQ/scale)`. No high-factor relief changes these draws. `scale_range` samples total SR factors log-uniformly in [1,16]; explicit `scales` overrides it.
 
-Scale adaptation is built into the pipeline: `r=min(1,4/scale)`, second downsampling becomes `s'=1-(1-s)*r`, with x4/x6/x8 lower bounds 0.30/0.533/0.65. Final sinc uses `max(0.5,k*r)`. Second blur precedes its resize, without repeated grid-based sigma attenuation. These adaptations have no configuration switches.
+Spatial adaptation is an extension: `k=clamp((HQ_short/reference_resolution)^resolution_exponent,0.5,2)` scales mixed-kernel sigma/support and inverse sinc cutoff once. It is shared by both stages and final sinc, without extra SR-factor attenuation. At 512 it is exactly one; exponent zero retains official fixed pixel kernels at any resolution. USM stays fixed at 51, and noise/JPEG block sizes are not multiplied. Tiny grids use repeated reflection when Torch reflection padding cannot fit.
 
-Acquisition noise follows HYPIR: use the sampled Gaussian sigma / Poisson scale directly on each resized grid, without resolution, SR-factor, pixel-area or exponent attenuation. The former grid attenuation is removed. First-stage ranges are Gaussian [1,30] and Poisson [0.05,3]; second-stage ranges are [1,25] and [0.05,2.5]. Enlarged LQ noise can consequently look coarser than final grain at high SR factors. Trace parameter is the actual sampled amplitude; gray and pre-clip noise_rms_255 are also reported. Encoding/filtering still change visible RMS. Removed adaptation switches must remain absent from old TOML files.
+Both stages add Gaussian/Poisson with equal probability, 40% gray. Sigma is [1,30]/[1,25], Poisson amplitude [0.05,3]/[0.05,2.5], directly on the resized grid with no gain/attenuation. Clip after addition, without rounding. Only Poisson's sampling signal is quantized before counting unique levels.
 
-Base support is 7..21, sigma [0.2,3]/[0.2,1.5], with six kernel probabilities [0.45,0.25,0.12,0.03,0.12,0.03]. Second blur is 80%; active filters substitute sinc 10% of the time, final sinc is 80%. Stage cutoffs are π/3..π for support <13, otherwise π/5..π; final is π/3..π without taper. Padding kernels to 21 in HYPIR serves batching, not a larger effective support.
+Mixed blur uses six probabilities [0.45,0.25,0.12,0.03,0.12,0.03], base support 7..21 and sigma [0.2,3]/[0.2,1.5]. Second blur runs 80%; conditional sinc replacement is 10% per active stage, final sinc 80%. Stage cutoff is π/3..π for base support <13 and π/5..π otherwise; final cutoff π/3..π. No taper.
 
-Both acquisition stages select Gaussian/Poisson equally, with 40% gray probability. Sigma [1,30]/[1,25]; Poisson scale [0.05,3]/[0.05,2.5]. Clip after addition without rounding; only the Poisson sampling signal is first quantized for unique-level counting. Final correlated luminance grain has RMS [1,8]/255 and radius [0.3,0.8] **output pixels**, without resolution/SR multipliers. Overall occurrence is 10%.
+Compression probabilities mean JPEG/WebP/JPEG2000: [0.85,0.10,0.05] then [0.8,0.15,0.05]. JPEG defaults to HYPIR-compatible float DiffJPEG with floating quality [30,95], 4:2:0, upstream quantization tables, nearest chroma reconstruction and zero padding to multiples of 16 (including its border behavior). Twelve golden cases generated by pinned HYPIR verify numerical parity for this codec. `jpeg_backend="opencv"` selects real JPEG instead. WebP quality [45,98]; JPEG2000 [250,900]/[200,900]. Real codecs quantize to 8-bit and round quality to an integer. DiffJPEG requires quality strictly between 0 and 100. Recompression is off.
 
-Both stages mix real JPEG/WebP by default: 85%/15% in stage one and 80%/20% in stage two. JPEG quality is [30,95] with explicit 4:2:0; WebP quality is [45,98]. JPEG2000 remains configurable through compression.probabilities with default probability zero; recompression is off. HYPIR's float DiffJPEG differs in quantization/chroma reconstruction and can introduce zero-padding border errors on non-multiple-of-16 dimensions. That border behavior is not copied; no pixel-exact parity is claimed.
+For the official codec-only baseline set both compression probabilities to [1,0,0] and final grain probability to zero. Full images are not guaranteed pixel-identical from equal seeds: local NumPy random streams differ from HYPIR's global Python/NumPy/Torch streams. Independent per-image sampling replaces its batch-diversity queue. No source edits to losses or model-quality claims are implied.
 
-Training/calibration share degrade_pair for LQ and supervised GT; degrade_image is an LQ-only diagnostic wrapper. Native output quantizes at LQ size and skips final grain; enlarging it is not the training output. Independent operator streams prevent grain toggles from changing other draws; trace records grids, kernels, acquisition noise, codecs and grain.
-
-Paired 50% horizontal flipping and crop-before-degradation remain. HYPIR also enables horizontal flipping and disables rotations; its crop_type=none requires pre-sized 512 images. We preserve multi-size crops and reflection padding. Independent per-image resize draws remove the need for HYPIR's batch-diversity queue.
-
-Removed stage.noise.grain_probability/grain_sigma/grain_correlation fields must migrate to final_grain. New supervision changes resume identity and requires recalibration. Training losses are unchanged; model quality gains have not been evaluated.
+Final grain has output-pixel RMS [1,8]/255 and correlation radius [0.3,0.8], only once after alignment. Native output skips it. Training/calibration share `degrade_pair`, returning LQ and supervision GT; `degrade_image` is for diagnostics. Trace records actual grids, kernels, noise and codecs. Removed noise-grid/high-scale switches and stage-grain fields remain rejected. Changed supervision and distributions require recalibration and affect resume identity.
 
 
 ## Editing, references, masks and layers

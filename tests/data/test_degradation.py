@@ -1,7 +1,10 @@
 """Check official stage semantics, spatial adaptation and optional extensions."""
 
+import json
 import math
 import random
+from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pytest
@@ -12,9 +15,11 @@ from torch.nn import functional as F
 pytest.importorskip("cv2")
 from unitunner.data.degradation.config import (
     BlurConfig,
+    CompressionConfig,
     DegradationConfig,
     GrainConfig,
     NoiseConfig,
+    SecondCompressionConfig,
     SecondNoiseConfig,
     SecondStageConfig,
     StageConfig,
@@ -179,12 +184,49 @@ def test_resize_ranges_not_clipped_to_selected_sr_factor():
     assert min(draws) < 0.16 and max(draws) > 0.99
 
 
-@pytest.mark.parametrize("codec,quality", [("jpeg", 95), ("webp", 95), ("jpeg2000", 900)])
+@pytest.mark.parametrize("codec,quality", [("diffjpeg", 95), ("jpeg", 95), ("webp", 95), ("jpeg2000", 900)])
 def test_codecs_preserve_rgb_and_tiny_grids(codec, quality):
     source = np.full((16, 24, 3), [0.8, 0.3, 0.1], dtype=np.float32)
     result = compress_image(source, codec, quality)
     assert result.shape == source.shape and result.dtype == np.float32
     np.testing.assert_allclose(result.mean((0, 1)), source.mean((0, 1)), atol=0.025)
+
+
+def test_diffjpeg_matches_pinned_hypir_reference_including_odd_borders():
+    root = Path(__file__).parent / "fixtures"
+    metadata = json.loads((root / "hypir_diffjpeg.json").read_text(encoding="utf8"))
+    with np.load(root / "hypir_diffjpeg.npz") as reference:
+        for case in metadata["cases"]:
+            source = reference[case["input"]]
+            saved = source.copy()
+            actual = compress_image(source, "diffjpeg", case["quality"])
+            np.testing.assert_allclose(actual, reference[case["output"]], atol=2e-6, rtol=0)
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                np.testing.assert_array_equal(actual, compress_image(source, "diffjpeg", case["quality"]))
+            np.testing.assert_array_equal(source, saved)
+
+
+@pytest.mark.parametrize("quality", [0.0, 100.0, float("nan")])
+def test_singular_diffjpeg_quality_is_rejected(quality):
+    with pytest.raises(ValueError, match="strictly between"):
+        compress_image(np.full((16, 16, 3), 0.5, dtype=np.float32), "diffjpeg", quality)
+    with pytest.raises(ValidationError):
+        CompressionConfig(jpeg_quality=(quality, quality))
+
+
+def test_hypir_jpeg_and_real_codec_overrides_use_distinct_backends():
+    high = torch.full((3, 64, 96), 0.5)
+    backends: tuple[tuple[Literal["diffjpeg", "opencv"], str], ...] = (("diffjpeg", "diffjpeg"), ("opencv", "jpeg"))
+    for backend, expected in backends:
+        compression = CompressionConfig(probabilities=(1.0, 0.0, 0.0), jpeg_backend=backend)
+        cfg = DegradationConfig(
+            scales=(4.0,),
+            first=StageConfig(compression=compression),
+            second=SecondStageConfig(compression=SecondCompressionConfig(**compression.model_dump())),
+        )
+        trace = []
+        degrade_image(high, cfg, 13, trace=trace)
+        assert [e["codec"] for e in trace if e["op"] == "compression"] == [expected, expected]
 
 
 def test_final_grain_is_gray_correlated_and_bounded():
@@ -272,7 +314,7 @@ def test_reference_kernel_does_not_depend_on_sr_factor():
 
 
 @pytest.mark.parametrize("scale", [2.0, 4.0, 6.0, 8.0, 16.0])
-def test_fixed_scale_adaptation_limits_secondary_downsampling(scale):
+def test_secondary_resize_uses_unmodified_hypir_draw_at_every_sr_factor(scale):
     source = torch.from_numpy(np.random.default_rng(1).random((3, 128, 192), dtype=np.float32))
     cfg = DegradationConfig(scales=(scale,))
     trace = []
@@ -280,11 +322,8 @@ def test_fixed_scale_adaptation_limits_secondary_downsampling(scale):
     resize = next(e for e in trace if e["op"] == "resize" and e.get("stage") == 2)
     raw_rng = np.random.default_rng(np.random.SeedSequence(13).spawn(12)[5])
     raw_resize = _resize_scale(cfg.second, raw_rng)
-    if scale <= 4:
-        assert resize["factor"] == pytest.approx(raw_resize, abs=1e-15)
-    else:
-        assert resize["factor"] >= 1 - 0.7 * 4 / scale
-        assert resize["factor"] > raw_resize
+    assert resize["factor"] == pytest.approx(raw_resize, abs=1e-15)
+    assert resize["shape"] == [max(1, int((128 // scale) * raw_resize)), max(1, int((192 // scale) * raw_resize))]
 
 
 @pytest.mark.parametrize("gaussian", [False, True])
@@ -368,7 +407,7 @@ def test_optional_second_order_skip_keeps_final_lq_delivery():
 @pytest.mark.parametrize("legacy", ["smear_strength", "grain_strength", "noise_strength", "late_noise_probability"])
 def test_removed_heuristics_fail_instead_of_silently_applying(legacy):
     with pytest.raises(ValidationError):
-        DegradationConfig(**{legacy: 0.5})
+        DegradationConfig.model_validate({legacy: 0.5})
 
 
 def test_optional_antialias_suppresses_checkerboard_alias():

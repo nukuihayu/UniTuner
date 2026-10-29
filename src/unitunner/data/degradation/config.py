@@ -61,11 +61,11 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """Real-ESRGAN acquisition noise with a moderately reduced upper tail."""
+    """HYPIR acquisition noise: exactly one Gaussian or Poisson draw."""
 
     gaussian_probability: Probability = 0.5
-    gaussian_sigma: Range = (1.0, 25.0)
-    poisson_scale: Range = (0.05, 2.5)
+    gaussian_sigma: Range = (1.0, 30.0)
+    poisson_scale: Range = (0.05, 3.0)
     gray_probability: Probability = 0.40
 
 
@@ -78,9 +78,10 @@ class GrainConfig(DistributionConfig, frozen=True):
 
 
 class CompressionConfig(DistributionConfig, frozen=True):
-    """JPEG/WebP/JPEG2000 probabilities and codec-native quality ranges."""
+    """HYPIR JPEG with optional real WebP/JPEG2000 and real-JPEG backend."""
 
-    probabilities: Probabilities = (0.85, 0.15, 0.0)
+    probabilities: Probabilities = (0.85, 0.10, 0.05)
+    jpeg_backend: Literal["diffjpeg", "opencv"] = "diffjpeg"
     recompression_probability: Probability = 0.0
     jpeg_quality: Range = (30.0, 95.0)
     webp_quality: Range = (45.0, 98.0)
@@ -90,6 +91,8 @@ class CompressionConfig(DistributionConfig, frozen=True):
     def validate_quality(self) -> Self:
         if self.jpeg_quality[1] > 100 or self.webp_quality[1] > 100 or self.jpeg2000_quality[1] > 1000:
             raise ValueError("JPEG/WebP quality must be <=100; JPEG2000 uses OpenCV's 0..1000 scale")
+        if self.jpeg_backend == "diffjpeg" and not 0 < self.jpeg_quality[0] <= self.jpeg_quality[1] < 100:
+            raise ValueError("DiffJPEG quality must be strictly between 0 and 100")
         return self
 
 
@@ -117,14 +120,14 @@ class SecondNoiseConfig(NoiseConfig, frozen=True):
     """Second-stage camera distribution with independently overridable fields."""
 
     gaussian_probability: Probability = 0.5
-    gaussian_sigma: Range = (1.0, 18.0)
-    poisson_scale: Range = (0.05, 1.8)
+    gaussian_sigma: Range = (1.0, 25.0)
+    poisson_scale: Range = (0.05, 2.5)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):
     """Second-stage codec distribution with independently overridable fields."""
 
-    probabilities: Probabilities = (0.8, 0.2, 0.0)
+    probabilities: Probabilities = (0.8, 0.15, 0.05)
     jpeg_quality: Range = (30.0, 95.0)
     webp_quality: Range = (45.0, 98.0)
     jpeg2000_quality: Range = (200.0, 900.0)

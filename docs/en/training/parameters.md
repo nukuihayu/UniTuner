@@ -411,7 +411,7 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 | `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
 | `reference_resolution / resolution_exponent` | `512 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
 | `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
-| `use_usm / sharpen_target` | `false / true` | USM disabled; sharpen_target applies only when enabled / 默认关闭 USM，启用后才应用目标锐化设置 |
+| `use_usm / sharpen_target` | `false / true` | USM off by default; optional HYPIR USM uses fixed support 51 / 默认关闭 USM，启用后可同时锐化监督 GT |
 | `final_grain` | `subtable` | GrainConfig after alignment / 回原尺寸后的 grain |
 | `resize_antialias` | `false` | Optional antialias for bilinear/bicubic downsampling / 可选抗混叠 |
 | `output_mode` | `aligned` | aligned or native; datasets/calibration require aligned / 原生 LQ 仅用于直接调用 |
@@ -478,7 +478,8 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `probabilities` | `[0.85,0.15,0]` | JPEG / WebP / JPEG2000 |
+| `probabilities` | `[0.85,0.10,0.05]` | JPEG / WebP / JPEG2000 |
+| `jpeg_backend` | `diffjpeg` | HYPIR float JPEG; opencv selects real JPEG / 默认浮点 JPEG，可切换真实编码器 |
 | `jpeg_quality / webp_quality / jpeg2000_quality` | `[30,95] / [45,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
 | `recompression_probability` | `0` | Optional extra encoding, disabled in baseline / 默认关闭额外重编码 |
 
@@ -486,7 +487,7 @@ HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment ex
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `probabilities` | `[0.8,0.2,0]` | JPEG / WebP / JPEG2000 |
+| `probabilities` | `[0.8,0.15,0.05]` | JPEG / WebP / JPEG2000 |
 | `jpeg2000_quality` | `[200,900]` | Other quality fields inherited / 其余质量区间继承 |
 
 ## `restore` command

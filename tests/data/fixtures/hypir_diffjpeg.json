@@ -1,0 +1,67 @@
+{
+  "reference": "https://github.com/XPixelGroup/HYPIR/blob/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset/diffjpeg.py",
+  "source_sha256": "e69c8313c8f097d4bc47c22fe907c9fd749ecbc165306bc15b82d1cacdaf4861",
+  "mode": "DiffJPEG(differentiable=False), CPU float32, tensor quality",
+  "cases": [
+    {
+      "input": "input_0",
+      "output": "output_0_0",
+      "quality": 30.5
+    },
+    {
+      "input": "input_0",
+      "output": "output_0_1",
+      "quality": 50.0
+    },
+    {
+      "input": "input_0",
+      "output": "output_0_2",
+      "quality": 94.7
+    },
+    {
+      "input": "input_1",
+      "output": "output_1_0",
+      "quality": 30.5
+    },
+    {
+      "input": "input_1",
+      "output": "output_1_1",
+      "quality": 50.0
+    },
+    {
+      "input": "input_1",
+      "output": "output_1_2",
+      "quality": 94.7
+    },
+    {
+      "input": "input_2",
+      "output": "output_2_0",
+      "quality": 30.5
+    },
+    {
+      "input": "input_2",
+      "output": "output_2_1",
+      "quality": 50.0
+    },
+    {
+      "input": "input_2",
+      "output": "output_2_2",
+      "quality": 94.7
+    },
+    {
+      "input": "input_3",
+      "output": "output_3_0",
+      "quality": 30.5
+    },
+    {
+      "input": "input_3",
+      "output": "output_3_1",
+      "quality": 50.0
+    },
+    {
+      "input": "input_3",
+      "output": "output_3_2",
+      "quality": 94.7
+    }
+  ]
+}
