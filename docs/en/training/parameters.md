@@ -50,7 +50,7 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `assets` | string / null | `null` | Auxiliary bundle root: FLUX CLIP in text_encoder/, Wan2.1 I2V vision weights in image_encoder/model.safetensors. |
 | `text` | object | `table defaults` | Text precision, quantization and tokenizer source table; weights remain in model.text_encoder. |
 | `minimax_h3` | object / null | `null` | H3-specific table: encoder assets under model, audio handling under data, schedules/conditioning under method. |
-| `text_source_format` | "transformers", "qwen" / null | `null` | Text weight key format transformers/qwen; use only with supported families. |
+| `text_source_format` | "auto", "transformers", "qwen" / null | `null` | Omission detects weight namespaces; transformers/qwen explicitly constrain supported families. |
 | `weights` | string | `required` | Local weight file, shard index or supported model directory; replace the example path. |
 
 ## `model.text`

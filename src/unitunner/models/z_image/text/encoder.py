@@ -14,7 +14,13 @@ from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unitunner.models.components.conditioning import Caption
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    language_weight_prefix,
+    load_text_state,
+    prepare_text_model,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.text_assets import tokenizer_directory
 
 
@@ -110,9 +116,11 @@ def load_z_image_text(
     config._attn_implementation = "sdpa"
     with torch.device("meta"):
         model = Qwen3Model(config)
-    tensors = dict(iter_tensors(text_weight_path(directory)))
+    path = text_weight_path(directory)
+    prefix = language_weight_prefix(path, ("", "model."))
+    tensors = dict(iter_tensors(path))
     expected = dict(model.state_dict())
-    if "Qwen3ForCausalLM" in (config.architectures or ()):
+    if prefix:
         if any(key != "lm_head.weight" and not key.startswith("model.") for key in tensors):
             raise ValueError("Z-Image causal text artifact requires uniform model prefixes")
         tensors = {key.removeprefix("model."): value for key, value in tensors.items()}

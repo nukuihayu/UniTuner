@@ -26,7 +26,6 @@ vae = "artifacts/qwen-image-vae.safetensors"
 text_encoder = "artifacts/qwen3-vl-4b"
 # 文本权重键格式 transformers/qwen；仅支持该选项的家族使用。
 # Text weight key format transformers/qwen; use only with supported families.
-text_source_format = "transformers"
 
 [sampling]
 # 本次生成/修复的提示词；与训练任务保持一致。

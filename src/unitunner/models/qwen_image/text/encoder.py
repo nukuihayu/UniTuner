@@ -40,6 +40,7 @@ from unitunner.models.components.text_loading import (
     load_text_state,
     prepare_text_model,
     qwen_vl_base_key,
+    qwen_vl_source_format,
     text_dtype,
     text_weight_path,
 )
@@ -267,11 +268,12 @@ def load_qwen_image_text(
     device: torch.device,
     variant: QwenImageVariant,
     dtype: torch.dtype = torch.bfloat16,
-    source_format: Literal["transformers", "qwen"] = "transformers",
+    source_format: Literal["auto", "transformers", "qwen"] = "auto",
     text_config: TextEncodingConfig = DEFAULT_TEXT_CONFIG,
 ) -> QwenImageTextEncoder:
     """Load exact local processor/config/safetensors without downloads or remote code.
 
+    Auto detects base/conditional/legacy/Comfy namespaces from all shard headers.
     Transformers keys use model.language_model/model.visual/lm_head. Explicit
     qwen format converts published model.* language and visual.* vision keys;
     duplicate destinations, unknown/missing keys, shape/nonfinite/overflow
@@ -279,8 +281,12 @@ def load_qwen_image_text(
     consume no RNG. Execution policy does not enter the weight namespace.
     """
     dtype = text_dtype(text_config, dtype)
-    if dtype not in (torch.float32, torch.float16, torch.bfloat16) or source_format not in ("transformers", "qwen"):
-        raise ValueError("Qwen Image text requires FP32/FP16/BF16 and explicit transformers/qwen format")
+    if dtype not in (torch.float32, torch.float16, torch.bfloat16) or source_format not in (
+        "auto",
+        "transformers",
+        "qwen",
+    ):
+        raise ValueError("Qwen Image text requires FP32/FP16/BF16 and auto/transformers/qwen format")
     QwenImageConfig(variant=variant)
     config = AutoConfig.from_pretrained(
         str(text_config_path(directory, "qwen-image")), local_files_only=True, trust_remote_code=False
@@ -317,8 +323,13 @@ def load_qwen_image_text(
         )
     tensors = {}
     path = text_weight_path(directory)
+    automatic = source_format == "auto"
+    detected = qwen_vl_source_format(path) if automatic else source_format
+    native_base = detected == "native"
+    if automatic:
+        source_format = "qwen" if detected == "qwen" else "transformers"
     for original, value in iter_tensors(path):
-        key = original
+        key = "model." + original if native_base and original.startswith(("language_model.", "visual.")) else original
         if source_format == "qwen":
             if original.startswith(("visual.", "model.")):
                 key = "model." + qwen_vl_base_key(original)

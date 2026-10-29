@@ -79,9 +79,9 @@ H3 需要独立的 AV VAE／处理器，见下面的专属参数。
 MOSS4096（上限4096），FLUX512（上限512），Krea2 512。其他家族使用固定原生文本预算，拒绝显式覆盖。
 Krea2 使用编码器原生特征选层。
 
-Qwen、Qwen2.1、Krea2、H3 可显式选择 `model.text_source_format = "transformers"` 或 `"qwen"`，
-这是权重键格式，不是训练方法。省略时按组件原生默认读取；不要通过改字符串猜测不匹配权重。
-`qwen` 格式的视觉权重兼容 `visual.*` 和 Comfy-Org 的 `model.visual.*`，语言权重使用 `model.layers.*`/`model.embed_tokens.*`/`model.norm.*`。Comfy-Org Qwen-Image-2.1 的 `qwen3vl_8b_bf16.safetensors` 使用这种混合布局，应设置 `text_source_format="qwen"`。同一视觉张量同时提供两种前缀仍会报重复键；模型规格、形状和完整性校验保持严格。
+Qwen、Qwen2.1、Krea2、H3 默认按实际权重键名自动识别格式，无需填写 `model.text_source_format`。兼容原生 base、Transformers，以及语言键为 `model.layers.*`、视觉键为 `visual.*` 或 `model.visual.*` 的 Qwen/Comfy 混合布局。Comfy-Org 的 `qwen3vl_8b_bf16.safetensors` 可直接加载到规格匹配的 Qwen2.1 编码器。
+需要约束输入时仍可显式指定 `"transformers"` 或 `"qwen"`；`null`/`"auto"` 使用自动识别。识别读取所有分片的键名，不根据文件名或配置中的 architecture 猜测格式。混合语言前缀、重复视觉别名、缺失/多余键、形状不符或非有限数值仍会报错。H3 保持自身宽度与截断层要求，并校验完整模型中最终丢弃的层。
+FLUX.2/FLUX.3、MOSS、Z-Image 同样按已支持的语言键名前缀识别；FLUX T5/CLIP 保留既有别名校验，Wan 自动识别统一 `encoder.*` 前缀。VAE 保留各家族的格式/拓扑校验，Z-Image 也支持自动移除统一 `vae.*` 前缀。
 
 ## 编辑、参考图与图层
 

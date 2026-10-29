@@ -19,6 +19,7 @@ from unitunner.models.components.text_loading import (
     load_text_state,
     prepare_text_model,
     qwen_vl_base_key,
+    qwen_vl_source_format,
     text_dtype,
     text_weight_path,
 )
@@ -139,11 +140,11 @@ def load_krea2_text(
     device: torch.device,
     dtype: torch.dtype = torch.bfloat16,
     config: TextEncodingConfig = _DEFAULT_CONFIG,
-    source_format: Literal["native", "transformers", "qwen"] = "transformers",
+    source_format: Literal["auto", "native", "transformers", "qwen"] = "auto",
 ) -> Krea2TextEncoder:
     """Strictly validate complete local Qwen3-VL weights, materializing language only.
 
-    Native full-base keys are language_model/visual; transformers adds model. and
+    Auto detects source namespaces from all shard headers. Native full-base keys are language_model/visual; transformers adds model. and
     may include lm_head.weight; qwen uses model. for language and visual. or
     model.visual. for vision. Reject duplicate/missing/extra/invalid tensors, including unused vision
     and head tensors. Meta construction preserves RNG. Rebuild rotary buffers in
@@ -151,11 +152,12 @@ def load_krea2_text(
     """
     dtype = text_dtype(config, dtype)
     if dtype not in (torch.float32, torch.float16, torch.bfloat16) or source_format not in (
+        "auto",
         "native",
         "transformers",
         "qwen",
     ):
-        raise ValueError("Krea2 text requires FP32/FP16/BF16 and native/transformers/qwen format")
+        raise ValueError("Krea2 text requires FP32/FP16/BF16 and auto/native/transformers/qwen format")
     topology = AutoConfig.from_pretrained(
         str(text_config_path(directory, "krea2")), local_files_only=True, trust_remote_code=False
     )
@@ -179,6 +181,9 @@ def load_krea2_text(
     owner = Krea2TextEncoder(base.language_model, tokenizer, features)
     expected, tensors = dict(base.state_dict()), {}
     path = text_weight_path(directory)
+    automatic = source_format == "auto"
+    if automatic:
+        source_format = qwen_vl_source_format(path)
     for original, value in iter_tensors(path):
         key = original
         if source_format == "transformers" and original != "lm_head.weight":
@@ -187,7 +192,7 @@ def load_krea2_text(
             key = original.removeprefix("model.")
         elif source_format == "qwen":
             key = qwen_vl_base_key(original)
-        is_head = source_format != "native" and original == "lm_head.weight"
+        is_head = (automatic or source_format != "native") and original == "lm_head.weight"
         if key in tensors:
             raise ValueError(f"Duplicate Krea2 text tensor: {original}")
         tensors[key] = value

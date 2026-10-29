@@ -88,7 +88,7 @@ def load_minimax_h3_render_resources(
         Path(model.text_encoder),
         config_directory=Path(encoders.text_config),
         processor_directory=None if encoders.text_processor is None else Path(encoders.text_processor),
-        source_format=model.text_source_format or "native",
+        source_format=model.text_source_format or "auto",
         device=text_device,
         text_config=model.text,
     )

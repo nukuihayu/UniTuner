@@ -23,7 +23,13 @@ from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unitunner.models.components.conditioning import Caption
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    language_weight_prefix,
+    load_text_state,
+    prepare_text_model,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.text_assets import tokenizer_directory
 
 _SYSTEM_MESSAGE = (
@@ -184,7 +190,6 @@ def load_flux2_text(
         config._attn_implementation = "sdpa"
         with torch.device("meta"):
             model = MistralModel(config)
-        prefix = "language_model.model."
         excluded = ("vision_tower.", "multi_modal_projector.", "language_model.lm_head.")
     else:
         if not isinstance(source, Qwen3Config):
@@ -204,13 +209,15 @@ def load_flux2_text(
         source._attn_implementation = "sdpa"
         with torch.device("meta"):
             model = Qwen3Model(source)
-        prefix = "model." if architectures == ("Qwen3ForCausalLM",) else ""
-        excluded = ("lm_head.",) if prefix else ()
+        excluded = ("lm_head.",)
     if not isinstance(template, str) or not template:
         raise ValueError("FLUX.2 text requires one local chat template")
     if model.config.num_hidden_layers < (30 if version == "dev" else 27):
         raise ValueError("FLUX.2 text lacks required native hidden layers")
     path = text_weight_path(directory)
+    prefix = language_weight_prefix(
+        path, ("language_model.model.", "model.language_model.", "model.", "") if version == "dev" else ("model.", "")
+    )
     tensors: dict[str, Tensor] = {}
     for original, tensor in iter_tensors(path):
         if original.startswith(excluded):

@@ -22,7 +22,6 @@ vae = "artifacts/qwen-image-vae.safetensors"
 text_encoder = "artifacts/qwen2.5-vl"
 # 文本权重键格式 transformers/qwen；仅支持该选项的家族使用。
 # Text weight key format transformers/qwen; use only with supported families.
-text_source_format = "qwen"
 
 [dataset.groups.main]
 # 数据源目录或该模型要求的记录文件；改动内容后重建缓存。

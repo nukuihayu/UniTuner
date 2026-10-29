@@ -61,6 +61,13 @@ def test_flux3_text_only_directory_preserves_padding_rng_and_rejects_invalid_lan
         caption = encoder.encode_prompt("")
         assert caption.mask is None and torch.equal(caption.features[0], rows[0].values)
         values = load_file(tmp_path / "model.safetensors")
+        for prefix in ("model.language_model.", "language_model.", "model."):
+            save_file({prefix + k: v for k, v in values.items()}, tmp_path / "model.safetensors")
+            loaded = load_flux3_text(
+                tmp_path, text_config=local_text_config(tmp_path), device=torch.device("cpu"), dtype=torch.float32
+            )
+            torch.testing.assert_close(loaded.encode_prompt("").features, caption.features, atol=0, rtol=0)
+        save_file(values, tmp_path / "model.safetensors")
         for bad in (
             {k: v for k, v in values.items() if k != "embed_tokens.weight"},
             {**values, "embed_tokens.weight": torch.full_like(values["embed_tokens.weight"], float("nan"))},

@@ -55,12 +55,19 @@ def test_missing_metadata_uses_published_topology_and_still_rejects_missing_weig
     assert torch.equal(rng, torch.get_rng_state())
 
 
-@pytest.mark.parametrize("family", ["z-image", "qwen-rgb", "qwen-rgba", "wan-pth", "flux", "flux2"])
+@pytest.mark.parametrize(
+    "family",
+    ["z-image", "z-image-prefixed", "z-image-native-prefixed", "qwen-rgb", "qwen-rgba", "wan-pth", "flux", "flux2"],
+)
 def test_auto_layout_preserves_every_tensor_and_rejects_incomplete_weights(tmp_path, family):
-    if family == "z-image":
+    if family.startswith("z-image"):
         model = ZImageVAE(ZImageVAEConfig(block_channels=(8, 16), norm_groups=4, latent_channels=2))
         mapping = zimage_key_map(tuple(model.state_dict()), num_blocks=2)
         external = convert_zimage(model.state_dict(), mapping, to_native=False)
+        if family == "z-image-native-prefixed":
+            external = model.state_dict()
+        if family.endswith("prefixed"):
+            external = {"vae." + key: value for key, value in external.items()}
         loader = load_z_image_vae
     elif family.startswith("qwen") or family == "wan-pth":
         model = QwenImageVAE(

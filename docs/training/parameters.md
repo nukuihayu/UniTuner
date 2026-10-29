@@ -50,7 +50,7 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `assets` | string / null | `null` | 辅助资产根目录；FLUX 的 CLIP 位于 text_encoder/，Wan2.1 I2V 的图像编码器位于 image_encoder/model.safetensors。 |
 | `text` | object | `子表默认值` | 文本编码精度、量化和分词器来源子表；编码器权重路径仍在 model.text_encoder。 |
 | `minimax_h3` | object / null | `null` | H3 专属子表；模型表填编码资产，数据表填音频处理，方法表填时间与条件策略。 |
-| `text_source_format` | "transformers", "qwen" / null | `null` | 文本权重键格式 transformers/qwen；仅支持该选项的家族使用。 |
+| `text_source_format` | "auto", "transformers", "qwen" / null | `null` | 省略时按权重键名自动识别；可显式限定 transformers/qwen。 |
 | `weights` | string | `必填` | 本地权重文件、分片索引或支持的模型目录；替换为实际路径。 |
 
 ## `model.text`

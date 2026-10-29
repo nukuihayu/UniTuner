@@ -98,6 +98,19 @@ def test_flux2_text_language_only_and_retained_padding(tmp_path, version, single
             assert torch.equal(encoder.encode(prompts).features, caption.features)
         assert torch.equal(rng, torch.get_rng_state())
         values = load_file(tmp_path / "model.safetensors")
+        source_prefix = "language_model.model." if version == "dev" else "model."
+        language = {k.removeprefix(source_prefix): v for k, v in values.items() if k.startswith(source_prefix)}
+        for prefix in ("", "model.", "model.language_model.") if version == "dev" else ("",):
+            save_file({prefix + k: v for k, v in language.items()}, tmp_path / "model.safetensors")
+            loaded = load_flux2_text(
+                tmp_path,
+                text_config=local_text_config(tmp_path),
+                version=version,
+                device=torch.device("cpu"),
+                dtype=torch.float32,
+            )
+            torch.testing.assert_close(loaded.encode(prompts).features, caption.features, atol=0, rtol=0)
+        save_file(values, tmp_path / "model.safetensors")
         key = "language_model.model.embed_tokens.weight" if version == "dev" else "model.embed_tokens.weight"
         for bad in (
             {k: v for k, v in values.items() if k != key},

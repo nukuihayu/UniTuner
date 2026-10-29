@@ -91,7 +91,7 @@ def load_z_image_vae(
     """Load exact native/Diffusers-layout VAE weights as owned FP32 parameters.
 
     External files use the published Z-Image topology by default. Auto format
-    detects Musubi's ComfyUI sentinel. All keys and shapes must match bijectively.
+    recognizes a uniform vae. prefix and Musubi's ComfyUI sentinel. All keys and shapes must match bijectively.
     CPU values may retain immutable mmap storage; input artifacts are not changed.
     """
     if source_format not in {"auto", "native", "comfyui"}:
@@ -108,6 +108,8 @@ def load_z_image_vae(
     expected = vae.state_dict()
     tensors = dict(iter_tensors(path))
     if source_format == "auto":
+        if tensors and all(key.startswith("vae.") for key in tensors):
+            tensors = {key.removeprefix("vae."): value for key, value in tensors.items()}
         source_format = "comfyui" if "encoder.down.0.block.0.conv1.weight" in tensors else "native"
     if source_format == "comfyui":
         tensors = convert_vae_tensors(

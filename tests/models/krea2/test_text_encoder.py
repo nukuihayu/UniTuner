@@ -67,8 +67,9 @@ def test_selected_layer_order_language_only_and_autocast(assets, single_file):
     assert torch.equal(rng, torch.get_rng_state())
 
 
+@pytest.mark.parametrize("automatic", [False, True])
 @pytest.mark.parametrize("qwen_visual_prefix", ["visual.", "model.visual."])
-def test_strict_full_artifact_validation_and_explicit_formats(assets, qwen_visual_prefix):
+def test_strict_full_artifact_validation_and_explicit_formats(assets, qwen_visual_prefix, automatic):
     write_text_features(assets, (0, 1, 2))
     config = TextEncodingConfig(max_length=256)
     owner = load_krea2_text(
@@ -100,7 +101,7 @@ def test_strict_full_artifact_validation_and_explicit_formats(assets, qwen_visua
             device=torch.device("cpu"),
             dtype=torch.float32,
             config=local_text_config(assets, base=config),
-            source_format=source_format,
+            source_format="auto" if automatic else source_format,
         )
         torch.testing.assert_close(loaded.encode(["hello"])[0], expected, atol=0, rtol=0)
         assert torch.equal(rng, torch.get_rng_state())

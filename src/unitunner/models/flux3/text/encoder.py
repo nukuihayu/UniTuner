@@ -15,7 +15,13 @@ from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unitunner.models.components.conditioning import Caption
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    language_weight_prefix,
+    load_text_state,
+    prepare_text_model,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.flux3.conditioning import Flux3Tokens, text_tokens
 from unitunner.models.text_assets import tokenizer_directory
 
@@ -122,9 +128,9 @@ def load_flux3_text(
         str(text_config_path(directory, "flux3")), local_files_only=True, trust_remote_code=False
     )
     if isinstance(source, Qwen3VLConfig):
-        config, prefix = source.text_config, "model.language_model."
+        config = source.text_config
     elif isinstance(source, Qwen3VLTextConfig):
-        config, prefix = source, ""
+        config = source
     else:
         raise ValueError("FLUX3 text requires a local Qwen3-VL language configuration")
     if not isinstance(config, Qwen3VLTextConfig):
@@ -143,9 +149,10 @@ def load_flux3_text(
     path = text_weight_path(directory)
     with torch.device("meta"):
         model = Qwen3VLTextModel(config)
+    prefix = language_weight_prefix(path, ("model.language_model.", "language_model.", "model.", ""))
     tensors: dict[str, Tensor] = {}
     for original, tensor in iter_tensors(path):
-        if prefix and original.startswith(("model.visual.", "lm_head.")):
+        if prefix and original.startswith(("model.visual.", "visual.", "lm_head.")):
             continue
         if not original.startswith(prefix):
             raise ValueError(f"Unexpected FLUX3 text weight namespace: {original}")

@@ -57,7 +57,7 @@ class ImagePreviews:
             device=torch.device("cpu"),
             dtype=torch.float32,
             variant=model.config.variant,
-            source_format="qwen" if config.model.text_source_format is None else config.model.text_source_format,
+            source_format=config.model.text_source_format or "auto",
             text_config=config.model.text,
         )
         directory = Path(config.output.directory) / "previews"

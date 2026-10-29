@@ -52,7 +52,7 @@ def run(config: GenerationConfig, *, device: torch.device) -> int:
         device=device,
         dtype=torch.float32,
         variant=variant,
-        source_format="qwen" if config.model.text_source_format is None else config.model.text_source_format,
+        source_format=config.model.text_source_format or "auto",
         text_config=config.model.text,
     )
     images = conditions.images if variant.startswith("edit") else None

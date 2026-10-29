@@ -46,9 +46,7 @@ class ImagePreviews:
             Path(config.model.text_encoder),
             device=torch.device("cpu"),
             dtype=torch.float32,
-            source_format="transformers"
-            if config.model.text_source_format is None
-            else config.model.text_source_format,
+            source_format=config.model.text_source_format or "auto",
             text_config=config.model.text,
         )
         directory = Path(config.output.directory) / "previews"

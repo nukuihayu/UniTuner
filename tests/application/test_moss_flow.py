@@ -278,6 +278,14 @@ def test_moss_multimodal_language_only_loader_and_strict_preflight(moss_assets):
         loaded.encode_prompt("same").features, text.encode_prompt("same").features, atol=0, rtol=0
     )
     assert all(not name.startswith("visual") for name in loaded.model.state_dict())
+    for prefix in ("language_model.", "model.", ""):
+        save_tensors({prefix + k: v for k, v in text.model.state_dict().items()}, path)
+        alternate = load_moss_image_text(
+            directory, text_config=local_text_config(directory), device=torch.device("cpu"), dtype=torch.float32
+        )
+        torch.testing.assert_close(
+            alternate.encode_prompt("same").features, text.encode_prompt("same").features, atol=0, rtol=0
+        )
     for invalid in (
         {name: value for name, value in state.items() if name != "model.language_model.embed_tokens.weight"},
         {**state, "unrecognized.weight": torch.ones(1)},

@@ -1,7 +1,8 @@
 """Load local floating or packed text weights before optional layerwise quantization."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Literal
 
 import torch
 from torch import Tensor, nn
@@ -9,9 +10,48 @@ from torch import Tensor, nn
 from unitunner.artifacts.formats.quantization import FORMATS, canonical_quantization
 from unitunner.artifacts.quantization import read_weight, tensor_json
 from unitunner.artifacts.quantized_loading import load_quantized_model
+from unitunner.artifacts.tensors import TensorReader, resolve_shards
 from unitunner.config.text import TextEncodingConfig
 from unitunner.models.components.weight_quantization import quantize_model
 from unitunner.precision import FLOAT_DTYPES
+
+
+def text_weight_keys(path: Path) -> tuple[str, ...]:
+    """Inspect every standard shard header without materializing tensor payloads."""
+    keys = []
+    for shard in resolve_shards(path):
+        with TensorReader(shard) as reader:
+            keys.extend(reader.keys())
+    return tuple(keys)
+
+
+def language_weight_prefix(path: Path, prefixes: tuple[str, ...]) -> str:
+    """Detect a known language namespace from all shard headers, never config guesses.
+
+    Mixed language namespaces are ambiguous and rejected. Missing tensors still
+    reach the loader's strict inventory validation, including quantized sidecars.
+    """
+    return _language_prefix(text_weight_keys(path), prefixes)
+
+
+def _language_prefix(keys: Iterable[str], prefixes: tuple[str, ...]) -> str:
+    found = {
+        prefix
+        for key in keys
+        for prefix in prefixes
+        if key.startswith(tuple(prefix + part for part in ("layers.", "embed_tokens.", "norm.")))
+    }
+    if len(found) > 1:
+        raise ValueError(f"Ambiguous text language namespaces: {sorted(found)}")
+    return next(iter(found), prefixes[0])
+
+
+def qwen_vl_source_format(path: Path) -> Literal["native", "transformers", "qwen"]:
+    """Identify native base, HF conditional, or legacy/Comfy mixed Qwen-VL keys."""
+    prefix = language_weight_prefix(path, ("language_model.", "model.language_model.", "model."))
+    if prefix == "language_model.":
+        return "native"
+    return "transformers" if prefix == "model.language_model." else "qwen"
 
 
 def qwen_vl_base_key(key: str) -> str:

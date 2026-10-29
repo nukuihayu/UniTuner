@@ -17,7 +17,7 @@
 
 ## 本地单文件权重
 
-所有模型的 `model.text_encoder` 均可指向本地单文件权重；使用 safetensors 分片时可指定任一标准编号分片，所有分片必须齐全。原有目录形式继续支持。FLUX 的底层 T5/CLIP 加载器均支持单文件；CLI 的辅助 CLIP 仍沿用 `model.assets/text_encoder/` 目录约定。权重键名仍须符合该家族的 `text_source_format`，不会自动转换任意 checkpoint 或量化格式。
+所有模型的 `model.text_encoder` 均可指向本地单文件权重；使用 safetensors 分片时可指定任一标准编号分片，所有分片必须齐全。原有目录形式继续支持。FLUX 的底层 T5/CLIP 加载器均支持单文件；CLI 的辅助 CLIP 仍沿用 `model.assets/text_encoder/` 目录约定。按实际键名识别已支持的家族格式，仍严格检查键名、形状与量化布局，不转换任意 checkpoint。
 
 ```toml
 [model]
@@ -98,7 +98,7 @@ uv run unitunner weights convert models/qwen3/model.safetensors models/qwen3-fp8
   --family qwen3 --precision float8_e4m3fn --device cuda
 ```
 
-将 `model.text_encoder` 改为 `models/qwen3-fp8`，并保留 `model.text.quantization = "none"`。读取器根据每层 `*.comfy_quant` 识别布局，保留 scale、码本与旋转张量的存储 dtype。显式指定量化格式时，已有量化层必须匹配；不会隐式重新量化有损权重。转换文件保留源键与前缀，原有 `model.text_source_format` 仍需与源格式一致。
+将 `model.text_encoder` 改为 `models/qwen3-fp8`，并保留 `model.text.quantization = "none"`。读取器根据每层 `*.comfy_quant` 识别布局，保留 scale、码本与旋转张量的存储 dtype。显式指定量化格式时，已有量化层必须匹配；不会隐式重新量化有损权重。转换文件保留源键与前缀，默认自动识别源命名空间；如显式设置 `model.text_source_format`，须与源格式一致。
 
 文件转换也支持 `--precision bf16`、`fp16`、`fp32`。量化输入先反量化；这不会恢复量化前丢失的信息。对浮点源先指定计算精度再在线量化，与直接按源 dtype 离线量化，可能得到不同编码；需要对照时，离线先转换为相同浮点 dtype，再使用相同量化参数、设备和后端。
 

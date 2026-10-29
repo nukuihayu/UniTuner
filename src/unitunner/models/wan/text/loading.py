@@ -30,8 +30,8 @@ def load_wan_t5(
 ) -> WanT5Encoder:
     """Load owned frozen/eval FP32 encoder tensors from native single/sharded safetensors.
 
-    External tensors require explicit topology. Remove only an explicitly
-    selected uniform anchored prefix; reject mixed keys and substring aliases.
+    External tensors require explicit topology. Automatically recognize a uniform encoder. prefix, or remove the explicitly
+    selected anchored prefix; reject mixed keys and substring aliases.
     Construction on meta preserves RNG. Validate all names/shapes/finite values
     before assigning parameters; no source file is modified or imported.
     """
@@ -49,6 +49,8 @@ def load_wan_t5(
     with torch.device("meta"):
         model = WanT5Encoder(config)
     tensors = dict(iter_tensors(path))
+    if not prefix and tensors and all(name.startswith("encoder.") for name in tensors):
+        prefix = "encoder."
     if prefix:
         if any(not name.startswith(prefix) for name in tensors):
             raise ValueError("Wan T5 tensors must all use the selected anchored prefix")

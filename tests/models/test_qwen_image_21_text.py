@@ -83,7 +83,8 @@ def test_pre_norm_features_slots_alpha_and_scoped_capture(text_assets, single_fi
         encoder.encode(["<|image_pad|>"])
 
 
-def test_strict_explicit_text_formats_and_invalid_weights(text_assets):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_strict_explicit_text_formats_and_invalid_weights(text_assets, automatic):
     model = load_qwen_image_21_text(
         text_assets, text_config=local_text_config(text_assets), device=torch.device("cpu"), dtype=torch.float32
     )
@@ -108,7 +109,7 @@ def test_strict_explicit_text_formats_and_invalid_weights(text_assets):
             text_config=local_text_config(text_assets),
             device=torch.device("cpu"),
             dtype=torch.float32,
-            source_format=source_format,
+            source_format="auto" if automatic else source_format,
         )
         assert torch.equal(restored.encode(["hello"])[0].features, expected) and torch.equal(rng, torch.get_rng_state())
     key = "language_model.embed_tokens.weight"
@@ -130,8 +131,9 @@ def test_strict_explicit_text_formats_and_invalid_weights(text_assets):
     assert "unknown.weight" in load_file(path)
 
 
+@pytest.mark.parametrize("source_format", ["auto", "qwen"])
 @pytest.mark.parametrize("visual_prefix", ["visual.", "model.visual."])
-def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets, visual_prefix):
+def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets, visual_prefix, source_format):
     path = text_assets / "model.safetensors"
     canonical = load_file(path)
     config = local_text_config(text_assets)
@@ -148,7 +150,7 @@ def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets
     save_file(values, path)
     rng = torch.get_rng_state().clone()
     restored = load_qwen_image_21_text(
-        path, text_config=config, device=torch.device("cpu"), dtype=torch.float32, source_format="qwen"
+        path, text_config=config, device=torch.device("cpu"), dtype=torch.float32, source_format=source_format
     )
     actual = restored.encode(["hello"], references=[[reference]])[0]
     torch.testing.assert_close(actual.features, expected.features, atol=0, rtol=0)
@@ -159,9 +161,9 @@ def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets
     alias = alias_prefix + vision_key.removeprefix(visual_prefix)
     save_file({**values, alias: values[vision_key].clone()}, path)
     with pytest.raises(ValueError, match="Duplicate"):
-        load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), source_format="qwen")
+        load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), source_format=source_format)
 
     for bad in (torch.full_like(values[vision_key], float("nan")), values[vision_key].flatten()[:1]):
         save_file({**values, vision_key: bad}, path)
         with pytest.raises(ValueError, match="text weight"):
-            load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), source_format="qwen")
+            load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), source_format=source_format)

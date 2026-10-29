@@ -12,7 +12,13 @@ from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unitunner.models.components.conditioning import Caption, batch_captions
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    language_weight_prefix,
+    load_text_state,
+    prepare_text_model,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.text_assets import tokenizer_directory
 
 
@@ -106,9 +112,9 @@ def load_moss_image_text(
         str(text_config_path(directory, "moss-image")), local_files_only=True, trust_remote_code=False
     )
     if isinstance(source, Qwen3_5Config):
-        config, prefix = source.text_config, "model.language_model."
+        config = source.text_config
     elif isinstance(source, Qwen3_5TextConfig):
-        config, prefix = source, ""
+        config = source
     else:
         raise ValueError("MOSS text requires a local Qwen3.5 language configuration")
     if not isinstance(config, Qwen3_5TextConfig):
@@ -122,9 +128,10 @@ def load_moss_image_text(
     path = text_weight_path(directory)
     with torch.device("meta"):
         model = Qwen3_5TextModel(config)
+    prefix = language_weight_prefix(path, ("model.language_model.", "language_model.", "model.", ""))
     tensors: dict[str, Tensor] = {}
     for original, tensor in iter_tensors(path):
-        if prefix and original.startswith(("model.visual.", "mtp.", "model.mtp.", "lm_head.")):
+        if prefix and original.startswith(("model.visual.", "visual.", "mtp.", "model.mtp.", "lm_head.")):
             continue
         if not original.startswith(prefix):
             raise ValueError(f"Unexpected MOSS text weight namespace: {original}")

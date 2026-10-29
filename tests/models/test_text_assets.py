@@ -144,7 +144,18 @@ def test_native_weights_load_with_separate_hub_tokenizer(monkeypatch, tmp_path, 
     encoder = load_z_image_text(
         weights / "model.safetensors" if single_file else weights, device=torch.device("cpu"), dtype=torch.float32
     )
-    assert encoder.encode(["test caption"]).features.shape[-1] == 16
+    expected = encoder.encode(["test caption"]).features
+    assert expected.shape[-1] == 16
+    from unitunner.artifacts.tensors import save_tensors
+
+    # Deliberately retain the base-model config while loading a causal namespace.
+    save_tensors({"model." + k: v for k, v in encoder.model.state_dict().items()}, weights / "model.safetensors")
+    from tests.support.text_assets import local_text_config
+
+    restored = load_z_image_text(
+        weights, text_config=local_text_config(assets), device=torch.device("cpu"), dtype=torch.float32
+    )
+    torch.testing.assert_close(restored.encode(["test caption"]).features, expected, atol=0, rtol=0)
     assert calls[0]["repo_id"] == "Tongyi-MAI/Z-Image"
     assert not (weights / "tokenizer.json").exists()
     assert not (assets / "model.safetensors").exists()

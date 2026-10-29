@@ -74,9 +74,7 @@ def encode_caption(
                 device=device,
                 dtype=torch.float32,
                 config=config.model.text,
-                source_format="transformers"
-                if config.model.text_source_format is None
-                else config.model.text_source_format,
+                source_format=config.model.text_source_format or "auto",
             )
             caption = batch_text(krea_text.encode([config.prompt]))
             del krea_text
@@ -88,9 +86,7 @@ def encode_caption(
                 text_config=config.model.text,
                 device=device,
                 dtype=torch.float32,
-                source_format="transformers"
-                if config.model.text_source_format is None
-                else config.model.text_source_format,
+                source_format=config.model.text_source_format or "auto",
             )
             caption = Caption(text21.encode([config.prompt])[0].features[None])
             del text21
@@ -103,7 +99,7 @@ def encode_caption(
                 device=device,
                 variant="original",
                 dtype=torch.float32,
-                source_format=config.model.text_source_format or "qwen",
+                source_format=config.model.text_source_format or "auto",
             )
             caption = text.encode_prompt(config.prompt)
         elif config.model.family == ModelFamily.Z_IMAGE:

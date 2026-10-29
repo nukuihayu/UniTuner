@@ -22,7 +22,7 @@ class EncoderModelConfig(BaseModel):
     assets: str | None = Field(default=None, min_length=1)
     text: TextEncodingConfig = Field(default_factory=TextEncodingConfig)
     minimax_h3: MiniMaxH3EncoderConfig | None = None
-    text_source_format: Literal["transformers", "qwen"] | None = None
+    text_source_format: Literal["auto", "transformers", "qwen"] | None = None
 
     def asset_path(self, component: Literal["clip_text", "tokenizer", "image_encoder"]) -> Path:
         """Locate a required auxiliary asset in the declared local bundle, without IO.

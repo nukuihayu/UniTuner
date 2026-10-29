@@ -53,7 +53,7 @@ def test_local_text_loading_exact_prefixes_frozen_state_and_rng(assets):
     assert identities == tuple(map(id, encoder.model.parameters()))
     external = root / "external.safetensors"
     save_file({"encoder." + name: value for name, value in model.state_dict().items()}, external)
-    loaded = load_wan_text(external, root / "tokenizer", config=model.config, prefix="encoder.", max_length=32)
+    loaded = load_wan_text(external, root / "tokenizer", config=model.config, max_length=32)
     assert all(torch.equal(left, right) for left, right in zip(rows, loaded.encode(prompts), strict=True))
 
 

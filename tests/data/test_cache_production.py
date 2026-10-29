@@ -92,7 +92,7 @@ def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, var
     assert options["dtype"] == torch.float32 and options["device"] == torch.device("cpu")
     assert options.get("text_config", options.get("config")) is model.text
     if module in ("krea2", "qwen_image_2_1", "qwen_image"):
-        assert options["source_format"] == ("qwen" if module == "qwen_image" else "transformers")
+        assert options["source_format"] == "auto"
     if module == "qwen_image":
         assert calls[0][2]["input_channels"] == 3 and options["variant"] == "original"
     if module == "flux":

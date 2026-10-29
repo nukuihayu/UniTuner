@@ -91,7 +91,7 @@ def produce_minimax_h3(
                 "audio_topology": None
                 if encoders_config.audio_topology is None
                 else encoders_config.audio_topology.model_dump(),
-                "text_source_format": config.model.text_source_format or "native",
+                "text_source_format": config.model.text_source_format or "auto",
                 **text_encoding_identity(model.text),
             }
         )
@@ -123,7 +123,7 @@ def produce_minimax_h3(
         config_directory=Path(encoders_config.text_config),
         processor_directory=None,
         device=text_device,
-        source_format=config.model.text_source_format or "native",
+        source_format=config.model.text_source_format or "auto",
         text_config=config.model.text,
     )
     status("[cache] Loaded text encoder")

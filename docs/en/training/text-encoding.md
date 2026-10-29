@@ -17,7 +17,7 @@ Text encoders accept floating or Kitchen packed weights and can quantize floatin
 
 ## Local single-file weights
 
-Every model family accepts a local single-file `model.text_encoder`. Safetensors shards accept any standard numbered shard and require the complete set. Existing directories remain supported. Family-specific `text_source_format` and strict key/shape/quantization validation still apply.
+Every model family accepts a local single-file `model.text_encoder`. Safetensors shards accept any standard numbered shard and require the complete set. Existing directories remain supported. Supported family namespaces are detected from weight keys, with strict key/shape/quantization validation.
 
 Single-file topology resolution prefers a matching `.json` sidecar, then sibling `config.json`, then a bundled released default. Defaults cover Z-Image Qwen3-4B, FLUX T5-XXL/CLIP-L, FLUX.2 Dev/Klein, FLUX3/Krea2 Qwen3-VL-4B, Qwen Image and Qwen Image 2.1. Custom variants must supply their matching JSON. MOSS Qwen3.5 requires a sidecar or sibling configuration; Wan retains its native configuration; MiniMaxH3 retains `model.minimax_h3.text_config`.
 
@@ -91,7 +91,7 @@ uv run unitunner weights convert models/qwen3/model.safetensors models/qwen3-fp8
   --family qwen3 --precision float8_e4m3fn --device cuda
 ```
 
-Set `model.text_encoder` to `models/qwen3-fp8` and keep `model.text.quantization = "none"`. Per-layer `*.comfy_quant` metadata selects layouts while scales, codebooks, and rotation tensors retain their storage dtypes. An explicit quantization target must match existing packed layers; lossy weights are never implicitly requantized. Conversion preserves source keys/prefixes, so `model.text_source_format` must still match the original namespace.
+Set `model.text_encoder` to `models/qwen3-fp8` and keep `model.text.quantization = "none"`. Per-layer `*.comfy_quant` metadata selects layouts while scales, codebooks, and rotation tensors retain their storage dtypes. An explicit quantization target must match existing packed layers; lossy weights are never implicitly requantized. Conversion preserves source keys/prefixes, so automatic detection continues to work; an explicit `model.text_source_format` override must match the original namespace.
 
 File conversion also supports `--precision bf16`, `fp16`, and `fp32`, reconstructing quantized input first. This cannot recover lost information. Online quantization after selecting a computation dtype can produce different codes from offline quantization in the source dtype. For a direct comparison, first convert offline sources to the same floating dtype and use matching quantization parameters, device, and backend.
 

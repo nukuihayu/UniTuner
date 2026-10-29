@@ -32,6 +32,7 @@ from unitunner.models.components.text_loading import (
     load_text_state,
     prepare_text_model,
     qwen_vl_base_key,
+    qwen_vl_source_format,
     text_dtype,
     text_weight_path,
 )
@@ -184,7 +185,7 @@ def load_qwen_image_21_text(
     *,
     device: torch.device,
     dtype: torch.dtype = torch.bfloat16,
-    source_format: Literal["native", "transformers", "qwen"] = "transformers",
+    source_format: Literal["auto", "native", "transformers", "qwen"] = "auto",
     text_config: TextEncodingConfig = DEFAULT_TEXT_CONFIG,
 ) -> QwenImage21TextEncoder:
     """Load local config/processor and exact safetensors into a frozen Qwen3-VL base.
@@ -192,18 +193,20 @@ def load_qwen_image_21_text(
     Native keys are language_model/visual; transformers keys have model prefixes
     and an optional validated lm_head; qwen uses model.* language and either
     visual.* or Comfy's model.visual.* vision keys.
-    Conversion is explicit and rejects unknown/duplicate/missing/shape/nonfinite
+    Auto detects the language namespace from all shard headers. Explicit overrides remain available.
+    Conversion rejects unknown/duplicate/missing/shape/nonfinite
     or dtype-overflow values. No weight downloads/remote code/RNG draws occur. Rotary
     buffers are reconstructed in FP32 after meta construction. The returned owner
     holds the materialized model on the requested device, without an LM head.
     """
     dtype = text_dtype(text_config, dtype)
     if dtype not in (torch.float32, torch.float16, torch.bfloat16) or source_format not in (
+        "auto",
         "native",
         "transformers",
         "qwen",
     ):
-        raise ValueError("Qwen Image2.1 text requires FP32/FP16/BF16 and native/transformers/qwen format")
+        raise ValueError("Qwen Image2.1 text requires FP32/FP16/BF16 and auto/native/transformers/qwen format")
     config = AutoConfig.from_pretrained(
         str(text_config_path(directory, "qwen-image-2-1")), local_files_only=True, trust_remote_code=False
     )
@@ -226,6 +229,9 @@ def load_qwen_image_21_text(
     owner = QwenImage21TextEncoder(processor, model)
     expected, tensors = dict(model.state_dict()), {}
     path = text_weight_path(directory)
+    automatic = source_format == "auto"
+    if automatic:
+        source_format = qwen_vl_source_format(path)
     for original, value in iter_tensors(path):
         key = original
         if source_format == "transformers" and original != "lm_head.weight" and not original.startswith("model."):
@@ -234,7 +240,7 @@ def load_qwen_image_21_text(
             key = original.removeprefix("model.")
         elif source_format == "qwen":
             key = qwen_vl_base_key(original)
-        is_head = source_format != "native" and original == "lm_head.weight"
+        is_head = (automatic or source_format != "native") and original == "lm_head.weight"
         if key in tensors:
             raise ValueError(f"Duplicate Qwen Image2.1 text tensor: {original}")
         tensors[key] = value

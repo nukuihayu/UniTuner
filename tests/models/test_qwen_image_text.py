@@ -25,11 +25,12 @@ def text_assets(tmp_path):
     torch.set_num_threads(previous)
 
 
-def test_qwen_comfy_visual_prefix_matches_legacy_and_rejects_duplicates(text_assets):
+@pytest.mark.parametrize("source_format", ["auto", "qwen"])
+def test_qwen_comfy_visual_prefix_matches_legacy_and_rejects_duplicates(text_assets, source_format):
     config = local_text_config(text_assets)
     original = load_qwen_image_text(
         text_assets,
-        source_format="qwen",
+        source_format=source_format,
         variant="edit-2511",
         device=torch.device("cpu"),
         dtype=torch.float32,
@@ -42,7 +43,7 @@ def test_qwen_comfy_visual_prefix_matches_legacy_and_rejects_duplicates(text_ass
     save_file(values, path)
     restored = load_qwen_image_text(
         path,
-        source_format="qwen",
+        source_format=source_format,
         variant="edit-2511",
         device=torch.device("cpu"),
         dtype=torch.float32,
@@ -54,7 +55,7 @@ def test_qwen_comfy_visual_prefix_matches_legacy_and_rejects_duplicates(text_ass
     with pytest.raises(ValueError, match="Duplicate"):
         load_qwen_image_text(
             path,
-            source_format="qwen",
+            source_format=source_format,
             variant="edit-2511",
             device=torch.device("cpu"),
             dtype=torch.float32,
@@ -171,6 +172,16 @@ def test_qwen_text_explicit_weight_formats_and_invalid_artifacts(text_assets):
     save_file(values, path)
     restored = load_qwen_image_text(
         text_assets,
+        text_config=local_text_config(text_assets),
+        device=torch.device("cpu"),
+        variant="original",
+        dtype=torch.float32,
+    )
+    assert torch.equal(restored.encode_prompt("caption").features, expected)
+    native = {key.removeprefix("model."): value for key, value in values.items()}
+    save_file(native, path)
+    restored = load_qwen_image_text(
+        path,
         text_config=local_text_config(text_assets),
         device=torch.device("cpu"),
         variant="original",

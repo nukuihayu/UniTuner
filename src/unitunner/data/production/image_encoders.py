@@ -59,7 +59,7 @@ def load_image_encoders(
             device=device,
             dtype=torch.float32,
             config=model.text,
-            source_format="transformers" if model.text_source_format is None else model.text_source_format,
+            source_format=model.text_source_format or "auto",
         )
         status("[cache] Loaded krea2 text")
 
@@ -75,7 +75,7 @@ def load_image_encoders(
             Path(text_path),
             device=device,
             dtype=torch.float32,
-            source_format="transformers" if model.text_source_format is None else model.text_source_format,
+            source_format=model.text_source_format or "auto",
             text_config=model.text,
         )
         status("[cache] Loaded qwen image 21 text")
@@ -98,7 +98,7 @@ def load_image_encoders(
             device=device,
             variant=variant,
             dtype=torch.float32,
-            source_format="qwen" if model.text_source_format is None else model.text_source_format,
+            source_format=model.text_source_format or "auto",
             text_config=model.text,
         )
         status("[cache] Loaded qwen image text")

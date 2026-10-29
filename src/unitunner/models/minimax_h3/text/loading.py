@@ -14,7 +14,14 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
 
 from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig, TokenizerSourceConfig
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, qwen_vl_base_key, text_dtype
+from unitunner.models.components.text_loading import (
+    load_text_state,
+    prepare_text_model,
+    qwen_vl_base_key,
+    qwen_vl_source_format,
+    text_dtype,
+    text_weight_keys,
+)
 from unitunner.models.minimax_h3.text.encoder import TEXT_LAYERS, MiniMaxH3TextEncoder
 from unitunner.models.minimax_h3.text.presentation import TEXT_WIDTH
 from unitunner.models.minimax_h3.text.processor import load_text_processor
@@ -28,7 +35,7 @@ def load_text_encoder(
     processor_directory: Path | None = None,
     device: torch.device,
     dtype: torch.dtype = torch.float32,
-    source_format: Literal["native", "qwen", "transformers"] = "native",
+    source_format: Literal["auto", "native", "qwen", "transformers"] = "auto",
     text_config: TextEncodingConfig = DEFAULT_TEXT_CONFIG,
 ) -> MiniMaxH3TextEncoder:
     """Load exact local safetensors into a frozen50-layer pre-norm Qwen3-VL owner.
@@ -49,8 +56,8 @@ def load_text_encoder(
     dtype = text_dtype(text_config, dtype)
     if dtype not in (torch.float32, torch.bfloat16, torch.float16):
         raise ValueError("MiniMaxH3 text loading requires FP32/BF16/FP16")
-    if source_format not in ("native", "qwen", "transformers"):
-        raise ValueError("MiniMaxH3 text source_format must be native/qwen/transformers")
+    if source_format not in ("auto", "native", "qwen", "transformers"):
+        raise ValueError("MiniMaxH3 text source_format must be auto/native/qwen/transformers")
     config = Qwen3VLConfig.from_pretrained(str(config_directory), local_files_only=True)
     if not isinstance(config.text_config, Qwen3VLTextConfig) or not isinstance(
         config.vision_config, Qwen3VLVisionConfig
@@ -72,16 +79,25 @@ def load_text_encoder(
             update={"tokenizer": TokenizerSourceConfig(source=str(processor_directory), offline=True)}
         )
     processor = load_text_processor(tokenizer_directory(text_config, "minimax-h3"))
+    automatic = source_format == "auto"
+    if automatic:
+        source_format = qwen_vl_source_format(weights)
+    source_keys = text_weight_keys(weights) if automatic else ()
+    full_source = automatic and any(
+        key in {"language_model.norm.weight", "model.language_model.norm.weight", "model.norm.weight", "lm_head.weight"}
+        for key in source_keys
+    )
+    full_source = full_source or (not automatic and source_format == "transformers")
     config._attn_implementation = "sdpa"
     config.text_config.use_cache = False
-    if source_format != "transformers":
+    if not full_source:
         config.text_config.num_hidden_layers = TEXT_LAYERS
     with torch.device("meta"):
         model = Qwen3VLModel(config)
-    if source_format != "transformers":
+    if not full_source:
         model.language_model.norm = nn.Identity()
     expected = dict(model.state_dict())
-    if source_format == "transformers":
+    if full_source and (not automatic or "lm_head.weight" in source_keys):
         expected["lm_head.weight"] = torch.empty(config.text_config.vocab_size, TEXT_WIDTH, device="meta", dtype=dtype)
     model.language_model.layers = model.language_model.layers[:TEXT_LAYERS]
     model.language_model.norm = nn.Identity()
@@ -98,7 +114,7 @@ def load_text_encoder(
         elif source_format == "qwen":
             if original.startswith("model."):
                 key = qwen_vl_base_key(original)
-            elif not original.startswith("visual."):
+            elif not original.startswith("visual.") and not (automatic and original == "lm_head.weight"):
                 raise ValueError(f"Invalid MiniMaxH3 qwen text key: {original}")
         if key in tensors:
             raise ValueError(f"Duplicate MiniMaxH3 text tensor: {original}")

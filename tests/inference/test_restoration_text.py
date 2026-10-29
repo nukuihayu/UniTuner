@@ -57,7 +57,7 @@ def test_restoration_caption_keeps_native_layout_and_loader_policy(
     if module != "flux":
         assert options["dtype"] == torch.float32
     if module in ("krea2", "qwen_image", "qwen_image_2_1"):
-        assert options["source_format"] == (source_format or ("qwen" if module == "qwen_image" else "transformers"))
+        assert options["source_format"] == (source_format or "auto")
     if module == "flux":
         assert isinstance(caption, FluxTextFeatures)
         torch.testing.assert_close(caption.captions, features[None])
