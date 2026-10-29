@@ -168,58 +168,39 @@ The switch itself does not change resume identity, allowing unchanged data to re
 
 ### Synthetic super-resolution degradation
 
-Synthetic degradation crops the training patch from HQ before creating same-size LQ; it does not resize the entire source into a patch. HQ remains unchanged. For 1536 crops:
+The pipeline restores Real-ESRGAN's fixed ordering while preserving the original supervision target:
+
+1. Optional source USM; stage one blur/sinc → resize → noise → compression.
+2. Optional stage two blur/sinc → resize → noise.
+3. Equal-probability native-LQ delivery: resize + final sinc → compression, or compression → resize + final sinc.
+4. Quantize native LQ to 8-bit, then separately bicubic-align to HQ for same-size restoration. No further noise or encoding follows alignment.
 
 ```toml
-[dataset.groups.main]
-resolution = [1536, 1536]
-enable_bucket = false
-
-[dataset.groups.main.degradation]
+[dataset.groups.synthetic.degradation]
 enabled = true
-scale_range = [1.0, 8.0]
-noise_strength = [0.85, 0.85]
-processing_deadzone = 0.1
-smear_strength = [0.0, 0.8]
-grain_strength = [0.0, 0.8]
-grain_scale_range = [1.0, 4.0]
-sharpen_strength = [0.0, 0.4]
+scales = [2.0, 4.0, 6.0, 8.0]
+reference_resolution = 400
+resolution_exponent = 0.5
+second_order_probability = 1.0
+use_usm = true
+resize_antialias = false
 ```
 
-Factors are sampled continuously and uniformly in log space, independently of damage severity, supporting 1..16 including fractional values such as 2.3 and 5.7. With `scale_range=[1,8]`, intervals [1,2], [2,4] and [4,8] have equal probability. Within every factor interval, weak/moderate/strong severity retains approximately 20%/40%/40% mass, without selectable degradation recipes. Explicit `scales=[2.5,4,6,8]` instead samples those candidates uniformly and takes precedence over scale_range. Delivery dimensions are floor(H/factor) and floor(W/factor), so actual factors have pixel-rounding error. A 1536 crop at 4x/6x/8x uses 384/256/192 grids before enlargement back to 1536.
+Official kernels are fixed pixel distributions, not resolution-calibrated parameters. The official dataset pre-crops to 400 before degradation and then crops training patches to 256. We use 400 as a configurable reference, not a camera calibration. Compute once per sample: `k=clamp((HQ_short_edge/reference_resolution)^resolution_exponent,0.5,2)`. At 256/400/512/1024/1280/2048 this gives about 0.80/1.00/1.13/1.60/1.79/2.00. Apply it to both stages' sigma/support and sinc support/inverse cutoff without recomputing after intermediate resize. Set exponent=0 to disable resolution adaptation. Noise amplitudes, probabilities and codec quality are not spatial quantities and are not scaled.
 
-There are no standard/grain/smoothing classes. Zero-based gain ranges use `g(z)=max(0,(z−t)/(1−t))` with `t=processing_deadzone=0.1`. A finite interval maps to exactly zero, joined continuously to positive strengths, without exclusive style switches. At t=0 sampling is purely continuous; at t=1 zero-based gains are disabled. Positive lower bounds explicitly request always-active operations and bypass the deadzone; fixed ranges remain fixed.
+Reference blur sigma is [0.2,3]/[0.2,1.5], with base support 7..21 and 80% second blur. Each active stage filter substitutes sinc 10% of the time. Final sinc is 80%. Stage cutoff uses π/3..π for small base kernels and π/5..π for sizes >=13; final cutoff is π/3..π. Sinc is untapered. Base resize ranges are [0.15,1.5]/[0.3,1.2].
 
-Denoising u, grain retention v and global noise n follow Beta(1.5,2). Smoothing uses g(u), while grain uses continuous `v(1−0.5u)` without a second deadzone. The default `noise_strength=[0.85,0.85]` scales acquisition-noise standard deviation to 85% of the Real-ESRGAN ranges while retaining their high-noise tails. Two active stages still split variance 70%/30%; a sole active stage receives the full global gain. Independent grain uses `p=max(0.15,1−0.85s)` as both its gain multiplier and enable probability, inversely coupling it to shared acquisition severity s and creating explicit grain-free samples. Stage-two RGB noise scales chroma to 0.35 and renormalizes RMS, reducing purple/green blotches without changing the noise energy allocated to that stage. Gaussian and Poisson each have 50% probability; first-stage low-light samples still force linear-light shot/read noise.
+The project extension `high_scale_protection=true` prevents excessive secondary downsampling beyond x4. With `r=min(1,4/scale)`, second-stage downsample draws become `s'=1-(1-s)*r`: the lower bounds at x4/x6/x8 are 0.30/0.533/0.65. Final sinc uses spatial multiplier `max(0.5,k*r)`. Both blur stages, noise amplitudes and codec qualities remain unchanged; x1..x4 are unaffected. Disable this option as well as resolution adaptation for the original fixed-parameter baseline. Independent operator RNG streams keep geometry and codecs stable when noise categories change.
 
-Set `noise_strength=[0,0]` to disable all added noise; `smear_strength=[0,0]` disables texture smoothing and camera denoising, while blur settings remain independent. Use `noise_strength=[0,1]` to restore a continuous gain with an exact zero atom; `processing_deadzone=0` removes the deadzone from zero-based ranges.
+[HYPIR 2025](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) retains the standard two-stage ranges, 0.1/0.1/0.8 sinc probabilities and resize_back, supporting native LQ followed by alignment. These extensions have not been validated by restoration training metrics.
 
-| Source scene | Default share | Related processing |
-| --- | --- | --- |
-| Photo | 25% | Optical blur, resizing, acquisition noise, delivery encoding |
-| Web repost | 35% | Intermediate encoding, resizing, stronger delivery compression |
-| Low light | 40% | Linear-light shot/read noise, edge-preserving denoising and chroma smoothing |
+Each noise pass selects exactly one category: 5% correlated luminance grain, otherwise equally likely Gaussian/Poisson. Gaussian sigma is [1,30]/[1,25], Poisson scale [0.05,3]/[0.05,2.5], gray probability 40%. Poisson follows BasicSR's quantized unique-level convention. Grain is a local extension with sigma [1,8]/255, not a third pass. Two-stage probability of any grain is 9.75%.
 
-Source scenes still control acquisition noise and historical encoding tendencies, without selecting exclusive processing branches. Shared severity s uses the smooth CDF `F(s)=0.1s+1.8s²−0.9s³` on [0,1]. Its strictly positive density covers the entire range, placing 20%/40%/40% probability in diagnostic thirds (weak/moderate/strong). One uniform draw is inverted through this CDF, without selecting a class or switching pipelines. Severity s correlates blur, acquisition noise and codec quality; factors are sampled independently. These proportions describe sampled severity, not measured perceptual image damage; source detail, operator switches and independent gains still matter. Explicit fixed factors or scales override the factor distribution. Continuous denoising and residual grain vary separately instead of all damage always increasing together.
+Each stage encodes once by default: JPEG/WebP probabilities 85%/15% and 80%/20%. JPEG2000 is supported but disabled by default. JPEG quality is [30,95], WebP [45,98]; extra recompression defaults to zero. Real OpenCV codec round trips are not bit-identical to official GPU DiffJPEG. To select the fixed-parameter baseline, disable both grain probabilities, set both codec probabilities to [1,0,0], and set resolution_exponent=0.
 
-The pipeline has explicit operator boundaries: resize changes dimensions only; blur selects Gaussian/generalized/plateau kernels and does not generate motion or defocus PSFs; compression only performs codec round trips; noise combines stage noise and residual grain; smear, sinc and sharpen are separate layers. First-stage resize/blur/noise remain randomly ordered, while intermediate web compression always follows. Smear, sharpen and grain run before the constrained delivery group. Resize-back and sinc form one indivisible operation, allowing only `resize+sinc -> compression` or `compression -> resize+sinc`; the former has probability `0.55+0.30s`. Stage-two noise runs exactly once: by default 75% within its stage, where delivery processing tempers it, and 25% after the complete delivery group on the final HQ grid.
+Research and scope: [ResShift](https://github.com/zsyOAOA/ResShift/blob/master/configs/realsr_swinunet_realesrgan256.yaml) provides optional second-order degradation and disabled USM; we expose second_order_probability/use_usm while retaining official defaults 1/true. [BSRGAN](https://github.com/cszn/BSRGAN) explores shuffle and processed sensor noise, deliberately not adopted here. [DiffBIR](https://github.com/XPixelGroup/DiffBIR) and [SUPIR](https://github.com/Fanghua-Yu/SUPIR) motivate target-specific degradation distributions; SUPIR distinguishes light-degradation training, but we do not invent their unreleased training parameters. Optional resize_antialias defaults to false. WebP/grain extensions and spatial adaptation require dataset validation; previews do not establish restoration training gains.
 
-Correlated physical parameters retain scene severity for 80% of draws; 20% independently explore their full configured ranges. This provides tail and cross-strength coverage without making every combination equally likely. Gain distributions retain their own documented rules; scale is independently log-uniform.
-
-`grain_scale_range=[1,4]` samples the noise-grid reduction relative to the output uniformly in log space. Early grain cannot be finer than a delivery-grid pixel, so enlargement naturally produces coarser grain. Only the noise residual is enlarged and added to the picture; image structure is not resampled to change grain footprint. Grain combines fine luminance and more broadly correlated chroma components, with continuously controlled amplitude.
-
-Spatial kernels use a piecewise scale: `k(r)=clamp((r/1024)^(1/4),0.5,2)` below 1024 and `k(r)=clamp(sqrt(r/1024),0.5,2)` at or above 1024, where r is the actual execution-grid short edge. Short edges 64, 256, 512, 768, 1024, 1280, 2048 and 4096 map to about 0.5, 0.707, 0.841, 0.931, 1.0, 1.118, 1.414 and 2.0. Blur uses Real-ESRGAN x4 as its strength reference: 1x..4x retain the original sigma and coverage, while explicit sigma at 6x/8x is multiplied by 2/3 and 1/2 and second-stage blur probability falls from 80% to about 53%/40%. This avoids counting the stronger resize loss twice. Blur that executes after resize is additionally multiplied by `current_short_edge/target_short_edge` using its real execution grid. Reference sigma remains [0.2,3.0] in stage one and [0.2,1.5] in stage two. Sinc support/cutoff remains resolution aware. Smear, grain and sharpen are constrained by the actual reduced grid; sharpen uses the same gentle square-root grid gain as noise, and smoothing strength is separately attenuated by `min(1,2/d)` at actual downsampling factor d.
-
-Stage acquisition noise scales its standard deviation by `sqrt(clamp(current_short_edge/target_short_edge,1/16,1))` on the grid where it is added. When resize precedes noise, 4x/6x/8x grids therefore use gains of about 0.50/0.41/0.35, preventing coarse noise from becoming excessive after enlargement. Noise added before resize on the target grid remains at 1.0, as does fine noise deferred until after the complete delivery group on the final HQ grid.
-
-`first.noise.exposure=[0.75,1]` lowers linear-light exposure before noise and recovers it afterward. Away from clipping, recovered variance is `signal*shot/exposure + read/exposure²`. Stage-two exposure is [1,1]. This is a processed-RGB approximation, not RAW/demosaicing simulation. Bilinear/bicubic downsampling is antialiased and uses consistent pixel-coordinate rules. No geometric beautification or face warping is introduced.
-
-Encoding uses real JPEG/WebP/JPEG2000 round trips; JPEG/WebP are defaults. JPEG ranges are [30,95] in both stages. Each codec stage has `recompression_probability=0.25`, shifting codec-block origin before re-encoding and cropping back without moving scene geometry. Compression no longer triggers blur implicitly.
-
-
-Sinc kernels taper finite support with a Kaiser window (beta=4), retaining mild ringing while reducing artificial outlines amplified by short-kernel normalization. Support grows with `k(r)` and cutoff shrinks by `1/k(r)`, capped at pi. For a 1024-reference 7x7 kernel at cutoff 1.889, a step-response check reduces overshoot from about 24.3% to 3.3%; this is not a universal error bound for images.
-
-Remove old `processing_probabilities` and `grain_smear_probability` settings and use continuous strength ranges. Old keys fail explicitly rather than being ignored. Recalibrate restoration timesteps/sigma and start a new run after distribution changes; the policy version participates in resume identity. Real paired LQ needs no synthetic degradation. Example images validate generation and visual coverage, not improved restoration training or facial fidelity.
+Legacy scenario, noise gain/budget, late noise, independent grain/smear/sharpen fields are removed and rejected explicitly. Migrate configs and recalibrate; the new policy changes resume identity. The direct API accepts trace=[] to report actual grids, kernels, noise parameters and codecs. output_mode="native" is available for direct previews; datasets and calibration require aligned output.
 
 ## Editing, references, masks and layers
 

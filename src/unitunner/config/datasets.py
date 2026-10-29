@@ -134,6 +134,8 @@ class DatasetConfig(CacheDatasetConfig):
     def validate_restoration_sources(self) -> Self:
         """Reject incomplete or ambiguous restoration training inputs."""
         synthetic = self.degradation is not None and self.degradation.enabled
+        if synthetic and self.degradation.output_mode != "aligned":
+            raise ValueError("Restoration datasets require degradation.output_mode='aligned'; native is for previews")
         if self.kind != "restoration" and (self.degradation is not None or self.low_quality_source is not None):
             raise ConfigRuleError(
                 "kind",

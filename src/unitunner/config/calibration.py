@@ -40,6 +40,8 @@ class CalibrationDatasetConfig(CalibrationDefaults):
     @model_validator(mode="after")
     def validate_pairs(self) -> Self:
         synthetic = self.degradation is not None and self.degradation.enabled
+        if synthetic and self.degradation.output_mode != "aligned":
+            raise ValueError("Calibration requires degradation.output_mode='aligned'; native is for previews")
         if synthetic == bool(self.low_quality_source):
             raise ConfigRuleError(
                 "low_quality_source",

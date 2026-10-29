@@ -168,60 +168,51 @@ skip_dataset_validation = true
 
 ### 合成超分退化
 
-合成退化先从 HQ 原图裁出训练尺寸，再构造同尺寸 LQ；不把整张原图缩成训练切片。HQ 保持不变。1536 切片示例：
+合成退化采用 Real-ESRGAN 固定双阶段，HQ 监督图不变：
+
+1. 对退化源执行可选 USM；第一阶段 blur/sinc → resize → noise → compression。
+2. 第二阶段可选 blur/sinc → resize → noise。
+3. 等概率执行「回最终 LQ 尺寸 + final sinc → compression」或「compression → 回最终 LQ 尺寸 + final sinc」。
+4. 在真实 LQ 网格量化到 8-bit，然后单独用 bicubic 放大到 HQ 尺寸，满足同尺寸 restoration 训练接口。对齐放大后不再增加噪声、压缩或滤波。
 
 ```toml
-[dataset.groups.main]
-resolution = [1536, 1536]
-enable_bucket = false
-
-[dataset.groups.main.degradation]
+[dataset.groups.synthetic.degradation]
 enabled = true
-scale_range = [1.0, 8.0]
-noise_strength = [0.85, 0.85]
-processing_deadzone = 0.1
-smear_strength = [0.0, 0.8]
-grain_strength = [0.0, 0.8]
-grain_scale_range = [1.0, 4.0]
-sharpen_strength = [0.0, 0.4]
+scales = [2.0, 4.0, 6.0, 8.0]
+reference_resolution = 400
+resolution_exponent = 0.5
+second_order_probability = 1.0
+use_usm = true
+resize_antialias = false
+
+[dataset.groups.synthetic.degradation.first.noise]
+grain_probability = 0.05
+[dataset.groups.synthetic.degradation.second.noise]
+grain_probability = 0.05
 ```
 
-倍率与退化强度独立，在 `scale_range` 的对数空间内均匀连续采样，支持 1～16，包括 2.3、5.7 等小数；默认 [1,8] 时，[1,2]、[2,4]、[4,8] 的概率相同；每个倍率区间都覆盖弱／中／强约 20%／40%／40% 的连续强度，不是三种退化配方。也可显式填写 `scales=[2.5,4,6,8]` 等概率抽取指定倍率，填写后优先于 scale_range。实际低清网格按 `floor(H/倍率)`、`floor(W/倍率)` 取整，因此实际倍率会有像素取整误差。1536 的 4×、6×、8× 分别得到 384、256、192 网格，最后恢复至 1536。
+官方参数本身没有按分辨率动态适配。官方数据集先预裁剪至 400，再在退化后裁 256 的训练块；400 是这里选择的参考尺寸，并不是官方相机标定值。本项目只在样本开始计算一次空间系数：`k=clamp((HQ短边/reference_resolution)^resolution_exponent,0.5,2)`。默认 256/400/512/1024/1280/2048 对应约 0.80/1.00/1.13/1.60/1.79/2.00；两个阶段的 sigma、7～21 基础核支撑、sinc 支撑和截止频率使用这个系数，不按中间网格反复缩放。设 `resolution_exponent=0` 关闭分辨率扩展。噪声强度、编码质量、算子概率不会因分辨率改变。
 
-不再选择“常规／颗粒／涂抹”类别。所有样本共用同一条成图流程。对从零开始的强度范围，使用 `g(z)=max(0,(z−t)/(1−t))`，其中 `t=processing_deadzone=0.1`。这让低强度的一段概率质量落在精确零上，零点以上仍连续变化；不是追加互斥的风格开关。t=0 恢复纯连续采样，t=1 将所有从零开始的处理强度归零。正的下界表示明确要求操作持续开启，不应用死区；固定范围保持固定。
+基础采样区间与官方一致：blur sigma 为 [0.2,3]/[0.2,1.5]；第二阶段 blur 概率 80%；阶段 sinc 各占启用滤波的 10%，与普通 blur 互斥；final sinc 概率 80%。阶段 sinc 截止频率根据基础核尺寸使用 π/3～π 或 π/5～π，final 使用 π/3～π，不加 Kaiser 窗。基础 resize 范围为 [0.15,1.5]/[0.3,1.2]。
 
-降噪程度 u、颗粒保留程度 v、全局噪声程度 n 均服从 Beta(1.5,2)。平滑范围的位置使用 g(u)；颗粒保留使用连续的 `v(1−0.5u)`，不再应用第二个死区。默认 `noise_strength=[0.85,0.85]`，将采集噪声标准差整体收至 Real-ESRGAN 范围的 85%，同时保留其高噪声尾部；两阶段同时启用时仍按方差 70%／30% 分配，只有一个阶段启用时获得完整的全局增益。独立 grain 的强度和启用概率均乘 `p=max(0.15,1−0.85s)`，与共享采集强度 s 反向耦合；因此会产生明确的无 grain 样本。第二阶段 RGB 噪声将色度缩至 0.35 后重新归一 RMS，减少紫绿斑点而不改变该阶段分配到的噪声能量。Gaussian/Poisson 各占 50%，低照度第一阶段仍强制使用线性光 shot/read 噪声。
+默认开启本项目扩展 `high_scale_protection=true`，专门防止将 x4 预设直接用于 x6/x8 时过度缩小。令 `r=min(1,4/倍率)`，仅对第二阶段向下 resize 的抽样值应用 `s'=1-(1-s)*r`，x4/x6/x8 的下限分别是 0.30/0.533/0.65。final sinc 空间系数改为 `max(0.5,k*r)`，避免高倍率对齐放大后振铃和低通范围过大。第一阶段、第二阶段 blur、噪声幅度和压缩质量不变；x1～x4 不受此开关影响。设 false 可恢复未保护的官方 resize 范围。各算子使用独立随机流，切换噪声类别不会改变后续几何或编码参数。
 
-管道按算子边界分成独立层：resize 只改尺寸；blur 统一 Gaussian／广义 Gaussian／平台核，不生成运动或失焦 PSF；compression 只编解码；noise 合并阶段噪声与残余颗粒；smear、sinc、sharpen 各自独立。阶段内 resize／blur／noise 随机换序。smear、sharpen、grain 先随机排列；末端将“回目标尺寸 + sinc”作为不可拆分操作，只允许 `resize+sinc → compression` 或 `compression → resize+sinc`。第二阶段噪声每个样本只执行一次：默认 75% 留在阶段内接受后续交付处理，25% 延迟至整个交付组之后，在最终 HQ 网格形成细噪点。
+noise 每次只选一种：默认 grain 5%，其余 95% 在 Gaussian/Poisson 中等概率抽取。两阶段 Gaussian sigma 为 [1,30]/[1,25]，Poisson scale 为 [0.05,3]/[0.05,2.5]，灰噪声概率 40%。Poisson 恢复 BasicSR 的量化颜色数定义。grain 是本项目扩展的轻量相关亮度噪声，sigma [1,8]/255；不作为第三次噪声叠加。每个双阶段样本至少抽到一次 grain 的概率为 9.75%。
 
-将 `noise_strength=[0,0]` 可关闭所有额外噪声，将 `smear_strength=[0,0]` 可关闭内容平滑与相机降噪；blur 配置仍独立生效。若要恢复带精确零点的连续噪声增益，可设置 `noise_strength=[0,1]`；`processing_deadzone=0` 会移除零起点范围的死区。
+压缩每阶段默认执行一次：JPEG/WebP 第一阶段 85%/15%，第二阶段 80%/20%；JPEG2000 支持但默认 0%。JPEG quality [30,95]，WebP [45,98]；重压缩默认关闭。使用真实 OpenCV 编解码，和官方 GPU DiffJPEG 不保证逐像素一致。禁用两阶段 grain、将压缩概率设为 [1,0,0]，同时设 `resolution_exponent=0`，可检查官方固定参数基线。
 
-| 来源场景 | 默认比例 | 相关处理 |
-| --- | --- | --- |
-| 普通照片 | 25% | 光学模糊、缩放、采集噪声、交付编码 |
-| 网络转载 | 35% | 中间压缩、缩放、较强交付压缩 |
-| 低照度 | 40% | 线性光域 shot/read 噪声、保边降噪和色度平滑 |
+完整固定参数基线还需要 `high_scale_protection=false`，不能把默认的高倍率保护称为官方算法。
 
-来源场景仍决定采集噪声和历史编码倾向，但不会选择独占的成图分支。共享强度 s∈[0,1] 使用平滑累积分布 `F(s)=0.1s+1.8s²−0.9s³`，密度处处为正，覆盖整个范围；按强度三等分仅作统计时，弱／中／强概率为 20%／40%／40%。通过一次均匀抽样反解此分布，不选择类别、不切换流程。s 关联模糊、采集噪声与编码质量，倍率另行独立抽样。这是采样强度比例，不是逐图视觉损伤的精确比例；图像内容、算子开关和独立增益仍影响结果。指定固定倍率或 scales 列表会覆盖倍率分布；降噪与残留颗粒另有连续变化，不会所有损伤始终一起变强。
+现代方法核查与采用范围：
 
-第一阶段的 resize、blur、noise 随机排列，网络转载 compression 固定在这些处理之后；第二阶段对 resize、blur、noise 全排列。交付处理层先随机排列，随后执行受约束的末端编码组；组内严格二选一：`resize+sinc → compression` 或 `compression → resize+sinc`。前一种概率为 `0.55+0.30s`，强采集噪声更倾向在放大后压缩，避免低清压缩块被继续放大。禁用 sinc 或 compression 时保留其余操作，但 resize 仍负责回目标尺寸。
+- [HYPIR 2025 配置](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) 继续使用标准两阶段范围、0.1/0.1/0.8 sinc 和 resize_back，支持先生成 LQ 再对齐的实现选择。
 
-关联物理参数的 80% 抽样仍围绕场景强度，20% 独立探索配置的完整范围，覆盖弱模糊配强压缩等组合和区间尾部；这不意味着所有组合等概率。处理增益仍遵循原有分布，倍率独立按对数均匀分布抽样。
+- [ResShift 配置](https://github.com/zsyOAOA/ResShift/blob/master/configs/realsr_swinunet_realesrgan256.yaml) 保留 Real-ESRGAN 参数并增加 second_order_prob=0.5、use_sharp=false。本项目提供 `second_order_probability` 和 `use_usm` 选项，默认仍为 1.0/true。
+- [BSRGAN](https://github.com/cszn/BSRGAN) 扩展摄像噪声和随机排列；为保持官方顺序，本版本没有引入 shuffle/ISP。
+- [DiffBIR](https://github.com/XPixelGroup/DiffBIR)、[SUPIR](https://github.com/Fanghua-Yu/SUPIR) 表明现代恢复训练仍需选择适合目标数据的退化分布；SUPIR 区分轻退化模型。未据此臆造新噪声参数或移植生成式退化网络。
+- 可显式开启 `resize_antialias` 研究抗混叠 resize，默认 false 与官方保持一致。WebP 和低概率 grain 是本次明确限定的扩展，不声称已经获得训练指标提升。
 
-`grain_scale_range=[1,4]` 按对数均匀分布改变噪声生成网格相对输出的缩小倍率；提前在低清网格加入颗粒时，最细只能达到该网格的单像素，放大后自然形成粗颗粒。只放大噪声残差并加入图像，避免为了改变颗粒尺寸而再次缩放图像结构。噪声包含细粒亮度和更宽的相关色度分量，颗粒强度连续控制残差幅度。
-
-所有空间核使用分段分辨率系数：`r<1024` 时 `k(r)=clamp((r/1024)^(1/4),0.5,2)`，`r>=1024` 时使用 `clamp(sqrt(r/1024),0.5,2)`；`r` 是该层执行时图像的实际短边。64、256、512、768、1024、1280、2048、4096 分别约为 0.5、0.707、0.841、0.931、1.0、1.118、1.414、2.0。blur 以 Real-ESRGAN x4 为强度基准：1×～4× 保持原始 sigma 与覆盖率，6×／8× 的显式 sigma 分别乘 2/3／1/2，第二阶段 blur 概率也从 80% 动态降到约 53%／40%，避免把更强的缩放损失重复计入模糊。blur 在 resize 后执行时还会乘 `当前短边/目标短边`，按真实执行网格补偿后续放大。第一阶段 sigma 基准为 [0.2,3.0]，第二阶段为 [0.2,1.5]。sinc 支撑与截止频率继续按实际分辨率调整；smear、grain 与 sharpen 按实际缩小网格约束，其中 sharpen 强度使用与噪声相同的温和平方根网格增益，平滑强度另按实际降采样倍率 d 乘 `min(1,2/d)`。
-
-阶段采集噪声按添加时的实际网格使用 `sqrt(clamp(当前短边/目标短边,1/16,1))` 缩放标准差。若随机顺序为 resize 后再加噪声，4×／6×／8× 网格的噪声增益约为 0.50／0.41／0.35，避免放大后形成过强粗斑；resize 前在目标网格添加的噪声保持 1.0。延迟到完整交付组之后的 HQ 细噪声同样保持 1.0。
-
-`first.noise.exposure=[0.75,1]` 在线性光域降低采集曝光，加入噪声后恢复；未裁断时方差为 `signal*shot/exposure + read/exposure²`。第二阶段 exposure=[1,1]。这仍是已处理 RGB 上的近似，不是 RAW/demosaicing 模拟。双线性和双三次降采样带抗混叠，统一使用显式像素坐标规则；不会引入几何美颜或人脸形变操作。
-
-编码使用真实 JPEG/WebP/JPEG2000 往返，默认启用 JPEG/WebP。JPEG 质量范围两阶段均为 [30,95]；各阶段 `recompression_probability=0.25` 可在移动压缩块原点后重编码，再裁回原图位置。压缩层不再隐式触发模糊。
-
-
-sinc 核使用 Kaiser 窗（beta=4）渐弱有限支撑的边界，保留轻微振铃并减少短核归一化放大的人工描边。支撑大小随 `k(r)` 放大，截止频率按 `1/k(r)` 缩小并限制到 π。一个 1024 基准的 7×7 核、截止频率 1.889 的阶跃测试中，过冲从约 24.3% 降至 3.3%；这不是对所有图像的统一误差保证。
-
-旧配置请删除 `processing_probabilities` 和 `grain_smear_probability`，改用连续强度范围；这些旧键会明确报错，不会静默忽略。修改分布后重新校准 restoration timestep/sigma，并新开训练；策略版本参与 resume identity。真实配对 LQ 不需要合成退化。样图只验证生成过程和视觉覆盖，不能据此声称恢复训练质量或人脸保真度提升。
+旧的 scenario_probabilities、noise_strength、方差分摊、late_noise_probability、独立 grain/smear/sharpen 等字段已删除，会明确报错；请迁移示例并重新校准训练。策略版本进入 resume identity，不能静默续用旧退化分布。诊断 API 支持 `trace=[]`，记录实际执行尺寸、核、noise 类别/幅度和 codec/quality。`output_mode="native"` 仅供直接预览调用；数据集及标定要求 aligned。
 
 ## 编辑、参考图、掩码和图层
 

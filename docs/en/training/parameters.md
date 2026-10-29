@@ -403,140 +403,86 @@ Weighted DWT band MSE. In restoration this compares decoded RGB output to detach
 
 ## `DegradationConfig`
 
-Synthetic SR only. See [scene distributions and ordering](datasets.md#synthetic-super-resolution-degradation).
+Fixed Real-ESRGAN ordering and native LQ delivery; see [datasets](datasets.md). 旧场景增益、末端补噪及独立 smear/grain/sharpen 参数已移除；不会静默兼容旧分布。
 
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `enabled` | boolean | `false` | Enable synthetic degradation for this group; omit this table for real paired LQ data. |
-| `scales` | [number, …] | unset | Optional explicit factors, 1..16 including fractions; sampled uniformly, overrides scale_range. |
-| `scale_range` | [number, number] | `[1.0, 8.0]` | Continuous factors log-uniform and independent of severity; bounds within 1..16. |
-| `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | Downsampling uses antialiasing for bilinear/bicubic; enlargement omits area when other modes exist. Nearest is opt-in. |
-| `first` | object | `subtable` | First-stage blur, resize, noise and compression distributions. |
-| `second` | object | `subtable` | Independent second-stage blur, resize, noise and compression distributions. |
-| `final_sinc_probability` | number | `0.8` | Sinc probability, 0..1; bound to resize-back and exchanged only as a unit with final compression. |
-| `gray_probability` | number | `0.0` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
-| `color_jitter_probability` | number | `0.0` | Probability of color jitter, 0..1; 0 disables it. |
-| `brightness` | [number, number] | `[0.5, 1.5]` | Brightness multiplier range [lower, upper] for enabled color jitter. |
-| `contrast` | [number, number] | `[0.5, 1.5]` | Contrast multiplier range [lower, upper]. |
-| `saturation` | [number, number] | `[0.0, 1.5]` | Saturation multiplier range [lower, upper]. |
-| `hue` | [number, number] | `[-0.1, 0.1]` | Hue-jitter range [lower, upper]. |
-| `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | Photo / web repost / low-light probabilities, nonnegative and summing to 1. |
-| `noise_strength` | [number, number] | `[0.85, 0.85]` | Global acquisition-noise standard-deviation gain, 0..4; defaults to 85% while retaining high-noise tails, and [0,0] disables all added noise. |
-| `first_noise_variance_share` | number | `0.7` | First-stage share of total variance when both noise stages run; stage two uses the remainder, while a sole active stage receives full gain. |
-| `second_noise_chroma_scale` | number | `0.35` | Stage-two RGB-noise chroma ratio, 0..1; RMS is renormalized after scaling so total noise energy is unchanged. |
-| `late_noise_probability` | number | `0.25` | Probability of deferring stage-two noise until after the complete delivery group on the final HQ grid; otherwise it runs inside the stage, and always runs only once. |
-| `processing_deadzone` | number | `0.1` | Deadzone for zero-based gains, 0..1; 0 is purely continuous, positive lower bounds are unaffected. |
-| `grain_strength` | [number, number] | `[0.0, 0.8]` | Residual grain gain, 0..4; the default is a subtle fine-grain supplement, while `max(0.15,1−0.85×acquisition severity)` controls both gain and enable probability. |
-| `grain_scale_range` | [number, number] | `[1.0, 4.0]` | Noise-grid reduction relative to output, log-uniform within 1..16; only the residual is resized. |
-| `smear_strength` | [number, number] | `[0.0, 0.8]` | Texture-smoothing blend, 0..1; attenuated by min(1, 2/d) at actual downsampling factor d. |
-| `sharpen_strength` | [number, number] | `[0.0, 0.4]` | Continuous delivery sharpening gain, 0..1; [0,0] disables it. |
-| `smear_detail_protection` | number | `0.6` | Local contrast protection, 0..1; zero restores uniform blending. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
+| `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
+| `reference_resolution / resolution_exponent` | `400 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
+| `high_scale_protection` | `true` | Above x4, narrow second downsampling and reduce final sinc footprint; false restores baseline / x4 以上限制过度缩小和末端低通 |
+| `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
+| `use_usm` | `true` | BasicSR-style USM on source only; HQ target unchanged / 仅锐化退化源 |
+| `resize_antialias` | `false` | Optional antialias for bilinear/bicubic downsampling / 可选抗混叠 |
+| `output_mode` | `aligned` | aligned or native; datasets/calibration require aligned / 原生 LQ 仅用于直接调用 |
+| `resize_modes` | `["area","bilinear","bicubic"]` | Random stage interpolation; nearest is opt-in / 阶段插值候选 |
+| `first / second` | `subtable` | StageConfig / SecondStageConfig |
+| `final_sinc_probability` | `0.8` | Final sinc on native LQ, before alignment / 对齐放大前的 LQ sinc |
+| `gray_probability / color_jitter_probability` | `0 / 0` | Optional output augmentation / 输出增强 |
+| `brightness / contrast / saturation / hue` | `[0.5,1.5] / [0.5,1.5] / [0,1.5] / [-0.1,0.1]` | Ranges for enabled color jitter / 已启用颜色增强的范围 |
 
 ## `StageConfig`
 
-Acquisition randomly orders resize, blur and noise; optional intermediate web compression always follows those operations.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `blur` | object | `subtable` | Blur kernel and parameter distribution table. |
-| `blur_probability` | number | `1.0` | Probability of applying blur in this stage, 0..1. |
-| `resize_probabilities` | [number, number, number] | `[0.2, 0.7, 0.1]` | Upscale/downscale/unchanged probabilities in that order, nonnegative and summing to 1. |
-| `resize_range` | [number, number] | `[0.15, 1.5]` | Positive resize-factor range spanning 1; downscaling remains limited by the selected total factor. |
-| `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
-| `compression` | object | `subtable` | JPEG/WebP/JPEG2000 compression distribution table. |
-| `noise_probability` | number | `1.0` | Probability of acquisition noise. |
-| `compression_probability` | number | `0.75` | Probability of intermediate encoding, only in web-repost samples. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `blur / noise / compression` | `subtable` | BlurConfig / NoiseConfig / CompressionConfig |
+| `blur_probability / sinc_probability` | `1.0 / 0.1` | Stage filter probability / conditional sinc replacement probability / 阶段滤波及条件 sinc 概率 |
+| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.15,1.5]` | Up/down/keep, unrestricted by SR factor / 升降保持，不按总倍率裁限 |
+| `noise_probability / compression_probability` | `1.0 / 1.0` | Each runs once at its fixed position / 固定顺序各一次 |
 
 ## `SecondStageConfig`
 
-Delivery randomly orders resizing, local blur and noise. Stage-two noise may instead be deferred until after the complete delivery group, producing fine noise on the final HQ grid, but still runs once per sample. The delivery group strictly applies `resize+sinc -> compression` or `compression -> resize+sinc`.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `blur` | object | `subtable` | Blur kernel and parameter distribution table. |
-| `blur_probability` | number | `0.8` | Blur probability at the x4 reference, 0..1; above x4 it scales by `4/scale`. |
-| `resize_probabilities` | [number, number, number] | `[0.3, 0.4, 0.3]` | Upscale/downscale/unchanged probabilities in that order, nonnegative and summing to 1. |
-| `resize_range` | [number, number] | `[0.3, 1.2]` | Positive resize-factor range spanning 1. |
-| `noise` | object | `subtable` | Gaussian/Poisson/ISO noise distribution table. |
-| `compression` | object | `subtable` | JPEG/WebP/JPEG2000 compression distribution table. |
-| `noise_probability` | number | `1.0` | Second-stage noise probability; applied once before/after blur or deferred to the final HQ grid. |
-| `compression_probability` | number | `0.9` | Final encoding probability; only `resize+sinc -> compression` or `compression -> resize+sinc` is legal. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
+| `blur_probability / sinc_probability` | `0.8 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.3,1.2]` | Relative to HQ/scale / 相对最终 LQ |
+| `noise_probability / compression_probability` | `1.0 / 1.0` | Final compression exchanges with native resize+sinc / 末端压缩只与 resize+sinc 整组交换 |
 
 ## `BlurConfig`
 
-Blur uses the isotropic/anisotropic Gaussian, generalized-Gaussian and plateau mixture; motion and defocus kernels are not generated. Sinc is a separate layer.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.2, 3.0]` | Sigma at short edge 1024; fourth-root scaling below 1024 and square-root scaling above, capped to 0.5..2x. |
-| `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Isotropic/anisotropic Gaussian, generalized and plateau probabilities, nonnegative and summing to 1. |
-| `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
-| `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `sigma` | `[0.2,3.0]` | Uniform reference-pixel sigma, multiplied once by HQ spatial scale / 独立均匀 sigma |
+| `probabilities` | `[0.45,0.25,0.12,0.03,0.12,0.03]` | Isotropic/anisotropic Gaussian, generalized, plateau / 各向同性与异性六类 |
+| `generalized_beta / plateau_beta` | `[0.5,4] / [1,2]` | Official beta distributions / 官方 beta 分布 |
 
 ## `SecondBlurConfig`
 
-Same kernel selection and resolution adaptation as BlurConfig; sigma uses a 1024-pixel current-layer short-edge reference.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.2, 1.5]` | 1024-short-edge reference sigma, scaled to the blur layer's actual execution grid. |
-| `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Isotropic/anisotropic Gaussian, generalized and plateau probabilities, nonnegative and summing to 1. |
-| `generalized_beta` | [number, number] | `[0.5, 4.0]` | Positive generalized-Gaussian blur beta range spanning 1. |
-| `plateau_beta` | [number, number] | `[1.0, 2.0]` | Positive plateau-kernel beta range spanning 1. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `sigma` | `[0.2,1.5]` | All other settings inherited from BlurConfig / 其余继承 |
 
 ## `NoiseConfig`
 
-Gaussian/Poisson/ISO order. Low-light acquisition always uses linear-light shot/read noise. Scene standard-deviation multipliers: photo 1.0, web 1.0, low-light 1.15. In-stage noise is additionally square-root scaled for its actual execution grid relative to the target; final-HQ fine noise is not scaled down.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.5, 0.5, 0.0]` | Gaussian/Poisson/ISO probabilities; low-light stage one always uses the ISO shot/read branch. |
-| `gaussian_sigma` | [number, number] | `[1.0, 30.0]` | Gaussian noise sigma range in 8-bit intensity units. |
-| `poisson_scale` | [number, number] | `[0.05, 3.0]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
-| `iso_shot` | [number, number] | `[0.0003, 0.009]` | Linear-light signal-dependent variance coefficient. |
-| `iso_read` | [number, number] | `[8e-06, 0.00025]` | Linear-light signal-independent read variance. |
-| `iso_color_gain` | [number, number] | `[0.92, 1.15]` | ISO color-channel gain range. |
-| `exposure` | [number, number] | `[0.75, 1.0]` | Linear capture exposure before recovery; (0,1]. |
-| `gray_probability` | number | `0.4` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `grain_probability` | `0.05` | Exclusive correlated luminance grain; not an additional pass / 互斥颗粒 |
+| `gaussian_probability` | `0.5` | Conditional on not choosing grain; otherwise Poisson / 非 grain 时的 Gaussian 概率 |
+| `gaussian_sigma / poisson_scale` | `[1,30] / [0.05,3]` | Official standard deviation (8-bit units) / Poisson amplitude / 官方幅度 |
+| `gray_probability` | `0.4` | Gray vs color Gaussian/Poisson / 灰度噪声概率 |
+| `grain_sigma / grain_correlation` | `[1,8] / [0.3,0.8]` | 8-bit RMS / correlation radius scaled spatially / 颗粒幅度及相关半径 |
 
 ## `SecondNoiseConfig`
 
-Weak residual noise on the delivery or final HQ grid; uses the same scene strength multiplier as acquisition.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.5, 0.5, 0.0]` | Gaussian/Poisson/ISO probabilities, nonnegative and summing to 1. |
-| `gaussian_sigma` | [number, number] | `[1.0, 25.0]` | Gaussian noise sigma range in 8-bit intensity units. |
-| `poisson_scale` | [number, number] | `[0.05, 2.5]` | Poisson residual amplitude using a fixed 255-level reference, independent of image color count. |
-| `iso_shot` | [number, number] | `[2e-05, 0.0004]` | Linear-light signal-dependent variance coefficient. |
-| `iso_read` | [number, number] | `[2e-07, 8e-06]` | Linear-light signal-independent read variance. |
-| `iso_color_gain` | [number, number] | `[0.95, 1.05]` | ISO color-channel gain range. |
-| `exposure` | [number, number] | `[1.0, 1.0]` | Linear capture exposure before recovery; (0,1]. |
-| `gray_probability` | number | `0.4` | Probability of grayscale degradation, or grayscale noise within a noise table, 0..1. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `gaussian_sigma / poisson_scale` | `[1,25] / [0.05,2.5]` | Other fields inherited / 其余继承 |
 
 ## `CompressionConfig`
 
-JPEG/WebP/JPEG2000 order. Used only for intermediate web encoding. JPEG2000 is opt-in.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.85, 0.15, 0.0]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `jpeg_quality` | [number, number] | `[30.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
-| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[45.0, 98.0]` | WebP quality range, 0..100. |
-| `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `probabilities` | `[0.85,0.15,0]` | JPEG / WebP / JPEG2000 |
+| `jpeg_quality / webp_quality / jpeg2000_quality` | `[30,95] / [45,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
+| `recompression_probability` | `0` | Optional extra encoding, disabled in baseline / 默认关闭额外重编码 |
 
 ## `SecondCompressionConfig`
 
-Final encoding for all scenes. Web samples use the full severity distribution; photo/low-light scenes multiply codec severity by 0.5.
-
-| Field | Type / choices | Default | Meaning |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.8, 0.2, 0.0]` | Nonnegative probabilities summing to 1: noise Gaussian/Poisson/ISO; compression JPEG/WebP/JPEG2000; blur isotropic/anisotropic pairs for Gaussian/generalized/plateau. |
-| `jpeg_quality` | [number, number] | `[30.0, 95.0]` | JPEG quality range, 0..100; lower values increase compression. |
-| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[45.0, 98.0]` | WebP quality range, 0..100. |
-| `jpeg2000_quality` | [number, number] | `[200.0, 900.0]` | Native OpenCV JPEG2000 quality range, 0..1000. |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `probabilities` | `[0.8,0.2,0]` | JPEG / WebP / JPEG2000 |
+| `jpeg2000_quality` | `[200,900]` | Other quality fields inherited / 其余质量区间继承 |
 
 ## `restore` command
 

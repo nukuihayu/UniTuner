@@ -35,9 +35,8 @@ class DistributionConfig(BaseModel, frozen=True):
 class BlurConfig(DistributionConfig, frozen=True):
     """Gaussian, generalized-Gaussian and plateau blur kernels.
 
-    All spatial ranges use a 1024-pixel layer-input short-edge reference and
-    gentle fourth-root scaling below 1024 and square-root scaling above it,
-    capped to [0.5, 2.0].
+    Spatial ranges use the configured HQ reference resolution; the pipeline
+    computes one spatial multiplier for both stages and final sinc.
     """
 
     sigma: Range = (0.2, 3.0)
@@ -51,6 +50,7 @@ class BlurConfig(DistributionConfig, frozen=True):
     )
     generalized_beta: Range = (0.5, 4.0)
     plateau_beta: Range = (1.0, 2.0)
+
     @model_validator(mode="after")
     def validate_positive(self) -> Self:
         if min(self.sigma) <= 0 or not 0 < self.generalized_beta[0] <= 1 <= self.generalized_beta[1]:
@@ -61,29 +61,22 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """Gaussian/Poisson/ISO probabilities; sigma is in 8-bit intensity units."""
+    """Gaussian/Poisson mixture with a mutually exclusive rare grain category."""
 
-    probabilities: Probabilities = (0.50, 0.50, 0.0)
+    gaussian_probability: Probability = 0.5
+    grain_probability: Probability = 0.05
+    grain_sigma: Range = (1.0, 8.0)
+    grain_correlation: Range = (0.3, 0.8)
     gaussian_sigma: Range = (1.0, 30.0)
     poisson_scale: Range = (0.05, 3.0)
-    iso_shot: Range = (0.0003, 0.009)
-    iso_read: Range = (0.000008, 0.00025)
-    exposure: Range = (0.75, 1.0)
-    iso_color_gain: Range = (0.92, 1.15)
     gray_probability: Probability = 0.40
-
-    @model_validator(mode="after")
-    def validate_exposure(self) -> Self:
-        if not 0 < self.exposure[0] <= self.exposure[1] <= 1:
-            raise ValueError("Noise exposure must be within (0,1]")
-        return self
 
 
 class CompressionConfig(DistributionConfig, frozen=True):
     """JPEG/WebP/JPEG2000 probabilities and codec-native quality ranges."""
 
     probabilities: Probabilities = (0.85, 0.15, 0.0)
-    recompression_probability: Probability = 0.25
+    recompression_probability: Probability = 0.0
     jpeg_quality: Range = (30.0, 95.0)
     webp_quality: Range = (45.0, 98.0)
     jpeg2000_quality: Range = (250.0, 900.0)
@@ -100,10 +93,11 @@ class StageConfig(DistributionConfig, frozen=True):
 
     blur: BlurConfig = Field(default_factory=BlurConfig)
     blur_probability: Probability = 1.0
+    sinc_probability: Probability = 0.1
     resize_probabilities: Probabilities = (0.2, 0.7, 0.1)
     resize_range: Range = (0.15, 1.5)
     noise_probability: Probability = 1.0
-    compression_probability: Probability = 0.75
+    compression_probability: Probability = 1.0
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
     compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
@@ -117,13 +111,12 @@ class StageConfig(DistributionConfig, frozen=True):
 class SecondNoiseConfig(NoiseConfig, frozen=True):
     """Second-stage camera distribution with independently overridable fields."""
 
-    exposure: Range = (1.0, 1.0)
-    probabilities: Probabilities = (0.50, 0.50, 0.0)
+    gaussian_probability: Probability = 0.5
+    grain_probability: Probability = 0.05
+    grain_sigma: Range = (1.0, 8.0)
+    grain_correlation: Range = (0.3, 0.8)
     gaussian_sigma: Range = (1.0, 25.0)
     poisson_scale: Range = (0.05, 2.5)
-    iso_shot: Range = (0.00002, 0.0004)
-    iso_read: Range = (0.0000002, 0.000008)
-    iso_color_gain: Range = (0.95, 1.05)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):
@@ -146,38 +139,28 @@ class SecondStageConfig(StageConfig, frozen=True):
 
     blur: SecondBlurConfig = Field(default_factory=SecondBlurConfig)
     blur_probability: Probability = 0.8
+    sinc_probability: Probability = 0.1
     resize_probabilities: Probabilities = (0.3, 0.4, 0.3)
     resize_range: Range = (0.3, 1.2)
     noise_probability: Probability = 1.0
-    compression_probability: Probability = 0.9
+    compression_probability: Probability = 1.0
     noise: SecondNoiseConfig = Field(default_factory=SecondNoiseConfig)
     compression: SecondCompressionConfig = Field(default_factory=SecondCompressionConfig)
 
 
 class DegradationConfig(DistributionConfig, frozen=True):
-    """Dataset-owned super-resolution acquisition and delivery distributions.
-
-    Spatial kernels use the current layer-input short edge with scaling from a
-    1024-pixel reference, capped to [0.5, 2.0]. Scaling uses a fourth root below
-    the reference and a square root above it. Scene
-    probabilities are photo/web/low-light.
-    Color jitter and grayscale affect LQ only; HQ remains an unchanged target.
-    """
+    """Real-ESRGAN ordering with explicit resolution and codec/noise extensions."""
 
     enabled: bool = False
     scales: tuple[Annotated[float, Field(ge=1, le=16)], ...] | None = None
     scale_range: Range = (1.0, 8.0)
-    scenario_probabilities: Probabilities = (0.25, 0.35, 0.40)
-    noise_strength: Range = (0.85, 0.85)
-    first_noise_variance_share: Probability = 0.70
-    second_noise_chroma_scale: Probability = 0.35
-    late_noise_probability: Probability = 0.25
-    processing_deadzone: Probability = 0.1
-    grain_strength: Range = (0.0, 0.8)
-    smear_strength: Range = (0.0, 0.8)
-    smear_detail_protection: Probability = 0.6
-    grain_scale_range: Range = (1.0, 4.0)
-    sharpen_strength: Range = (0.0, 0.4)
+    reference_resolution: Annotated[int, Field(ge=32)] = 400
+    resolution_exponent: Annotated[float, Field(ge=0, le=1)] = 0.5
+    high_scale_protection: bool = True
+    second_order_probability: Probability = 1.0
+    use_usm: bool = True
+    resize_antialias: bool = False
+    output_mode: Literal["aligned", "native"] = "aligned"
     resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (
         "area",
         "bilinear",
@@ -195,16 +178,8 @@ class DegradationConfig(DistributionConfig, frozen=True):
 
     @model_validator(mode="after")
     def validate_choices(self) -> Self:
-        if self.noise_strength[1] > 4:
-            raise ValueError("noise_strength must be within [0,4]")
-        if self.grain_strength[1] > 4 or self.smear_strength[1] > 1:
-            raise ValueError("grain_strength must be within [0,4] and smear_strength within [0,1]")
         if not 1 <= self.scale_range[0] <= self.scale_range[1] <= 16:
             raise ValueError("scale_range must be within [1,16]")
-        if not 1 <= self.grain_scale_range[0] <= self.grain_scale_range[1] <= 16:
-            raise ValueError("grain_scale_range must be within [1,16]")
-        if self.sharpen_strength[1] > 1:
-            raise ValueError("sharpen_strength must be within [0,1]")
         if self.scales == () or not self.resize_modes:
             raise ValueError("Degradation scales and resize modes cannot be empty")
         if not -0.5 <= self.hue[0] <= self.hue[1] <= 0.5:

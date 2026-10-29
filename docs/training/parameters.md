@@ -403,140 +403,86 @@ batch_size = 16
 
 ## `DegradationConfig`
 
-仅用于合成超分 LQ，参见[场景与操作顺序](datasets.md#合成超分退化)。
+Fixed Real-ESRGAN ordering and native LQ delivery; see [datasets](datasets.md). 旧场景增益、末端补噪及独立 smear/grain/sharpen 参数已移除；不会静默兼容旧分布。
 
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `enabled` | boolean | `false` | 启用该组的合成退化；真实 LQ 配对任务不添加此表。 |
-| `scales` | [number, …] | unset | 可选的显式倍率列表，支持 1～16 的小数；等概率抽取，优先于 scale_range。 |
-| `scale_range` | [number, number] | `[1.0, 8.0]` | 连续倍率区间，与强度独立的对数均匀采样；上下界在 1～16 内。 |
-| `resize_modes` | ["area", "bilinear", "bicubic", "nearest", …] | `["area", "bilinear", "bicubic"]` | bilinear/bicubic 降采样启用抗混叠；放大时有其他候选则不选 area。nearest 仅显式启用。 |
-| `first` | object | `子表` | 第一阶段的模糊、缩放、噪声和压缩分布。 |
-| `second` | object | `子表` | 第二阶段的独立模糊、缩放、噪声和压缩分布。 |
-| `final_sinc_probability` | number | `0.8` | 启用独立 sinc 层的概率，0..1；与回目标尺寸绑定，只能整体位于最终压缩前或后。 |
-| `gray_probability` | number | `0.0` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
-| `color_jitter_probability` | number | `0.0` | 启用色彩扰动的概率，0..1；0 关闭。 |
-| `brightness` | [number, number] | `[0.5, 1.5]` | 亮度倍率范围 [下界, 上界]，用于已启用的色彩扰动。 |
-| `contrast` | [number, number] | `[0.5, 1.5]` | 对比度倍率范围 [下界, 上界]。 |
-| `saturation` | [number, number] | `[0.0, 1.5]` | 饱和度倍率范围 [下界, 上界]。 |
-| `hue` | [number, number] | `[-0.1, 0.1]` | 色相扰动范围 [下界, 上界]。 |
-| `scenario_probabilities` | [number, number, number] | `[0.25, 0.35, 0.4]` | 普通照片 / 网络转载 / 低照度概率，非负且和为 1。 |
-| `noise_strength` | [number, number] | `[0.85, 0.85]` | 全局采集噪声标准差增益，0～4；默认保留高噪声尾部并将整体强度降至 85%，[0,0] 全部关闭。 |
-| `first_noise_variance_share` | number | `0.7` | 两阶段噪声同时启用时第一阶段占总方差的比例，第二阶段使用剩余方差；仅单阶段启用时自动使用完整增益。 |
-| `second_noise_chroma_scale` | number | `0.35` | 第二阶段 RGB 噪声的色度比例，0～1；缩放后重新归一 RMS，因此不改变总噪声能量。 |
-| `late_noise_probability` | number | `0.25` | 将第二阶段噪声延迟到完整交付组之后、在最终 HQ 网格添加的概率；其余在阶段内添加，总共仍只执行一次。 |
-| `processing_deadzone` | number | `0.1` | 零起点强度分布的死区，0～1；0 保留纯连续分布，正下界不受影响。 |
-| `grain_strength` | [number, number] | `[0.0, 0.8]` | 残余颗粒增益，0～4；默认作为较轻的细颗粒补充，`max(0.15,1−0.85×采集强度)` 同时控制增益和启用概率，[0,0] 关闭。 |
-| `grain_scale_range` | [number, number] | `[1.0, 4.0]` | 噪声生成网格相对输出的缩小倍率，1～16 内按对数均匀分布采样；仅缩放残差。 |
-| `smear_strength` | [number, number] | `[0.0, 0.8]` | 连续纹理平滑混合强度，0～1；按实际降采样倍率 d 乘以 min(1,2/d)。 |
-| `sharpen_strength` | [number, number] | `[0.0, 0.4]` | 连续交付锐化强度，范围 0～1；[0,0] 关闭。 |
-| `smear_detail_protection` | number | `0.6` | 局部对比度保护，0～1；0 恢复均匀混合。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
+| `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
+| `reference_resolution / resolution_exponent` | `400 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
+| `high_scale_protection` | `true` | Above x4, narrow second downsampling and reduce final sinc footprint; false restores baseline / x4 以上限制过度缩小和末端低通 |
+| `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
+| `use_usm` | `true` | BasicSR-style USM on source only; HQ target unchanged / 仅锐化退化源 |
+| `resize_antialias` | `false` | Optional antialias for bilinear/bicubic downsampling / 可选抗混叠 |
+| `output_mode` | `aligned` | aligned or native; datasets/calibration require aligned / 原生 LQ 仅用于直接调用 |
+| `resize_modes` | `["area","bilinear","bicubic"]` | Random stage interpolation; nearest is opt-in / 阶段插值候选 |
+| `first / second` | `subtable` | StageConfig / SecondStageConfig |
+| `final_sinc_probability` | `0.8` | Final sinc on native LQ, before alignment / 对齐放大前的 LQ sinc |
+| `gray_probability / color_jitter_probability` | `0 / 0` | Optional output augmentation / 输出增强 |
+| `brightness / contrast / saturation / hue` | `[0.5,1.5] / [0.5,1.5] / [0,1.5] / [-0.1,0.1]` | Ranges for enabled color jitter / 已启用颜色增强的范围 |
 
 ## `StageConfig`
 
-采集阶段：resize、blur、noise 随机排列；可选网络转载 compression 固定在这些处理之后。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `blur` | object | `子表` | 模糊核与参数分布子表。 |
-| `blur_probability` | number | `1.0` | 本阶段应用模糊的概率，0..1。 |
-| `resize_probabilities` | [number, number, number] | `[0.2, 0.7, 0.1]` | 放大/缩小/不变的概率，依此顺序，非负且和为 1。 |
-| `resize_range` | [number, number] | `[0.15, 1.5]` | 缩放倍率范围，需为正且覆盖 1；缩小时仍受所选总退化倍率限制。 |
-| `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
-| `compression` | object | `子表` | JPEG/WebP/JPEG2000 压缩分布子表。 |
-| `noise_probability` | number | `1.0` | 采集阶段添加噪声的概率。 |
-| `compression_probability` | number | `0.75` | 仅网络转载场景执行的中间编码概率。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `blur / noise / compression` | `subtable` | BlurConfig / NoiseConfig / CompressionConfig |
+| `blur_probability / sinc_probability` | `1.0 / 0.1` | Stage filter probability / conditional sinc replacement probability / 阶段滤波及条件 sinc 概率 |
+| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.15,1.5]` | Up/down/keep, unrestricted by SR factor / 升降保持，不按总倍率裁限 |
+| `noise_probability / compression_probability` | `1.0 / 1.0` | Each runs once at its fixed position / 固定顺序各一次 |
 
 ## `SecondStageConfig`
 
-交付阶段随机排列缩放、局部模糊与噪声；第二阶段噪声也可推迟至完整交付组之后，在最终 HQ 网格形成细噪点，但每个样本只执行一次。交付组严格执行 `resize+sinc → compression` 或 `compression → resize+sinc`。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `blur` | object | `子表` | 模糊核与参数分布子表。 |
-| `blur_probability` | number | `0.8` | x4 基准下本阶段应用模糊的概率，0..1；x4 以上按 `4/scale` 动态降低。 |
-| `resize_probabilities` | [number, number, number] | `[0.3, 0.4, 0.3]` | 放大/缩小/不变的概率，依此顺序，非负且和为 1。 |
-| `resize_range` | [number, number] | `[0.3, 1.2]` | 缩放倍率范围，需为正且覆盖 1。 |
-| `noise` | object | `子表` | 高斯/泊松/ISO 噪声分布子表。 |
-| `compression` | object | `子表` | JPEG/WebP/JPEG2000 压缩分布子表。 |
-| `noise_probability` | number | `1.0` | 第二阶段噪声概率；每个样本执行一次，可位于 blur 前后或延迟到最终 HQ 网格。 |
-| `compression_probability` | number | `0.9` | 最终编码概率；只允许 `resize+sinc → compression` 或 `compression → resize+sinc`。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
+| `blur_probability / sinc_probability` | `0.8 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.3,1.2]` | Relative to HQ/scale / 相对最终 LQ |
+| `noise_probability / compression_probability` | `1.0 / 1.0` | Final compression exchanges with native resize+sinc / 末端压缩只与 resize+sinc 整组交换 |
 
 ## `BlurConfig`
 
-blur 使用 Gaussian／广义 Gaussian／平台核的各向同性与各向异性六类混合，不生成运动或失焦核。sinc 不属于 blur 层。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.2, 3.0]` | 1024 短边基准 sigma；低于 1024 按四次方根、以上按平方根缩放，限制在 0.5～2 倍。 |
-| `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Gaussian/generalized/plateau 的各向同性与各向异性概率，非负且总和为 1。 |
-| `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
-| `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `sigma` | `[0.2,3.0]` | Uniform reference-pixel sigma, multiplied once by HQ spatial scale / 独立均匀 sigma |
+| `probabilities` | `[0.45,0.25,0.12,0.03,0.12,0.03]` | Isotropic/anisotropic Gaussian, generalized, plateau / 各向同性与异性六类 |
+| `generalized_beta / plateau_beta` | `[0.5,4] / [1,2]` | Official beta distributions / 官方 beta 分布 |
 
 ## `SecondBlurConfig`
 
-核选择和分辨率适配规则与 BlurConfig 一致；sigma 以当前层 1024 短边为基准。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `sigma` | [number, number] | `[0.2, 1.5]` | 1024 短边基准 sigma；按该 blur 层执行时的实际短边缩放。 |
-| `probabilities` | [number, number, number, number, number, number] | `[0.45, 0.25, 0.12, 0.03, 0.12, 0.03]` | Gaussian/generalized/plateau 的各向同性与各向异性概率，非负且总和为 1。 |
-| `generalized_beta` | [number, number] | `[0.5, 4.0]` | 广义高斯模糊 beta 范围，正数且区间跨过 1。 |
-| `plateau_beta` | [number, number] | `[1.0, 2.0]` | 平台核模糊 beta 范围，正数且区间跨过 1。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `sigma` | `[0.2,1.5]` | All other settings inherited from BlurConfig / 其余继承 |
 
 ## `NoiseConfig`
 
-概率顺序为 Gaussian/Poisson/ISO。低照度采集固定使用线性光 shot/read 噪声。场景标准差倍率：普通 1.0、转载 1.0、低照度 1.15。阶段内噪声再按实际执行网格相对目标尺寸的平方根缩放；最终 HQ 细噪声不缩放。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.5, 0.5, 0.0]` | Gaussian/Poisson/ISO 概率；低照度第一阶段无条件使用 ISO shot/read 分支。 |
-| `gaussian_sigma` | [number, number] | `[1.0, 30.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
-| `poisson_scale` | [number, number] | `[0.05, 3.0]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
-| `iso_shot` | [number, number] | `[0.0003, 0.009]` | 线性光域信号相关方差系数。 |
-| `iso_read` | [number, number] | `[8e-06, 0.00025]` | 线性光域信号无关读出方差。 |
-| `iso_color_gain` | [number, number] | `[0.92, 1.15]` | ISO 各颜色通道增益范围。 |
-| `exposure` | [number, number] | `[0.75, 1.0]` | 恢复曝光前的线性采集曝光倍率；范围 (0,1]。 |
-| `gray_probability` | number | `0.4` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `grain_probability` | `0.05` | Exclusive correlated luminance grain; not an additional pass / 互斥颗粒 |
+| `gaussian_probability` | `0.5` | Conditional on not choosing grain; otherwise Poisson / 非 grain 时的 Gaussian 概率 |
+| `gaussian_sigma / poisson_scale` | `[1,30] / [0.05,3]` | Official standard deviation (8-bit units) / Poisson amplitude / 官方幅度 |
+| `gray_probability` | `0.4` | Gray vs color Gaussian/Poisson / 灰度噪声概率 |
+| `grain_sigma / grain_correlation` | `[1,8] / [0.3,0.8]` | 8-bit RMS / correlation radius scaled spatially / 颗粒幅度及相关半径 |
 
 ## `SecondNoiseConfig`
 
-交付网格或最终 HQ 尺寸上的微弱残差噪声，沿用采集阶段的场景强度倍率。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.5, 0.5, 0.0]` | Gaussian/Poisson/ISO 概率，非负且总和为 1。 |
-| `gaussian_sigma` | [number, number] | `[1.0, 25.0]` | 高斯噪声 sigma 范围，按 8-bit 强度单位填写。 |
-| `poisson_scale` | [number, number] | `[0.05, 2.5]` | 固定 255 级参考的泊松残差幅度，不随图片颜色数量变化。 |
-| `iso_shot` | [number, number] | `[2e-05, 0.0004]` | 线性光域信号相关方差系数。 |
-| `iso_read` | [number, number] | `[2e-07, 8e-06]` | 线性光域信号无关读出方差。 |
-| `iso_color_gain` | [number, number] | `[0.95, 1.05]` | ISO 各颜色通道增益范围。 |
-| `exposure` | [number, number] | `[1.0, 1.0]` | 恢复曝光前的线性采集曝光倍率；范围 (0,1]。 |
-| `gray_probability` | number | `0.4` | 退化转灰度的概率；噪声子表中表示灰度噪声概率，0..1。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `gaussian_sigma / poisson_scale` | `[1,25] / [0.05,2.5]` | Other fields inherited / 其余继承 |
 
 ## `CompressionConfig`
 
-概率顺序为 JPEG/WebP/JPEG2000，仅用于网络转载的中间编码；JPEG2000 默认关闭。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.85, 0.15, 0.0]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `jpeg_quality` | [number, number] | `[30.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
-| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[45.0, 98.0]` | WebP 质量范围，0..100。 |
-| `jpeg2000_quality` | [number, number] | `[250.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `probabilities` | `[0.85,0.15,0]` | JPEG / WebP / JPEG2000 |
+| `jpeg_quality / webp_quality / jpeg2000_quality` | `[30,95] / [45,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
+| `recompression_probability` | `0` | Optional extra encoding, disabled in baseline / 默认关闭额外重编码 |
 
 ## `SecondCompressionConfig`
 
-所有场景的最终编码。网络转载使用完整强度分布；普通/低照度场景将压缩强度减半。
-
-| 字段 | 类型／可选值 | 默认值 | 含义 |
-| --- | --- | --- | --- |
-| `probabilities` | [number, number, number] | `[0.8, 0.2, 0.0]` | 非负概率向量且总和为 1；噪声依次 Gaussian/Poisson/ISO，压缩依次 JPEG/WebP/JPEG2000，模糊依次 Gaussian/generalized/plateau 的各向同性与各向异性。 |
-| `jpeg_quality` | [number, number] | `[30.0, 95.0]` | JPEG 质量范围，0..100；数值越低压缩越强。 |
-| `recompression_probability` | number | `0.25` | Extra shifted-origin codec pass probability. |
-| `webp_quality` | [number, number] | `[45.0, 98.0]` | WebP 质量范围，0..100。 |
-| `jpeg2000_quality` | [number, number] | `[200.0, 900.0]` | JPEG2000 原生 OpenCV 质量范围，0..1000。 |
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `probabilities` | `[0.8,0.2,0]` | JPEG / WebP / JPEG2000 |
+| `jpeg2000_quality` | `[200,900]` | Other quality fields inherited / 其余质量区间继承 |
 
 ## `restore` 独立命令
 
