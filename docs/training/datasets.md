@@ -183,6 +183,7 @@ scales = [2.0, 4.0, 6.0, 8.0]
 reference_resolution = 512
 resolution_exponent = 0.5
 high_scale_protection = true
+noise_grid_adaptation = true
 use_usm = false
 sharpen_target = true
 
@@ -194,7 +195,9 @@ correlation = [0.3, 0.8]
 
 HYPIR 默认输入 512、x4、固定像素核。本项目空间适配是额外扩展：只计算一次 `k=clamp((HQ短边/reference_resolution)^resolution_exponent,0.5,2)`。256/512/1024/1280/2048 对应约 0.707/1/1.414/1.581/2，作用于 sigma、核支撑和 sinc 逆截止频率；不缩放噪声幅度和 JPEG 的 8×8 块。
 
-超过 x4 的保护继续保留：`r=min(1,4/倍率)`，第二阶段向下 resize 抽样值变为 `s'=1-(1-s)*r`，x4/x6/x8 下限为 0.30/0.533/0.65；final sinc 空间系数为 `max(0.5,k*r)`。第二阶段 blur 在其 resize 之前，不按中间网格重复缩小 sigma。关闭 high_scale_protection、设置 resolution_exponent=0 和 final_grain.probability=0 可比较固定参数基线。
+超过 x4 的保护继续保留：`r=min(1,4/倍率)`，第二阶段向下 resize 抽样值变为 `s'=1-(1-s)*r`，x4/x6/x8 下限为 0.30/0.533/0.65；final sinc 空间系数为 `max(0.5,k*r)`。第二阶段 blur 在其 resize 之前，不按中间网格重复缩小 sigma。关闭 high_scale_protection、noise_grid_adaptation，设置 resolution_exponent=0 和 final_grain.probability=0 可比较固定参数基线。
+
+默认 `noise_grid_adaptation=true`：每阶段在实际加噪时计算 `g=min(1,sqrt((当前高/输出高)*(当前宽/输出宽)))`，Gaussian/Poisson 的原始噪声残差乘 g，再加回图像并 clip。128→1024 为 1/8；256→1024 为 1/4；89→1024 为 89/1024；大于等于输出面积时不放大噪声。这是抑制低清像素放大成粗颗粒的工程规则，不是 HYPIR 原生做法或精确插值方差模型，不叠乘分辨率核系数。Gaussian 基础区间、Poisson 基础区间、类别与灰噪声概率保留，末端 10% grain 不受此规则影响。设 false 可恢复未适配的噪声。trace 同时记录 parameter（原始抽样）、effective_parameter（适配后幅度）、grid_gain、gray 和 clip 前 noise_rms_255；这些幅度不等于最终编码/滤波后的可见 RMS。
 
 基础核支撑 7～21，sigma [0.2,3]/[0.2,1.5]，六种混合核概率 [0.45,0.25,0.12,0.03,0.12,0.03]。第二阶段 blur 80%；启用滤波时各有 10% 替换成 sinc，final sinc 80%。阶段 cutoff 为 π/3～π（基础核<13）或 π/5～π，final 为 π/3～π，不加窗。HYPIR 把小核补零到 21 只是批处理要求，不增加有效支撑。
 

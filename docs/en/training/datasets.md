@@ -183,6 +183,7 @@ scales = [2.0, 4.0, 6.0, 8.0]
 reference_resolution = 512
 resolution_exponent = 0.5
 high_scale_protection = true
+noise_grid_adaptation = true
 use_usm = false
 sharpen_target = true
 
@@ -194,7 +195,9 @@ correlation = [0.3, 0.8]
 
 HYPIR uses fixed pixel kernels at 512 and x4. Our extension computes `k=clamp((HQ_short/reference_resolution)^resolution_exponent,0.5,2)` once: 256/512/1024/1280/2048 gives 0.707/1/1.414/1.581/2. It scales sigma, support and inverse sinc cutoff, not noise amplitudes or JPEG 8×8 blocks.
 
-Above x4, `r=min(1,4/scale)`, second downsampling becomes `s'=1-(1-s)*r`, with x4/x6/x8 lower bounds 0.30/0.533/0.65. Final sinc uses `max(0.5,k*r)`. Second blur precedes its resize, without repeated grid-based sigma attenuation. Disable high_scale_protection, set resolution_exponent=0 and final_grain.probability=0 for fixed-parameter comparisons.
+Above x4, `r=min(1,4/scale)`, second downsampling becomes `s'=1-(1-s)*r`, with x4/x6/x8 lower bounds 0.30/0.533/0.65. Final sinc uses `max(0.5,k*r)`. Second blur precedes its resize, without repeated grid-based sigma attenuation. Disable high_scale_protection and noise_grid_adaptation, set resolution_exponent=0 and final_grain.probability=0 for fixed-parameter comparisons.
+
+With default noise_grid_adaptation=true, each noise call uses `g=min(1,sqrt((current_H/output_H)*(current_W/output_W)))`. Multiply the raw Gaussian/Poisson residual by g before adding and clipping: 128→1024 gives 1/8, 256→1024 gives 1/4, 89→1024 gives 89/1024. Larger grids are never amplified. This engineering rule suppresses coarse enlarged noise; it is not native HYPIR behavior or an exact interpolation variance model. The blur spatial multiplier is not applied again. Base distributions, category/gray probabilities and final 10% grain remain unchanged. Disable the option for unadapted noise. Trace reports raw parameter, effective_parameter, grid_gain, gray and pre-clip noise_rms_255; these do not equal the visible RMS after encoding/filtering.
 
 Base support is 7..21, sigma [0.2,3]/[0.2,1.5], with six kernel probabilities [0.45,0.25,0.12,0.03,0.12,0.03]. Second blur is 80%; active filters substitute sinc 10% of the time, final sinc is 80%. Stage cutoffs are π/3..π for support <13, otherwise π/5..π; final is π/3..π without taper. Padding kernels to 21 in HYPIR serves batching, not a larger effective support.
 

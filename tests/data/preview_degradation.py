@@ -17,6 +17,7 @@ def baseline(config: DegradationConfig) -> DegradationConfig:
     data = config.model_dump()
     data["resolution_exponent"] = 0.0
     data["high_scale_protection"] = False
+    data["noise_grid_adaptation"] = False
     data["final_grain"]["probability"] = 0.0
     for name in ("first", "second"):
         data[name]["compression"]["probabilities"] = (1.0, 0.0, 0.0)

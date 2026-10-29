@@ -15,10 +15,12 @@ from unitunner.data.degradation.config import (
     DegradationConfig,
     GrainConfig,
     NoiseConfig,
+    SecondNoiseConfig,
     SecondStageConfig,
     StageConfig,
 )
 from unitunner.data.degradation.pipeline import (
+    _noise_grid_gain,
     _resize,
     _resize_scale,
     _resolution_scale,
@@ -318,6 +320,70 @@ def test_gaussian_noise_uses_full_official_sigma():
     result = add_noise(np.full((256, 256, 3), 0.5, dtype=np.float32), cfg, np.random.default_rng(1))
     assert result.std() * 255 == pytest.approx(10, rel=0.02)
     np.testing.assert_array_equal(result[..., 0], result[..., 1])
+
+
+@pytest.mark.parametrize("scale", [1, 2, 4, 6, 8, 16])
+@pytest.mark.parametrize("gaussian", [False, True])
+def test_grid_adaptation_scales_noise_before_clipping_without_changing_draws(scale, gaussian):
+    source = np.full((128, 192, 3), 0.5, dtype=np.float32)
+    cfg = NoiseConfig(
+        gaussian_probability=float(gaussian),
+        gaussian_sigma=(10.0, 10.0),
+        poisson_scale=(0.05, 0.05),
+        gray_probability=1,
+    )
+    before_trace, after_trace = [], []
+    before = add_noise(source, cfg, np.random.default_rng(1), trace=before_trace)
+    after = add_noise(
+        source,
+        cfg,
+        np.random.default_rng(1),
+        output_size=(128 * scale, 192 * scale),
+        trace=after_trace,
+    )
+    np.testing.assert_allclose(after - source, (before - source) / scale, atol=6e-8, rtol=0)
+    assert after_trace[0]["parameter"] == before_trace[0]["parameter"]
+    assert after_trace[0]["effective_parameter"] == pytest.approx(before_trace[0]["parameter"] / scale)
+    assert after_trace[0]["noise_rms_255"] == pytest.approx(before_trace[0]["noise_rms_255"] / scale)
+    if gaussian:
+        assert after.std() * 255 == pytest.approx(10 / scale, rel=0.025)
+
+
+def test_noise_grid_gain_uses_actual_rectangular_grid_and_never_amplifies():
+    assert _noise_grid_gain((64, 128), (256, 256)) == pytest.approx(math.sqrt(1 / 8))
+    assert _noise_grid_gain((2048, 3072), (1024, 1536)) == 1
+    assert _noise_grid_gain((89, 89), (1024, 1024)) == pytest.approx(89 / 1024)
+    with pytest.raises(ValueError):
+        _noise_grid_gain((0, 128), (256, 256))
+
+
+def test_x8_pipeline_limits_gaussian_tail_on_actual_lq_grid():
+    stage = StageConfig(
+        blur_probability=0, noise_probability=0, compression_probability=0, resize_probabilities=(0.0, 0.0, 1.0)
+    )
+    second = SecondStageConfig(
+        blur_probability=0,
+        compression_probability=0,
+        resize_probabilities=(0.0, 0.0, 1.0),
+        noise=SecondNoiseConfig(gaussian_probability=1.0, gaussian_sigma=(25.0, 25.0)),
+    )
+    cfg = DegradationConfig(
+        scales=(8.0,),
+        first=stage,
+        second=second,
+        final_sinc_probability=0,
+        final_grain=GrainConfig(probability=0),
+        output_mode="native",
+    )
+    source = torch.full((3, 256, 384), 0.5)
+    before, after = [], []
+    old = degrade_image(source, cfg.model_copy(update={"noise_grid_adaptation": False}), 18, trace=before)
+    new = degrade_image(source, cfg, 18, trace=after)
+    noise = next(e for e in after if e["op"] == "noise")
+    assert noise["shape"] == [32, 48] and noise["grid_gain"] == 0.125
+    assert noise["parameter"] == 25 and noise["effective_parameter"] == 3.125
+    assert new.std() < old.std() * 0.14
+    assert [e for e in before if e["op"] != "noise"] == [e for e in after if e["op"] != "noise"]
 
 
 def test_optional_second_order_skip_keeps_final_lq_delivery():
