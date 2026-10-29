@@ -128,3 +128,40 @@ def test_strict_explicit_text_formats_and_invalid_weights(text_assets):
                 source_format="native",
             )
     assert "unknown.weight" in load_file(path)
+
+
+@pytest.mark.parametrize("visual_prefix", ["visual.", "model.visual."])
+def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets, visual_prefix):
+    path = text_assets / "model.safetensors"
+    canonical = load_file(path)
+    config = local_text_config(text_assets)
+    original = load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), dtype=torch.float32)
+    reference = Image.new("RGB", (32, 32), (21, 173, 49))
+    expected = original.encode(["hello"], references=[[reference]])[0]
+    values = {}
+    for key, value in canonical.items():
+        if key.startswith("model.language_model."):
+            key = "model." + key.removeprefix("model.language_model.")
+        elif key.startswith("model.visual."):
+            key = visual_prefix + key.removeprefix("model.visual.")
+        values[key] = value
+    save_file(values, path)
+    rng = torch.get_rng_state().clone()
+    restored = load_qwen_image_21_text(
+        path, text_config=config, device=torch.device("cpu"), dtype=torch.float32, source_format="qwen"
+    )
+    actual = restored.encode(["hello"], references=[[reference]])[0]
+    torch.testing.assert_close(actual.features, expected.features, atol=0, rtol=0)
+    assert actual.image_slots == expected.image_slots and torch.equal(rng, torch.get_rng_state())
+
+    vision_key = next(k for k in values if k.startswith(visual_prefix))
+    alias_prefix = "visual." if visual_prefix == "model.visual." else "model.visual."
+    alias = alias_prefix + vision_key.removeprefix(visual_prefix)
+    save_file({**values, alias: values[vision_key].clone()}, path)
+    with pytest.raises(ValueError, match="Duplicate"):
+        load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), source_format="qwen")
+
+    for bad in (torch.full_like(values[vision_key], float("nan")), values[vision_key].flatten()[:1]):
+        save_file({**values, vision_key: bad}, path)
+        with pytest.raises(ValueError, match="text weight"):
+            load_qwen_image_21_text(path, text_config=config, device=torch.device("cpu"), source_format="qwen")

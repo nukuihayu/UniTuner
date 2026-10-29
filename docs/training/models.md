@@ -81,6 +81,7 @@ Krea2 使用编码器原生特征选层。
 
 Qwen、Qwen2.1、Krea2、H3 可显式选择 `model.text_source_format = "transformers"` 或 `"qwen"`，
 这是权重键格式，不是训练方法。省略时按组件原生默认读取；不要通过改字符串猜测不匹配权重。
+`qwen` 格式的视觉权重兼容 `visual.*` 和 Comfy-Org 的 `model.visual.*`，语言权重使用 `model.layers.*`/`model.embed_tokens.*`/`model.norm.*`。Comfy-Org Qwen-Image-2.1 的 `qwen3vl_8b_bf16.safetensors` 使用这种混合布局，应设置 `text_source_format="qwen"`。同一视觉张量同时提供两种前缀仍会报重复键；模型规格、形状和完整性校验保持严格。
 
 ## 编辑、参考图与图层
 

@@ -28,7 +28,13 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
 from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    load_text_state,
+    prepare_text_model,
+    qwen_vl_base_key,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures
 from unitunner.models.qwen_image_2_1.data.encoding import ImageInput
 from unitunner.models.text_assets import tokenizer_directory
@@ -184,7 +190,8 @@ def load_qwen_image_21_text(
     """Load local config/processor and exact safetensors into a frozen Qwen3-VL base.
 
     Native keys are language_model/visual; transformers keys have model prefixes
-    and an optional validated lm_head; qwen uses model.* language and visual.*.
+    and an optional validated lm_head; qwen uses model.* language and either
+    visual.* or Comfy's model.visual.* vision keys.
     Conversion is explicit and rejects unknown/duplicate/missing/shape/nonfinite
     or dtype-overflow values. No weight downloads/remote code/RNG draws occur. Rotary
     buffers are reconstructed in FP32 after meta construction. The returned owner
@@ -225,8 +232,8 @@ def load_qwen_image_21_text(
             raise ValueError(f"Invalid Qwen Image2.1 text weight prefix: {original}")
         if source_format == "transformers" and original.startswith("model."):
             key = original.removeprefix("model.")
-        elif source_format == "qwen" and original.startswith("model."):
-            key = "language_model." + original.removeprefix("model.")
+        elif source_format == "qwen":
+            key = qwen_vl_base_key(original)
         is_head = source_format != "native" and original == "lm_head.weight"
         if key in tensors:
             raise ValueError(f"Duplicate Qwen Image2.1 text tensor: {original}")

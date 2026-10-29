@@ -36,7 +36,13 @@ from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unitunner.models.components.conditioning import Caption
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    load_text_state,
+    prepare_text_model,
+    qwen_vl_base_key,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.qwen_image.config.model import QwenImageConfig, QwenImageVariant
 from unitunner.models.qwen_image.text.templates import CHINESE_CAPTION_TEMPLATE, ENGLISH_CAPTION_TEMPLATE
 from unitunner.models.text_assets import tokenizer_directory
@@ -314,10 +320,8 @@ def load_qwen_image_text(
     for original, value in iter_tensors(path):
         key = original
         if source_format == "qwen":
-            if original.startswith("visual."):
-                key = "model." + original
-            elif original.startswith("model."):
-                key = "model.language_model." + original.removeprefix("model.")
+            if original.startswith(("visual.", "model.")):
+                key = "model." + qwen_vl_base_key(original)
         if key in tensors:
             raise ValueError(f"Duplicate Qwen text tensor: {original}")
         tensors[key] = value

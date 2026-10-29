@@ -25,6 +25,43 @@ def text_assets(tmp_path):
     torch.set_num_threads(previous)
 
 
+def test_qwen_comfy_visual_prefix_matches_legacy_and_rejects_duplicates(text_assets):
+    config = local_text_config(text_assets)
+    original = load_qwen_image_text(
+        text_assets,
+        source_format="qwen",
+        variant="edit-2511",
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        text_config=config,
+    )
+    expected = original.encode(["hello"]).features
+    path = text_assets / "model.safetensors"
+    legacy = load_file(path)
+    values = {("model." + key if key.startswith("visual.") else key): value for key, value in legacy.items()}
+    save_file(values, path)
+    restored = load_qwen_image_text(
+        path,
+        source_format="qwen",
+        variant="edit-2511",
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        text_config=config,
+    )
+    torch.testing.assert_close(restored.encode(["hello"]).features, expected, atol=0, rtol=0)
+    vision_key = next(key for key in legacy if key.startswith("visual."))
+    save_file({**values, vision_key: legacy[vision_key].clone()}, path)
+    with pytest.raises(ValueError, match="Duplicate"):
+        load_qwen_image_text(
+            path,
+            source_format="qwen",
+            variant="edit-2511",
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+            text_config=config,
+        )
+
+
 def test_qwen_hub_tokenizer_and_processor_are_separate_from_native_weights(text_assets, monkeypatch):
     import shutil
 

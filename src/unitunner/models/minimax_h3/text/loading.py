@@ -14,7 +14,7 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
 
 from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig, TokenizerSourceConfig
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype
+from unitunner.models.components.text_loading import load_text_state, prepare_text_model, qwen_vl_base_key, text_dtype
 from unitunner.models.minimax_h3.text.encoder import TEXT_LAYERS, MiniMaxH3TextEncoder
 from unitunner.models.minimax_h3.text.presentation import TEXT_WIDTH
 from unitunner.models.minimax_h3.text.processor import load_text_processor
@@ -34,7 +34,7 @@ def load_text_encoder(
     """Load exact local safetensors into a frozen50-layer pre-norm Qwen3-VL owner.
 
     Native files contain language_model/visual keys for the truncated model with
-    no final norm. Qwen files use model.* language keys and visual.* vision keys
+    no final norm. Qwen files use model.* language and visual.* or model.visual.* vision keys
     for that same truncated inventory. Transformers files contain model.* base
     keys plus lm_head.weight for the full config depth; validate the entire
     supplied inventory, including discarded layers/norm/head, before selecting
@@ -97,7 +97,7 @@ def load_text_encoder(
             key = original.removeprefix("model.")
         elif source_format == "qwen":
             if original.startswith("model."):
-                key = "language_model." + original.removeprefix("model.")
+                key = qwen_vl_base_key(original)
             elif not original.startswith("visual."):
                 raise ValueError(f"Invalid MiniMaxH3 qwen text key: {original}")
         if key in tensors:

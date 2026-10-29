@@ -67,7 +67,8 @@ def test_selected_layer_order_language_only_and_autocast(assets, single_file):
     assert torch.equal(rng, torch.get_rng_state())
 
 
-def test_strict_full_artifact_validation_and_explicit_formats(assets):
+@pytest.mark.parametrize("qwen_visual_prefix", ["visual.", "model.visual."])
+def test_strict_full_artifact_validation_and_explicit_formats(assets, qwen_visual_prefix):
     write_text_features(assets, (0, 1, 2))
     config = TextEncodingConfig(max_length=256)
     owner = load_krea2_text(
@@ -82,7 +83,11 @@ def test_strict_full_artifact_validation_and_explicit_formats(assets):
         (
             "qwen",
             {
-                ("model." + key.removeprefix("language_model.") if key.startswith("language_model.") else key): value
+                (
+                    "model." + key.removeprefix("language_model.")
+                    if key.startswith("language_model.")
+                    else qwen_visual_prefix + key.removeprefix("visual.")
+                ): value
                 for key, value in native.items()
             },
         ),

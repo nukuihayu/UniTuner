@@ -72,7 +72,7 @@ Auxiliary bundles use `text_encoder/` for FLUX CLIP and `image_encoder/model.saf
 
 `[model.text] max_length` is optional only for families supporting overrides: Z-Image defaults to 512; MOSS to 4096 (maximum 4096); FLUX to 512 (maximum 512); Krea2 to 512. Other families use fixed native budgets and reject explicit overrides. Krea2 does not expose a layer-selection list for the text encoder.
 
-Qwen, Qwen 2.1, Krea2, and H3 can explicitly choose `model.text_source_format = "transformers"` or `"qwen"`. This selects a weight-key format. Omission uses the native component default; changing the string does not repair incompatible weights.
+Qwen, Qwen 2.1, Krea2, and H3 can explicitly choose `model.text_source_format = "transformers"` or `"qwen"`. This selects a weight-key format. Omission uses the native component default; changing the string does not repair incompatible weights. For `qwen`, vision keys may use either `visual.*` or Comfy-Org's `model.visual.*`; language keys retain `model.layers.*`/`model.embed_tokens.*`/`model.norm.*`. Comfy-Org's `qwen3vl_8b_bf16.safetensors` in Qwen-Image-2.1 uses this mixed layout: select `text_source_format="qwen"`. Both visual aliases together still fail duplicate validation, and topology/shape validation remains strict.
 
 ## Editing, references, and layers
 

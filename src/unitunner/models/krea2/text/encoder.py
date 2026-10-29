@@ -15,7 +15,13 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextModel, Qwe
 from unitunner.artifacts.tensors import iter_tensors
 from unitunner.config.text import TextEncodingConfig
 from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unitunner.models.components.text_loading import (
+    load_text_state,
+    prepare_text_model,
+    qwen_vl_base_key,
+    text_dtype,
+    text_weight_path,
+)
 from unitunner.models.krea2.config.features import Krea2TextFeatures
 from unitunner.models.text_assets import tokenizer_directory
 
@@ -138,8 +144,8 @@ def load_krea2_text(
     """Strictly validate complete local Qwen3-VL weights, materializing language only.
 
     Native full-base keys are language_model/visual; transformers adds model. and
-    may include lm_head.weight; qwen uses model. for language and visual. for
-    vision. Reject duplicate/missing/extra/invalid tensors, including unused vision
+    may include lm_head.weight; qwen uses model. for language and visual. or
+    model.visual. for vision. Reject duplicate/missing/extra/invalid tensors, including unused vision
     and head tensors. Meta construction preserves RNG. Rebuild rotary buffers in
     FP32, freeze/evaluate the returned model and perform no network requests.
     """
@@ -179,8 +185,8 @@ def load_krea2_text(
             if not original.startswith("model."):
                 raise ValueError(f"Invalid Krea2 text weight prefix: {original}")
             key = original.removeprefix("model.")
-        elif source_format == "qwen" and original.startswith("model."):
-            key = "language_model." + original.removeprefix("model.")
+        elif source_format == "qwen":
+            key = qwen_vl_base_key(original)
         is_head = source_format != "native" and original == "lm_head.weight"
         if key in tensors:
             raise ValueError(f"Duplicate Krea2 text tensor: {original}")

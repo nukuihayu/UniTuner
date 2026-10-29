@@ -14,6 +14,21 @@ from unitunner.models.components.weight_quantization import quantize_model
 from unitunner.precision import FLOAT_DTYPES
 
 
+def qwen_vl_base_key(key: str) -> str:
+    """Map explicit Qwen/Comfy language and vision namespaces to base-model keys.
+
+    Comfy files combine model.layers/embed_tokens/norm with model.visual;
+    older Qwen files use the same language prefix and unprefixed visual keys.
+    Check vision first so it never becomes language_model.visual. Callers keep
+    their own inventory, duplicate, shape and source-format validation.
+    """
+    if key.startswith("model.visual."):
+        return key.removeprefix("model.")
+    if key.startswith("model."):
+        return "language_model." + key.removeprefix("model.")
+    return key
+
+
 def text_weight_path(directory: Path) -> Path:
     """Resolve a local model file or the first standard shard without Hub lookup."""
     if directory.is_file():
