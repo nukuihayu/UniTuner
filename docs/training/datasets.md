@@ -170,7 +170,7 @@ skip_dataset_validation = true
 
 以 [HYPIR 配置与实现](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset) 为基础，保留不同倍率适配、真实 JPEG 和末端 10% grain。
 
-1. 裁剪/水平翻转后，对 HQ 做 USM（weight=0.5，threshold=10，参考核 51）。默认锐化结果同时作为监督 GT 和退化源。输入张量不修改；sharpen_target=false 保留原始 HQ 监督，use_usm=false 同时关闭两者。
+1. 裁剪/水平翻转后，默认直接使用原始 HQ，USM 关闭。显式 use_usm=true 可启用锐化（weight=0.5，threshold=10，参考核 51）；此时 sharpen_target=true 会同时锐化监督 GT 和退化源，设 false 则保留原始 HQ 监督。输入张量不修改。
 2. 第一阶段 blur/sinc → resize → Gaussian/Poisson → JPEG。
 3. 第二阶段可选 blur/sinc → resize → Gaussian/Poisson。
 4. 等概率执行「回最终 LQ 尺寸 + final sinc → JPEG」或「JPEG → 回最终 LQ 尺寸 + final sinc」。
@@ -183,7 +183,7 @@ scales = [2.0, 4.0, 6.0, 8.0]
 reference_resolution = 512
 resolution_exponent = 0.5
 high_scale_protection = true
-use_usm = true
+use_usm = false
 sharpen_target = true
 
 [dataset.groups.synthetic.degradation.final_grain]
@@ -200,7 +200,7 @@ HYPIR 默认输入 512、x4、固定像素核。本项目空间适配是额外�
 
 两阶段采集噪声必加，Gaussian/Poisson 各 50%，灰噪声 40%；sigma [1,30]/[1,25]，Poisson scale [0.05,3]/[0.05,2.5]。加噪后 clip、不立即量化；仅 Poisson 采样信号预先量化并统计颜色数。末端 grain 为相关亮度噪声，RMS [1,8]/255，相关半径 [0.3,0.8] 个**输出像素**，不乘空间系数或倍率。整体启用率就是 10%。
 
-两阶段默认真实 JPEG quality [30,95]、显式 4:2:0；WebP/JPEG2000 仍可通过 compression.probabilities 选择（默认 [1,0,0]），重压缩默认关闭。HYPIR 使用浮点 DiffJPEG，两者存在量化和色度重建差异。实测其补零至 16 倍数会影响非整倍数 LQ 的边缘，不移植这一行为，不承诺逐像素复刻。
+两阶段默认混合真实 JPEG/WebP：第一阶段 85%/15%，第二阶段 80%/20%。JPEG quality [30,95]、显式 4:2:0，WebP quality [45,98]。JPEG2000 仍可通过 compression.probabilities 选择，默认 0%；重压缩默认关闭。HYPIR 使用浮点 DiffJPEG，两者存在量化和色度重建差异。实测其补零至 16 倍数会影响非整倍数 LQ 的边缘，不移植这一行为，不承诺逐像素复刻。
 
 训练和标定共享 degrade_pair 返回 LQ 与监督 GT；degrade_image 仅用于返回 LQ 的诊断。native 输出在 LQ 网格量化、跳过末端 grain，放大它不能替代训练输出。独立算子随机流确保 grain 开关不影响其他抽样，trace 记录实际尺寸、核、采集噪声、编码和 grain。
 

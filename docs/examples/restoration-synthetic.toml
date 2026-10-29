@@ -77,7 +77,7 @@ reference_resolution = 512
 resolution_exponent = 0.5
 high_scale_protection = true
 second_order_probability = 1.0
-use_usm = true
+use_usm = false
 sharpen_target = true
 resize_antialias = false
 

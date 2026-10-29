@@ -170,7 +170,7 @@ The switch itself does not change resume identity, allowing unchanged data to re
 
 Based on [HYPIR's dataset implementation](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset), retaining scale adaptation, real JPEG and 10% final grain.
 
-1. Crop/paired flip, then USM (weight 0.5, threshold 10, reference support 51). Sharpened HQ becomes both source and supervised GT. Input is immutable; sharpen_target=false preserves original supervision, use_usm=false disables both.
+1. Crop/paired flip, then use original HQ by default; USM is disabled. Explicit use_usm=true enables sharpening (weight 0.5, threshold 10, reference support 51). When enabled, sharpen_target=true also sharpens supervised GT; false preserves original supervision. Input is immutable.
 2. First blur/sinc → resize → Gaussian/Poisson → JPEG.
 3. Second optional blur/sinc → resize → Gaussian/Poisson.
 4. Equal-probability native [resize+sinc] → JPEG or JPEG → [resize+sinc].
@@ -183,7 +183,7 @@ scales = [2.0, 4.0, 6.0, 8.0]
 reference_resolution = 512
 resolution_exponent = 0.5
 high_scale_protection = true
-use_usm = true
+use_usm = false
 sharpen_target = true
 
 [dataset.groups.synthetic.degradation.final_grain]
@@ -200,7 +200,7 @@ Base support is 7..21, sigma [0.2,3]/[0.2,1.5], with six kernel probabilities [0
 
 Both acquisition stages select Gaussian/Poisson equally, with 40% gray probability. Sigma [1,30]/[1,25]; Poisson scale [0.05,3]/[0.05,2.5]. Clip after addition without rounding; only the Poisson sampling signal is first quantized for unique-level counting. Final correlated luminance grain has RMS [1,8]/255 and radius [0.3,0.8] **output pixels**, without resolution/SR multipliers. Overall occurrence is 10%.
 
-Both stages default to real JPEG quality [30,95], explicit 4:2:0. WebP/JPEG2000 remain configurable through compression.probabilities (default [1,0,0]); recompression is off. HYPIR's float DiffJPEG differs in quantization/chroma reconstruction and can introduce zero-padding border errors on non-multiple-of-16 dimensions. That border behavior is not copied; no pixel-exact parity is claimed.
+Both stages mix real JPEG/WebP by default: 85%/15% in stage one and 80%/20% in stage two. JPEG quality is [30,95] with explicit 4:2:0; WebP quality is [45,98]. JPEG2000 remains configurable through compression.probabilities with default probability zero; recompression is off. HYPIR's float DiffJPEG differs in quantization/chroma reconstruction and can introduce zero-padding border errors on non-multiple-of-16 dimensions. That border behavior is not copied; no pixel-exact parity is claimed.
 
 Training/calibration share degrade_pair for LQ and supervised GT; degrade_image is an LQ-only diagnostic wrapper. Native output quantizes at LQ size and skips final grain; enlarging it is not the training output. Independent operator streams prevent grain toggles from changing other draws; trace records grids, kernels, acquisition noise, codecs and grain.
 
