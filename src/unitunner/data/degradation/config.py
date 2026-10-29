@@ -61,21 +61,26 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """Gaussian/Poisson mixture with a mutually exclusive rare grain category."""
+    """HYPIR acquisition noise: exactly one Gaussian or Poisson draw."""
 
     gaussian_probability: Probability = 0.5
-    grain_probability: Probability = 0.05
-    grain_sigma: Range = (1.0, 8.0)
-    grain_correlation: Range = (0.3, 0.8)
     gaussian_sigma: Range = (1.0, 30.0)
     poisson_scale: Range = (0.05, 3.0)
     gray_probability: Probability = 0.40
 
 
+class GrainConfig(DistributionConfig, frozen=True):
+    """Optional luminance grain added once after alignment, in output pixels."""
+
+    probability: Probability = 0.1
+    sigma: Range = (1.0, 8.0)
+    correlation: Range = (0.3, 0.8)
+
+
 class CompressionConfig(DistributionConfig, frozen=True):
     """JPEG/WebP/JPEG2000 probabilities and codec-native quality ranges."""
 
-    probabilities: Probabilities = (0.85, 0.15, 0.0)
+    probabilities: Probabilities = (1.0, 0.0, 0.0)
     recompression_probability: Probability = 0.0
     jpeg_quality: Range = (30.0, 95.0)
     webp_quality: Range = (45.0, 98.0)
@@ -112,9 +117,6 @@ class SecondNoiseConfig(NoiseConfig, frozen=True):
     """Second-stage camera distribution with independently overridable fields."""
 
     gaussian_probability: Probability = 0.5
-    grain_probability: Probability = 0.05
-    grain_sigma: Range = (1.0, 8.0)
-    grain_correlation: Range = (0.3, 0.8)
     gaussian_sigma: Range = (1.0, 25.0)
     poisson_scale: Range = (0.05, 2.5)
 
@@ -122,7 +124,7 @@ class SecondNoiseConfig(NoiseConfig, frozen=True):
 class SecondCompressionConfig(CompressionConfig, frozen=True):
     """Second-stage codec distribution with independently overridable fields."""
 
-    probabilities: Probabilities = (0.8, 0.2, 0.0)
+    probabilities: Probabilities = (1.0, 0.0, 0.0)
     jpeg_quality: Range = (30.0, 95.0)
     webp_quality: Range = (45.0, 98.0)
     jpeg2000_quality: Range = (200.0, 900.0)
@@ -154,11 +156,13 @@ class DegradationConfig(DistributionConfig, frozen=True):
     enabled: bool = False
     scales: tuple[Annotated[float, Field(ge=1, le=16)], ...] | None = None
     scale_range: Range = (1.0, 8.0)
-    reference_resolution: Annotated[int, Field(ge=32)] = 400
+    reference_resolution: Annotated[int, Field(ge=32)] = 512
     resolution_exponent: Annotated[float, Field(ge=0, le=1)] = 0.5
     high_scale_protection: bool = True
     second_order_probability: Probability = 1.0
     use_usm: bool = True
+    sharpen_target: bool = True
+    final_grain: GrainConfig = Field(default_factory=GrainConfig)
     resize_antialias: bool = False
     output_mode: Literal["aligned", "native"] = "aligned"
     resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (

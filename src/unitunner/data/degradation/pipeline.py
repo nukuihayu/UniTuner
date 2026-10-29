@@ -13,12 +13,19 @@ from numpy.typing import NDArray
 from torch.nn import functional as F
 
 from unitunner.data.degradation import color as image_ops
-from unitunner.data.degradation.config import BlurConfig, CompressionConfig, DegradationConfig, NoiseConfig, StageConfig
+from unitunner.data.degradation.config import (
+    BlurConfig,
+    CompressionConfig,
+    DegradationConfig,
+    GrainConfig,
+    NoiseConfig,
+    StageConfig,
+)
 
 type Pixels = NDArray[np.float32]
 
 
-def _resolution_scale(resolution: int, reference: int = 400, exponent: float = 0.5) -> float:
+def _resolution_scale(resolution: int, reference: int = 512, exponent: float = 0.5) -> float:
     """One HQ-derived spatial multiplier; never multiply again after resize."""
     if resolution < 1 or reference < 1:
         raise ValueError("Resolutions must be positive")
@@ -143,42 +150,44 @@ def add_noise(
     settings: NoiseConfig,
     rng: np.random.Generator,
     *,
-    spatial_scale: float = 1.0,
     trace: list[dict] | None = None,
 ) -> Pixels:
-    """Select exactly one of Gaussian, Poisson or correlated luminance grain."""
-    # HYPIR adds noise to the un-clipped interpolation/filter result, then clips.
-    # Only the Poisson sampling signal is quantized and clipped beforehand.
+    """HYPIR Gaussian/Poisson sampling, followed by clipping without rounding."""
     source = image
-    grain = rng.random() < settings.grain_probability
-    if grain:
-        sigma = _sample(settings.grain_sigma, rng)
-        radius = _sample(settings.grain_correlation, rng) * spatial_scale
-        noise = rng.standard_normal(image.shape[:2]).astype(np.float32)
-        noise = cv2.GaussianBlur(noise, (0, 0), max(0.05, radius))
-        noise -= noise.mean()
-        noise /= max(float(noise.std()), 1e-8)
-        noise = noise[..., None] * (sigma / 255)
-        kind, parameter = "grain", sigma
+    gaussian = rng.random() < settings.gaussian_probability
+    gray = rng.random() < settings.gray_probability
+    if gaussian:
+        sigma = _sample(settings.gaussian_sigma, rng)
+        shape = (*image.shape[:2], 1 if gray else 3)
+        noise = rng.normal(0, sigma / 255, shape)
+        kind, parameter = "gaussian", sigma
     else:
-        gaussian = rng.random() < settings.gaussian_probability
-        gray = rng.random() < settings.gray_probability
-        if gaussian:
-            sigma = _sample(settings.gaussian_sigma, rng)
-            shape = (*image.shape[:2], 1 if gray else 3)
-            noise = rng.normal(0, sigma / 255, shape)
-            kind, parameter = "gaussian", sigma
-        else:
-            signal = (source * np.array([0.2989, 0.5870, 0.1140])).sum(2, keepdims=True) if gray else source
-            signal = (signal * 255).round().clip(0, 255) / 255
-            # BasicSR's Poisson convention: next power of two of unique levels.
-            levels = 2 ** math.ceil(math.log2(max(1, np.unique(signal).size)))
-            amplitude = _sample(settings.poisson_scale, rng)
-            noise = (rng.poisson(signal * levels) / levels - signal) * amplitude
-            kind, parameter = "poisson", amplitude
+        signal = (source * np.array([0.2989, 0.5870, 0.1140])).sum(2, keepdims=True) if gray else source
+        signal = (signal * 255).round().clip(0, 255) / 255
+        levels = 2 ** math.ceil(math.log2(max(1, np.unique(signal).size)))
+        amplitude = _sample(settings.poisson_scale, rng)
+        noise = (rng.poisson(signal * levels) / levels - signal) * amplitude
+        kind, parameter = "poisson", amplitude
     if trace is not None:
         trace.append({"op": "noise", "kind": kind, "parameter": parameter, "shape": list(image.shape[:2])})
     return (source + noise).clip(0, 1).astype(np.float32)
+
+
+def add_grain(
+    image: Pixels, settings: GrainConfig, rng: np.random.Generator, trace: list[dict] | None = None
+) -> Pixels:
+    """Draw a single optional post-alignment grain pass, independent of SR factor."""
+    if rng.random() >= settings.probability:
+        return image
+    sigma = _sample(settings.sigma, rng)
+    radius = _sample(settings.correlation, rng)
+    noise = rng.standard_normal(image.shape[:2]).astype(np.float32)
+    noise = cv2.GaussianBlur(noise, (0, 0), max(0.05, radius))
+    noise -= noise.mean()
+    noise /= max(float(noise.std()), 1e-8)
+    if trace is not None:
+        trace.append({"op": "grain", "sigma": sigma, "correlation": radius, "shape": list(image.shape[:2])})
+    return image + noise[..., None] * (sigma / 255)
 
 
 def compress_image(image: Pixels, codec: str, quality: int) -> Pixels:
@@ -213,7 +222,11 @@ def compress_image(image: Pixels, codec: str, quality: int) -> Pixels:
     if codec == "jpeg2000" and min(height, width) < 32:
         rgb = np.pad(rgb, ((0, max(0, 32 - height)), (0, max(0, 32 - width)), (0, 0)), mode="reflect")
     try:
-        success, encoded = cv2.imencode(extension, rgb[:, :, ::-1], [option, quality])
+        options = [option, quality]
+        if codec == "jpeg":
+            # Make HYPIR's 4:2:0 chroma layout explicit for the real codec too.
+            options += [cv2.IMWRITE_JPEG_SAMPLING_FACTOR, cv2.IMWRITE_JPEG_SAMPLING_FACTOR_420]
+        success, encoded = cv2.imencode(extension, rgb[:, :, ::-1], options)
     except cv2.error as error:
         raise RuntimeError(f"{codec} degradation encoder is unavailable or failed") from error
     if not success:
@@ -260,10 +273,10 @@ def _sample_scale(settings: DegradationConfig, rng: np.random.Generator) -> floa
 
 
 @torch.autocast("cpu", enabled=False)
-def degrade_image(
+def degrade_pair(
     high: torch.Tensor, settings: DegradationConfig, seed: int, *, trace: list[dict] | None = None
-) -> torch.Tensor:
-    """Generate native LQ, optionally aligned to HQ without further degradation.
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return LQ and its HYPIR-style USM supervision target.
 
     Trace contains actual grids, kernels and sampled noise/codec values. It does
     not consume randomness. The original HQ and global random states are intact.
@@ -282,7 +295,7 @@ def degrade_image(
     rng = np.random.default_rng(seed)
     # Stable per-operator streams prevent image-dependent Poisson consumption
     # or optional noise categories from changing subsequent geometry or codecs.
-    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(11)]
+    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(12)]
     image = high.detach().permute(1, 2, 0).numpy().copy()
     height, width = image.shape[:2]
     scale = _sample_scale(settings, rng)
@@ -300,6 +313,11 @@ def degrade_image(
     if settings.use_usm:
         image = _usm(image, spatial)
         record("usm", image)
+    target_high = (
+        torch.from_numpy(image.copy()).permute(2, 0, 1).contiguous()
+        if settings.use_usm and settings.sharpen_target
+        else high.clone()
+    )
 
     def blur(value: Pixels, stage: StageConfig, index: int) -> Pixels:
         blur_rng = streams[(index - 1) * 4]
@@ -334,7 +352,7 @@ def degrade_image(
         )
         record("resize", image, stage=index, factor=resize)
         if noise_rng.random() < stage.noise_probability:
-            image = add_noise(image, stage.noise, noise_rng, spatial_scale=spatial, trace=trace)
+            image = add_noise(image, stage.noise, noise_rng, trace=trace)
         if index == 1 and codec_rng.random() < stage.compression_probability:
             image = _compress(image, stage.compression, codec_rng, trace)
 
@@ -364,6 +382,8 @@ def degrade_image(
     if settings.output_mode == "aligned":
         value = F.interpolate(value[None], size=(height, width), mode="bicubic", align_corners=False)[0]
         record("alignment", value.permute(1, 2, 0).numpy())
+        pixels = add_grain(value.permute(1, 2, 0).numpy(), settings.final_grain, streams[11], trace)
+        value = torch.from_numpy(np.ascontiguousarray(pixels)).permute(2, 0, 1)
     value = (value * 255).round().clamp(0, 255) / 255
     record("quantize", value.permute(1, 2, 0).numpy())
     if rng.random() < settings.gray_probability:
@@ -379,4 +399,11 @@ def degrade_image(
                     value = image_ops.adjust_saturation(value, _sample(settings.saturation, rng))
                 case 3:
                     value = image_ops.adjust_hue(value, float(rng.uniform(*settings.hue)))
-    return value.clamp(0, 1).contiguous()
+    return value.clamp(0, 1).contiguous(), target_high
+
+
+def degrade_image(
+    high: torch.Tensor, settings: DegradationConfig, seed: int, *, trace: list[dict] | None = None
+) -> torch.Tensor:
+    """LQ-only diagnostic wrapper; training/calibration must use degrade_pair."""
+    return degrade_pair(high, settings, seed, trace=trace)[0]

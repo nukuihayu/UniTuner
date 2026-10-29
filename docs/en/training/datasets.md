@@ -168,39 +168,46 @@ The switch itself does not change resume identity, allowing unchanged data to re
 
 ### Synthetic super-resolution degradation
 
-The pipeline restores Real-ESRGAN's fixed ordering while preserving the original supervision target:
+Based on [HYPIR's dataset implementation](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset), retaining scale adaptation, real JPEG and 10% final grain.
 
-1. Optional source USM; stage one blur/sinc → resize → noise → compression.
-2. Optional stage two blur/sinc → resize → noise.
-3. Equal-probability native-LQ delivery: resize + final sinc → compression, or compression → resize + final sinc.
-4. Complete degradation on native LQ, bicubic-align to HQ, then clamp and quantize to 8-bit, following HYPIR restoration ordering. No further noise or encoding follows alignment. Diagnostic native output quantizes on the LQ grid; enlarging it is not equivalent to the training output.
+1. Crop/paired flip, then USM (weight 0.5, threshold 10, reference support 51). Sharpened HQ becomes both source and supervised GT. Input is immutable; sharpen_target=false preserves original supervision, use_usm=false disables both.
+2. First blur/sinc → resize → Gaussian/Poisson → JPEG.
+3. Second optional blur/sinc → resize → Gaussian/Poisson.
+4. Equal-probability native [resize+sinc] → JPEG or JPEG → [resize+sinc].
+5. Bicubic back to HQ, **one grain pass with 10% probability**, then clipping and 8-bit quantization. Grain never participates in acquisition noise and is not subsequently resized or compressed.
 
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
 scales = [2.0, 4.0, 6.0, 8.0]
-reference_resolution = 400
+reference_resolution = 512
 resolution_exponent = 0.5
-second_order_probability = 1.0
+high_scale_protection = true
 use_usm = true
-resize_antialias = false
+sharpen_target = true
+
+[dataset.groups.synthetic.degradation.final_grain]
+probability = 0.1
+sigma = [1.0, 8.0]
+correlation = [0.3, 0.8]
 ```
 
-Official kernels are fixed pixel distributions, not resolution-calibrated parameters. The official dataset pre-crops to 400 before degradation and then crops training patches to 256. We use 400 as a configurable reference, not a camera calibration. Compute once per sample: `k=clamp((HQ_short_edge/reference_resolution)^resolution_exponent,0.5,2)`. At 256/400/512/1024/1280/2048 this gives about 0.80/1.00/1.13/1.60/1.79/2.00. Apply it to both stages' sigma/support and sinc support/inverse cutoff without recomputing after intermediate resize. Set exponent=0 to disable resolution adaptation. Noise amplitudes, probabilities and codec quality are not spatial quantities and are not scaled.
+HYPIR uses fixed pixel kernels at 512 and x4. Our extension computes `k=clamp((HQ_short/reference_resolution)^resolution_exponent,0.5,2)` once: 256/512/1024/1280/2048 gives 0.707/1/1.414/1.581/2. It scales sigma, support and inverse sinc cutoff, not noise amplitudes or JPEG 8×8 blocks.
 
-Reference blur sigma is [0.2,3]/[0.2,1.5], with base support 7..21 and 80% second blur. Each active stage filter substitutes sinc 10% of the time. Final sinc is 80%. Stage cutoff uses π/3..π for small base kernels and π/5..π for sizes >=13; final cutoff is π/3..π. Sinc is untapered. Base resize ranges are [0.15,1.5]/[0.3,1.2].
+Above x4, `r=min(1,4/scale)`, second downsampling becomes `s'=1-(1-s)*r`, with x4/x6/x8 lower bounds 0.30/0.533/0.65. Final sinc uses `max(0.5,k*r)`. Second blur precedes its resize, without repeated grid-based sigma attenuation. Disable high_scale_protection, set resolution_exponent=0 and final_grain.probability=0 for fixed-parameter comparisons.
 
-The project extension `high_scale_protection=true` prevents excessive secondary downsampling beyond x4. With `r=min(1,4/scale)`, second-stage downsample draws become `s'=1-(1-s)*r`: the lower bounds at x4/x6/x8 are 0.30/0.533/0.65. Final sinc uses spatial multiplier `max(0.5,k*r)`. Both blur stages, noise amplitudes and codec qualities remain unchanged; x1..x4 are unaffected. Disable this option as well as resolution adaptation for the original fixed-parameter baseline. Independent operator RNG streams keep geometry and codecs stable when noise categories change.
+Base support is 7..21, sigma [0.2,3]/[0.2,1.5], with six kernel probabilities [0.45,0.25,0.12,0.03,0.12,0.03]. Second blur is 80%; active filters substitute sinc 10% of the time, final sinc is 80%. Stage cutoffs are π/3..π for support <13, otherwise π/5..π; final is π/3..π without taper. Padding kernels to 21 in HYPIR serves batching, not a larger effective support.
 
-[HYPIR 2025](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) retains the standard two-stage ranges, 0.1/0.1/0.8 sinc probabilities and resize_back. Its [batch transform](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/dataset/batch_transform.py) and [noise implementation](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/utils/degradation.py) were checked: clipping follows noise addition (only the Poisson sampling signal is first quantized/clipped), final quantization follows alignment, and stage-two dimensions use an integer target before the random resize factor. HYPIR trains at 512 with x4; our default reference of 400 comes from Real-ESRGAN's pre-crop and is not the same preset. HYPIR also sharpens the supervised GT, while we preserve original HQ and sharpen only the degradation source. CPU codecs differ from GPU DiffJPEG. Independent per-image draws remove the need for its queue compensating for batch-shared resize choices. This is not pixel-exact or full training-distribution parity; extensions have not been validated by restoration training metrics.
+Both acquisition stages select Gaussian/Poisson equally, with 40% gray probability. Sigma [1,30]/[1,25]; Poisson scale [0.05,3]/[0.05,2.5]. Clip after addition without rounding; only the Poisson sampling signal is first quantized for unique-level counting. Final correlated luminance grain has RMS [1,8]/255 and radius [0.3,0.8] **output pixels**, without resolution/SR multipliers. Overall occurrence is 10%.
 
-Each noise pass selects exactly one category: 5% correlated luminance grain, otherwise equally likely Gaussian/Poisson. Gaussian sigma is [1,30]/[1,25], Poisson scale [0.05,3]/[0.05,2.5], gray probability 40%. Poisson follows BasicSR's quantized unique-level convention. Grain is a local extension with sigma [1,8]/255, not a third pass. Two-stage probability of any grain is 9.75%.
+Both stages default to real JPEG quality [30,95], explicit 4:2:0. WebP/JPEG2000 remain configurable through compression.probabilities (default [1,0,0]); recompression is off. HYPIR's float DiffJPEG differs in quantization/chroma reconstruction and can introduce zero-padding border errors on non-multiple-of-16 dimensions. That border behavior is not copied; no pixel-exact parity is claimed.
 
-Each stage encodes once by default: JPEG/WebP probabilities 85%/15% and 80%/20%. JPEG2000 is supported but disabled by default. JPEG quality is [30,95], WebP [45,98]; extra recompression defaults to zero. Real OpenCV codec round trips are not bit-identical to official GPU DiffJPEG. To select the fixed-parameter baseline, disable both grain probabilities, set both codec probabilities to [1,0,0], and set resolution_exponent=0.
+Training/calibration share degrade_pair for LQ and supervised GT; degrade_image is an LQ-only diagnostic wrapper. Native output quantizes at LQ size and skips final grain; enlarging it is not the training output. Independent operator streams prevent grain toggles from changing other draws; trace records grids, kernels, acquisition noise, codecs and grain.
 
-Research and scope: [ResShift](https://github.com/zsyOAOA/ResShift/blob/master/configs/realsr_swinunet_realesrgan256.yaml) provides optional second-order degradation and disabled USM; we expose second_order_probability/use_usm while retaining official defaults 1/true. [BSRGAN](https://github.com/cszn/BSRGAN) explores shuffle and processed sensor noise, deliberately not adopted here. [DiffBIR](https://github.com/XPixelGroup/DiffBIR) and [SUPIR](https://github.com/Fanghua-Yu/SUPIR) motivate target-specific degradation distributions; SUPIR distinguishes light-degradation training, but we do not invent their unreleased training parameters. Optional resize_antialias defaults to false. WebP/grain extensions and spatial adaptation require dataset validation; previews do not establish restoration training gains.
+Paired 50% horizontal flipping and crop-before-degradation remain. HYPIR also enables horizontal flipping and disables rotations; its crop_type=none requires pre-sized 512 images. We preserve multi-size crops and reflection padding. Independent per-image resize draws remove the need for HYPIR's batch-diversity queue.
 
-Legacy scenario, noise gain/budget, late noise, independent grain/smear/sharpen fields are removed and rejected explicitly. Migrate configs and recalibrate; the new policy changes resume identity. The direct API accepts trace=[] to report actual grids, kernels, noise parameters and codecs. output_mode="native" is available for direct previews; datasets and calibration require aligned output.
+Removed stage.noise.grain_probability/grain_sigma/grain_correlation fields must migrate to final_grain. New supervision changes resume identity and requires recalibration. Training losses are unchanged; model quality gains have not been evaluated.
+
 
 ## Editing, references, masks and layers
 

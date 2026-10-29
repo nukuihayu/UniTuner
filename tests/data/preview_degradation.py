@@ -9,7 +9,7 @@ import torch
 from PIL import Image, ImageDraw, ImageOps
 
 from unitunner.data.degradation.config import DegradationConfig
-from unitunner.data.degradation.pipeline import degrade_image
+from unitunner.data.degradation.pipeline import degrade_image, degrade_pair
 
 
 def baseline(config: DegradationConfig) -> DegradationConfig:
@@ -17,8 +17,8 @@ def baseline(config: DegradationConfig) -> DegradationConfig:
     data = config.model_dump()
     data["resolution_exponent"] = 0.0
     data["high_scale_protection"] = False
+    data["final_grain"]["probability"] = 0.0
     for name in ("first", "second"):
-        data[name]["noise"]["grain_probability"] = 0.0
         data[name]["compression"]["probabilities"] = (1.0, 0.0, 0.0)
     return DegradationConfig.model_validate(data)
 
@@ -51,7 +51,8 @@ def main() -> None:
             before = degrade_image(
                 high, cfg.model_copy(update={"high_scale_protection": False}), seed, trace=before_trace
             )
-            result = degrade_image(high, cfg, seed, trace=trace)
+            result, target = degrade_pair(high, cfg, seed, trace=trace)
+            picture(target).save(args.output / f"source_{index}_target.png")
             assert result.shape == high.shape and torch.isfinite(result).all()
             native = degrade_image(high, cfg.model_copy(update={"output_mode": "native"}), seed)
             images = [source, picture(reference), picture(result), picture(native)]
@@ -63,7 +64,7 @@ def main() -> None:
             pair_draw = ImageDraw.Draw(pair)
             for column, (title, im) in enumerate(
                 zip(
-                    ("HQ", "Fixed official parameters (CPU codecs)", "After: resolution + scale protection"),
+                    ("HQ", "Fixed HYPIR parameters (CPU codecs)", "After: resolution + scale protection"),
                     (source, picture(reference), picture(result)),
                     strict=True,
                 )
@@ -82,7 +83,7 @@ def main() -> None:
         y = row * (tile + label)
         for column, (title, im) in enumerate(
             zip(
-                ("HQ", "Fixed official parameters*", "Resolution + codec/grain", "Native LQ (nearest zoom)"),
+                ("HQ", "Fixed HYPIR parameters*", "HYPIR + scale / final grain", "Native LQ (nearest zoom)"),
                 images,
                 strict=True,
             )

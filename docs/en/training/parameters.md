@@ -403,16 +403,17 @@ Weighted DWT band MSE. In restoration this compares decoded RGB output to detach
 
 ## `DegradationConfig`
 
-Fixed Real-ESRGAN ordering and native LQ delivery; see [datasets](datasets.md). 旧场景增益、末端补噪及独立 smear/grain/sharpen 参数已移除；不会静默兼容旧分布。
+HYPIR stage ordering and USM supervision; final grain is a 10% post-alignment extension. See [datasets](datasets.md). 旧阶段 grain 字段迁移到 final_grain。
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
 | `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
-| `reference_resolution / resolution_exponent` | `400 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
+| `reference_resolution / resolution_exponent` | `512 / 0.5` | Single HQ spatial scale clamp((r/ref)^exponent,0.5,2); exponent=0 disables adaptation / HQ 单次空间适配 |
 | `high_scale_protection` | `true` | Above x4, narrow second downsampling and reduce final sinc footprint; false restores baseline / x4 以上限制过度缩小和末端低通 |
 | `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
-| `use_usm` | `true` | BasicSR-style USM on source only; HQ target unchanged / 仅锐化退化源 |
+| `use_usm / sharpen_target` | `true / true` | USM source and supervised GT / 默认同时锐化源与监督目标 |
+| `final_grain` | `subtable` | GrainConfig after alignment / 回原尺寸后的 grain |
 | `resize_antialias` | `false` | Optional antialias for bilinear/bicubic downsampling / 可选抗混叠 |
 | `output_mode` | `aligned` | aligned or native; datasets/calibration require aligned / 原生 LQ 仅用于直接调用 |
 | `resize_modes` | `["area","bilinear","bicubic"]` | Random stage interpolation; nearest is opt-in / 阶段插值候选 |
@@ -457,11 +458,9 @@ Fixed Real-ESRGAN ordering and native LQ delivery; see [datasets](datasets.md). 
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `grain_probability` | `0.05` | Exclusive correlated luminance grain; not an additional pass / 互斥颗粒 |
-| `gaussian_probability` | `0.5` | Conditional on not choosing grain; otherwise Poisson / 非 grain 时的 Gaussian 概率 |
+| `gaussian_probability` | `0.5` | Gaussian vs Poisson / 两种采集噪声的选择概率 |
 | `gaussian_sigma / poisson_scale` | `[1,30] / [0.05,3]` | Official standard deviation (8-bit units) / Poisson amplitude / 官方幅度 |
 | `gray_probability` | `0.4` | Gray vs color Gaussian/Poisson / 灰度噪声概率 |
-| `grain_sigma / grain_correlation` | `[1,8] / [0.3,0.8]` | 8-bit RMS / correlation radius scaled spatially / 颗粒幅度及相关半径 |
 
 ## `SecondNoiseConfig`
 
@@ -469,11 +468,18 @@ Fixed Real-ESRGAN ordering and native LQ delivery; see [datasets](datasets.md). 
 | --- | --- | --- |
 | `gaussian_sigma / poisson_scale` | `[1,25] / [0.05,2.5]` | Other fields inherited / 其余继承 |
 
+## `GrainConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `probability` | `0.1` | One post-alignment draw; skipped for native / 回原尺寸后只抽一次 |
+| `sigma / correlation` | `[1,8] / [0.3,0.8]` | 8-bit RMS and output-pixel radius, no spatial multiplier / 不随倍率或分辨率放大 |
+
 ## `CompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `probabilities` | `[0.85,0.15,0]` | JPEG / WebP / JPEG2000 |
+| `probabilities` | `[1,0,0]` | JPEG / WebP / JPEG2000 |
 | `jpeg_quality / webp_quality / jpeg2000_quality` | `[30,95] / [45,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
 | `recompression_probability` | `0` | Optional extra encoding, disabled in baseline / 默认关闭额外重编码 |
 
@@ -481,7 +487,7 @@ Fixed Real-ESRGAN ordering and native LQ delivery; see [datasets](datasets.md). 
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `probabilities` | `[0.8,0.2,0]` | JPEG / WebP / JPEG2000 |
+| `probabilities` | `[1,0,0]` | JPEG / WebP / JPEG2000 |
 | `jpeg2000_quality` | `[200,900]` | Other quality fields inherited / 其余质量区间继承 |
 
 ## `restore` command

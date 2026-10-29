@@ -168,51 +168,46 @@ skip_dataset_validation = true
 
 ### 合成超分退化
 
-合成退化采用 Real-ESRGAN 固定双阶段，HQ 监督图不变：
+以 [HYPIR 配置与实现](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset) 为基础，保留不同倍率适配、真实 JPEG 和末端 10% grain。
 
-1. 对退化源执行可选 USM；第一阶段 blur/sinc → resize → noise → compression。
-2. 第二阶段可选 blur/sinc → resize → noise。
-3. 等概率执行「回最终 LQ 尺寸 + final sinc → compression」或「compression → 回最终 LQ 尺寸 + final sinc」。
-4. 在真实 LQ 网格完成退化，然后用 bicubic 放大到 HQ 尺寸，最后裁剪并量化到 8-bit，与 HYPIR 的 restoration 顺序一致。对齐放大后不再增加噪声或压缩。诊断用 native 输出直接在 LQ 网格量化，不应再拿它放大来代替训练输出。
+1. 裁剪/水平翻转后，对 HQ 做 USM（weight=0.5，threshold=10，参考核 51）。默认锐化结果同时作为监督 GT 和退化源。输入张量不修改；sharpen_target=false 保留原始 HQ 监督，use_usm=false 同时关闭两者。
+2. 第一阶段 blur/sinc → resize → Gaussian/Poisson → JPEG。
+3. 第二阶段可选 blur/sinc → resize → Gaussian/Poisson。
+4. 等概率执行「回最终 LQ 尺寸 + final sinc → JPEG」或「JPEG → 回最终 LQ 尺寸 + final sinc」。
+5. bicubic 回 HQ 尺寸，**以 10% 概率只添加一次 grain**，最后裁剪、量化到 8-bit。grain 不参与前两阶段噪声，不再被放大或压缩。
 
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
 scales = [2.0, 4.0, 6.0, 8.0]
-reference_resolution = 400
+reference_resolution = 512
 resolution_exponent = 0.5
-second_order_probability = 1.0
+high_scale_protection = true
 use_usm = true
-resize_antialias = false
+sharpen_target = true
 
-[dataset.groups.synthetic.degradation.first.noise]
-grain_probability = 0.05
-[dataset.groups.synthetic.degradation.second.noise]
-grain_probability = 0.05
+[dataset.groups.synthetic.degradation.final_grain]
+probability = 0.1
+sigma = [1.0, 8.0]
+correlation = [0.3, 0.8]
 ```
 
-官方参数本身没有按分辨率动态适配。官方数据集先预裁剪至 400，再在退化后裁 256 的训练块；400 是这里选择的参考尺寸，并不是官方相机标定值。本项目只在样本开始计算一次空间系数：`k=clamp((HQ短边/reference_resolution)^resolution_exponent,0.5,2)`。默认 256/400/512/1024/1280/2048 对应约 0.80/1.00/1.13/1.60/1.79/2.00；两个阶段的 sigma、7～21 基础核支撑、sinc 支撑和截止频率使用这个系数，不按中间网格反复缩放。设 `resolution_exponent=0` 关闭分辨率扩展。噪声强度、编码质量、算子概率不会因分辨率改变。
+HYPIR 默认输入 512、x4、固定像素核。本项目空间适配是额外扩展：只计算一次 `k=clamp((HQ短边/reference_resolution)^resolution_exponent,0.5,2)`。256/512/1024/1280/2048 对应约 0.707/1/1.414/1.581/2，作用于 sigma、核支撑和 sinc 逆截止频率；不缩放噪声幅度和 JPEG 的 8×8 块。
 
-基础采样区间与官方一致：blur sigma 为 [0.2,3]/[0.2,1.5]；第二阶段 blur 概率 80%；阶段 sinc 各占启用滤波的 10%，与普通 blur 互斥；final sinc 概率 80%。阶段 sinc 截止频率根据基础核尺寸使用 π/3～π 或 π/5～π，final 使用 π/3～π，不加 Kaiser 窗。基础 resize 范围为 [0.15,1.5]/[0.3,1.2]。
+超过 x4 的保护继续保留：`r=min(1,4/倍率)`，第二阶段向下 resize 抽样值变为 `s'=1-(1-s)*r`，x4/x6/x8 下限为 0.30/0.533/0.65；final sinc 空间系数为 `max(0.5,k*r)`。第二阶段 blur 在其 resize 之前，不按中间网格重复缩小 sigma。关闭 high_scale_protection、设置 resolution_exponent=0 和 final_grain.probability=0 可比较固定参数基线。
 
-默认开启本项目扩展 `high_scale_protection=true`，专门防止将 x4 预设直接用于 x6/x8 时过度缩小。令 `r=min(1,4/倍率)`，仅对第二阶段向下 resize 的抽样值应用 `s'=1-(1-s)*r`，x4/x6/x8 的下限分别是 0.30/0.533/0.65。final sinc 空间系数改为 `max(0.5,k*r)`，避免高倍率对齐放大后振铃和低通范围过大。第一阶段、第二阶段 blur、噪声幅度和压缩质量不变；x1～x4 不受此开关影响。设 false 可恢复未保护的官方 resize 范围。各算子使用独立随机流，切换噪声类别不会改变后续几何或编码参数。
+基础核支撑 7～21，sigma [0.2,3]/[0.2,1.5]，六种混合核概率 [0.45,0.25,0.12,0.03,0.12,0.03]。第二阶段 blur 80%；启用滤波时各有 10% 替换成 sinc，final sinc 80%。阶段 cutoff 为 π/3～π（基础核<13）或 π/5～π，final 为 π/3～π，不加窗。HYPIR 把小核补零到 21 只是批处理要求，不增加有效支撑。
 
-noise 每次只选一种：默认 grain 5%，其余 95% 在 Gaussian/Poisson 中等概率抽取。两阶段 Gaussian sigma 为 [1,30]/[1,25]，Poisson scale 为 [0.05,3]/[0.05,2.5]，灰噪声概率 40%。Poisson 恢复 BasicSR 的量化颜色数定义。grain 是本项目扩展的轻量相关亮度噪声，sigma [1,8]/255；不作为第三次噪声叠加。每个双阶段样本至少抽到一次 grain 的概率为 9.75%。
+两阶段采集噪声必加，Gaussian/Poisson 各 50%，灰噪声 40%；sigma [1,30]/[1,25]，Poisson scale [0.05,3]/[0.05,2.5]。加噪后 clip、不立即量化；仅 Poisson 采样信号预先量化并统计颜色数。末端 grain 为相关亮度噪声，RMS [1,8]/255，相关半径 [0.3,0.8] 个**输出像素**，不乘空间系数或倍率。整体启用率就是 10%。
 
-压缩每阶段默认执行一次：JPEG/WebP 第一阶段 85%/15%，第二阶段 80%/20%；JPEG2000 支持但默认 0%。JPEG quality [30,95]，WebP [45,98]；重压缩默认关闭。使用真实 OpenCV 编解码，和官方 GPU DiffJPEG 不保证逐像素一致。禁用两阶段 grain、将压缩概率设为 [1,0,0]，同时设 `resolution_exponent=0`，可检查官方固定参数基线。
+两阶段默认真实 JPEG quality [30,95]、显式 4:2:0；WebP/JPEG2000 仍可通过 compression.probabilities 选择（默认 [1,0,0]），重压缩默认关闭。HYPIR 使用浮点 DiffJPEG，两者存在量化和色度重建差异。实测其补零至 16 倍数会影响非整倍数 LQ 的边缘，不移植这一行为，不承诺逐像素复刻。
 
-完整固定参数基线还需要 `high_scale_protection=false`，不能把默认的高倍率保护称为官方算法。
+训练和标定共享 degrade_pair 返回 LQ 与监督 GT；degrade_image 仅用于返回 LQ 的诊断。native 输出在 LQ 网格量化、跳过末端 grain，放大它不能替代训练输出。独立算子随机流确保 grain 开关不影响其他抽样，trace 记录实际尺寸、核、采集噪声、编码和 grain。
 
-现代方法核查与采用范围：
+沿用配对 50% 水平翻转、裁剪后退化；HYPIR 默认也启用水平翻转且关闭旋转。其 crop_type=none 要求预先准备 512 图片，本项目保留多尺寸裁剪及小图反射填充。逐样本独立 resize 抽样无需 HYPIR 弥补批内共享参数的训练队列。
 
-- [HYPIR 2025 配置](https://github.com/XPixelGroup/HYPIR/blob/main/configs/sd2_train.yaml) 继续使用标准两阶段范围、0.1/0.1/0.8 sinc 和 resize_back。已核对 [batch_transform.py](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/dataset/batch_transform.py) 和 [噪声代码](https://github.com/XPixelGroup/HYPIR/blob/main/HYPIR/utils/degradation.py)：加噪后才 clip（Poisson 的采样信号单独量化/clip），对齐放大后才最终量化；第二阶段尺寸先取整目标网格，再乘随机 resize 系数。HYPIR 的固定训练尺寸为 512、倍率为 x4，本项目默认 400 参考分辨率来自 Real-ESRGAN 的预裁块，二者并非相同预设。HYPIR 同时将 USM 后的图作为 GT，本项目仅锐化退化源、保留原始 HQ 监督；HYPIR 使用 GPU DiffJPEG，本项目使用真实 CPU 编解码。这里逐样本独立采样，不需要 HYPIR 为批内共享 resize 参数设计的样本队列。不承诺逐像素或完整训练分布一致。
+旧 stage.noise.grain_probability/grain_sigma/grain_correlation 字段已删除，迁移到 final_grain。监督策略进入 resume identity，需要重新标定，不能静默沿用旧策略。本次不改变训练损失，不声称已获得模型质量提升。
 
-- [ResShift 配置](https://github.com/zsyOAOA/ResShift/blob/master/configs/realsr_swinunet_realesrgan256.yaml) 保留 Real-ESRGAN 参数并增加 second_order_prob=0.5、use_sharp=false。本项目提供 `second_order_probability` 和 `use_usm` 选项，默认仍为 1.0/true。
-- [BSRGAN](https://github.com/cszn/BSRGAN) 扩展摄像噪声和随机排列；为保持官方顺序，本版本没有引入 shuffle/ISP。
-- [DiffBIR](https://github.com/XPixelGroup/DiffBIR)、[SUPIR](https://github.com/Fanghua-Yu/SUPIR) 表明现代恢复训练仍需选择适合目标数据的退化分布；SUPIR 区分轻退化模型。未据此臆造新噪声参数或移植生成式退化网络。
-- 可显式开启 `resize_antialias` 研究抗混叠 resize，默认 false 与官方保持一致。WebP 和低概率 grain 是本次明确限定的扩展，不声称已经获得训练指标提升。
-
-旧的 scenario_probabilities、noise_strength、方差分摊、late_noise_probability、独立 grain/smear/sharpen 等字段已删除，会明确报错；请迁移示例并重新校准训练。策略版本进入 resume identity，不能静默续用旧退化分布。诊断 API 支持 `trace=[]`，记录实际执行尺寸、核、noise 类别/幅度和 codec/quality。`output_mode="native"` 仅供直接预览调用；数据集及标定要求 aligned。
 
 ## 编辑、参考图、掩码和图层
 

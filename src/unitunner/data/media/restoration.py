@@ -12,7 +12,7 @@ from torch import Tensor
 
 from unitunner.data.datasets.restoration import AlignedImagePair
 from unitunner.data.degradation.config import DegradationConfig
-from unitunner.data.degradation.pipeline import degrade_image
+from unitunner.data.degradation.pipeline import degrade_pair
 
 
 def _read_rgb(path: Path) -> NDArray[np.uint8]:
@@ -135,7 +135,7 @@ def iter_aligned_images(
             if degradation is None or not degradation.enabled:
                 raise ValueError("Missing low-quality image requires enabled synthetic degradation")
             high_tensor = tensors[0]
-            low_tensor = degrade_image(high_tensor, degradation, generator.initial_seed())
+            low_tensor, high_tensor = degrade_pair(high_tensor, degradation, generator.initial_seed())
         else:
             low_tensor, high_tensor = tensors
         yield low_tensor * 2 - 1, high_tensor * 2 - 1

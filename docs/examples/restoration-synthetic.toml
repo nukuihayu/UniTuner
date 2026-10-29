@@ -69,18 +69,22 @@ horizontal_flip_probability = 0.5
 enabled = true
 # 合成降采样倍率区间；按对数均匀分布连续采样。
 # Synthetic downsampling factor range, sampled continuously in log space.
-# 倍率独立按对数均匀抽样。连续强度采样：弱约 20%、中约 40%、强约 40%，不切换分档配方。
-# Independently log-uniform scale. Smooth severity: approximately 20% weak, 40% moderate, 40% strong; one pipeline.
 scale_range = [1.0, 8.0]
 # 可选离散小数倍率；填写后覆盖 scale_range。
 # Optional explicit fractional factors override scale_range.
 # scales = [2.5, 4.0, 6.0, 8.0]
-reference_resolution = 400
+reference_resolution = 512
 resolution_exponent = 0.5
 high_scale_protection = true
 second_order_probability = 1.0
 use_usm = true
+sharpen_target = true
 resize_antialias = false
+
+[dataset.groups.main.degradation.final_grain]
+probability = 0.1
+sigma = [1.0, 8.0]
+correlation = [0.3, 0.8]
 
 [method]
 # 训练目标：flow-matching 或 restoration。

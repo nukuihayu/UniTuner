@@ -40,7 +40,7 @@ def test_pad_only_when_required_and_only_once_for_synthetic_hq(tmp_path, monkeyp
         return original(*args, **kwargs)
 
     monkeypatch.setattr(restoration.np, "pad", pad)
-    monkeypatch.setattr(restoration, "degrade_image", lambda high, *args: high.clone())
+    monkeypatch.setattr(restoration, "degrade_pair", lambda high, *args: (high.clone(), high.clone()))
     low, high = restoration.read_aligned_images(
         None if synthetic else path,
         path,

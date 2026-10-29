@@ -13,6 +13,7 @@ pytest.importorskip("cv2")
 from unitunner.data.degradation.config import (
     BlurConfig,
     DegradationConfig,
+    GrainConfig,
     NoiseConfig,
     SecondStageConfig,
     StageConfig,
@@ -21,9 +22,11 @@ from unitunner.data.degradation.pipeline import (
     _resize,
     _resize_scale,
     _resolution_scale,
+    add_grain,
     add_noise,
     compress_image,
     degrade_image,
+    degrade_pair,
     mixed_blur_kernel,
     sinc_kernel,
 )
@@ -66,6 +69,7 @@ def test_fixed_two_stage_order_and_native_delivery_both_branches():
     cfg = DegradationConfig(
         scales=(4.0,),
         use_usm=False,
+        final_grain=GrainConfig(probability=0),
         final_sinc_probability=1,
         first=StageConfig(blur_probability=1, sinc_probability=0),
         second=SecondStageConfig(blur_probability=1, sinc_probability=0),
@@ -92,6 +96,7 @@ def test_native_resize_matches_independent_torch_reference_without_damage(output
     cfg = DegradationConfig(
         scales=(4.0,),
         use_usm=False,
+        final_grain=GrainConfig(probability=0),
         output_mode=output_mode,
         final_sinc_probability=0,
         resize_modes=("bilinear",),
@@ -114,7 +119,9 @@ def test_native_resize_matches_independent_torch_reference_without_damage(output
     torch.testing.assert_close(actual, reference, rtol=0, atol=0)
 
 
-@pytest.mark.parametrize("resolution,expected", [(100, 0.5), (400, 1), (1024, 1.6), (1280, math.sqrt(3.2)), (4096, 2)])
+@pytest.mark.parametrize(
+    "resolution,expected", [(128, 0.5), (512, 1), (1024, math.sqrt(2)), (1280, math.sqrt(2.5)), (4096, 2)]
+)
 def test_resolution_mapping_uses_hq_reference(resolution, expected):
     assert _resolution_scale(resolution) == pytest.approx(expected)
     assert _resolution_scale(resolution, exponent=0) == 1
@@ -148,7 +155,9 @@ def test_sinc_is_untapered_official_circular_filter():
 def test_stage_sinc_replaces_blur_and_uses_same_hq_multiplier():
     cfg = DegradationConfig(
         scales=(8.0,),
+        resolution_exponent=0,
         use_usm=False,
+        final_grain=GrainConfig(probability=0),
         first=StageConfig(sinc_probability=1),
         second=SecondStageConfig(blur_probability=1, sinc_probability=1),
         final_sinc_probability=1,
@@ -177,13 +186,13 @@ def test_codecs_preserve_rgb_and_tiny_grids(codec, quality):
     np.testing.assert_allclose(result.mean((0, 1)), source.mean((0, 1)), atol=0.025)
 
 
-def test_grain_is_exclusive_gray_correlated_and_bounded():
+def test_final_grain_is_gray_correlated_and_bounded():
     source = np.full((128, 128, 3), 0.5, dtype=np.float32)
-    cfg = NoiseConfig(grain_probability=1, grain_sigma=(4.0, 4.0), grain_correlation=(0.8, 0.8))
+    cfg = GrainConfig(probability=1, sigma=(4.0, 4.0), correlation=(0.8, 0.8))
     trace = []
-    result = add_noise(source, cfg, np.random.default_rng(0), trace=trace)
+    result = add_grain(source, cfg, np.random.default_rng(0), trace)
     residual = result - source
-    assert trace[0]["kind"] == "grain" and len(trace) == 1
+    assert trace[0]["op"] == "grain" and len(trace) == 1
     np.testing.assert_array_equal(residual[..., 0], residual[..., 1])
     assert residual.std() * 255 == pytest.approx(4, rel=0.01)
     assert abs(residual.mean()) < 1e-6
@@ -191,29 +200,64 @@ def test_grain_is_exclusive_gray_correlated_and_bounded():
 
 
 def test_noise_mixture_frequency():
-    counts = {"grain": 0, "gaussian": 0, "poisson": 0}
+    counts = {"gaussian": 0, "poisson": 0}
     rng = np.random.default_rng(1)
+    grain_count = 0
     for _ in range(2000):
+        source = np.full((8, 8, 3), 0.5, dtype=np.float32)
         trace = []
-        add_noise(np.full((8, 8, 3), 0.5, dtype=np.float32), NoiseConfig(), rng, trace=trace)
+        add_noise(source, NoiseConfig(), rng, trace=trace)
         counts[trace[0]["kind"]] += 1
-    assert counts["grain"] / 2000 == pytest.approx(0.05, abs=0.015)
-    assert counts["gaussian"] / 2000 == pytest.approx(0.475, abs=0.035)
-    assert counts["poisson"] / 2000 == pytest.approx(0.475, abs=0.035)
+        trace = []
+        add_grain(source, GrainConfig(), rng, trace)
+        grain_count += len(trace)
+    assert counts["gaussian"] / 2000 == pytest.approx(0.5, abs=0.035)
+    assert grain_count / 2000 == pytest.approx(0.1, abs=0.025)
 
 
-def test_noise_changes_do_not_change_geometry_or_codec_parameters():
-    cfg = DegradationConfig(scales=(4.0,))
-    data = cfg.model_dump()
-    for stage in ("first", "second"):
-        data[stage]["noise"]["grain_probability"] = 1.0
-    grain_cfg = DegradationConfig.model_validate(data)
+@pytest.mark.parametrize("scale", [1.0, 4.0, 6.0, 8.0])
+def test_grain_only_runs_once_after_alignment_without_changing_other_draws(scale):
+    cfg = DegradationConfig(scales=(scale,), final_grain=GrainConfig(probability=0))
+    grain_cfg = cfg.model_copy(update={"final_grain": GrainConfig(probability=1)})
     source = torch.from_numpy(np.random.default_rng(4).random((3, 96, 144), dtype=np.float32))
-    for seed in range(12):
-        original, grain = [], []
-        degrade_image(source, cfg, seed, trace=original)
-        degrade_image(source, grain_cfg, seed, trace=grain)
-        assert [e for e in original if e["op"] != "noise"] == [e for e in grain if e["op"] != "noise"]
+    original, grain = [], []
+    degrade_image(source, cfg, 13, trace=original)
+    degrade_image(source, grain_cfg, 13, trace=grain)
+    assert original == [e for e in grain if e["op"] != "grain"]
+    assert [e["op"] for e in grain][-3:] == ["alignment", "grain", "quantize"]
+    assert next(e for e in grain if e["op"] == "grain")["shape"] == [96, 144]
+    assert len([e for e in grain if e["op"] == "noise"]) == 2
+    native = []
+    degrade_image(source, grain_cfg.model_copy(update={"output_mode": "native"}), 13, trace=native)
+    assert not any(e["op"] == "grain" for e in native)
+
+
+@pytest.mark.parametrize("use_usm,sharpen_target", [(True, True), (True, False), (False, True)])
+def test_hypir_usm_supervision_and_input_immutability(use_usm, sharpen_target):
+    source = torch.from_numpy(np.random.default_rng(1).random((3, 64, 96), dtype=np.float32))
+    saved = source.clone()
+    cfg = DegradationConfig(use_usm=use_usm, sharpen_target=sharpen_target, resolution_exponent=0)
+    low, target = degrade_pair(source, cfg, 17)
+    # Independent HYPIR reference: fixed 51-wide Gaussian,
+    # reflect-padded Torch convolution, thresholded soft mask, weight 0.5.
+    import cv2
+
+    axis = cv2.getGaussianKernel(51, 0)
+    kernel = torch.from_numpy((axis @ axis.T).astype(np.float32))[None, None].repeat(3, 1, 1, 1)
+
+    def filtered(value):
+        return F.conv2d(F.pad(value[None], (25, 25, 25, 25), mode="reflect"), kernel, groups=3)[0]
+
+    residual = source - filtered(source)
+    mask = filtered((residual.abs() * 255 > 10).float())
+    expected = mask * (source + 0.5 * residual).clamp(0, 1) + (1 - mask) * source
+    if use_usm and sharpen_target:
+        torch.testing.assert_close(target, expected, rtol=0, atol=2e-6)
+        assert not torch.equal(target, source)
+    else:
+        torch.testing.assert_close(target, source, rtol=0, atol=0)
+    torch.testing.assert_close(source, saved, rtol=0, atol=0)
+    torch.testing.assert_close(low, degrade_image(source, cfg, 17), rtol=0, atol=0)
 
 
 def test_reference_kernel_does_not_depend_on_sr_factor():
@@ -251,10 +295,10 @@ def test_high_scale_protection_preserves_x4_and_limits_secondary_downsampling(sc
 def test_noise_matches_hypir_add_then_clip_semantics(gaussian, gray):
     # Include bicubic/sinc overshoot: pre-clipping would change the residual.
     source = np.random.default_rng(2).uniform(-0.15, 1.15, (48, 64, 3)).astype(np.float32)
-    cfg = NoiseConfig(grain_probability=0, gaussian_probability=float(gaussian), gray_probability=float(gray))
+    cfg = NoiseConfig(gaussian_probability=float(gaussian), gray_probability=float(gray))
     actual = add_noise(source, cfg, np.random.default_rng(17))
     rng = np.random.default_rng(17)
-    rng.random(3)  # grain, Gaussian and gray choices
+    rng.random(2)  # Gaussian and gray choices
     if gaussian:
         sigma = rng.uniform(1, 30)
         residual = rng.normal(0, sigma / 255, (48, 64, 1 if gray else 3))
@@ -270,7 +314,7 @@ def test_noise_matches_hypir_add_then_clip_semantics(gaussian, gray):
 
 
 def test_gaussian_noise_uses_full_official_sigma():
-    cfg = NoiseConfig(grain_probability=0, gaussian_probability=1, gaussian_sigma=(10.0, 10.0), gray_probability=1)
+    cfg = NoiseConfig(gaussian_probability=1, gaussian_sigma=(10.0, 10.0), gray_probability=1)
     result = add_noise(np.full((256, 256, 3), 0.5, dtype=np.float32), cfg, np.random.default_rng(1))
     assert result.std() * 255 == pytest.approx(10, rel=0.02)
     np.testing.assert_array_equal(result[..., 0], result[..., 1])
@@ -325,7 +369,9 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
     assert len(tiles) == len(starts)
     for index, ((low, high), (top, left)) in enumerate(zip(tiles, starts, strict=True)):
         expected = torch.from_numpy(padded[top : top + 32, left : left + 32].copy()).permute(2, 0, 1).float() / 255
-        torch.testing.assert_close(high, expected * 2 - 1, atol=0, rtol=0)
-        expected_low = degrade_image(expected, settings, 19 + index * 1_000_003) if settings else expected
+        expected_low, expected_high = (
+            degrade_pair(expected, settings, 19 + index * 1_000_003) if settings else (expected, expected)
+        )
+        torch.testing.assert_close(high, expected_high * 2 - 1, atol=0, rtol=0)
         torch.testing.assert_close(low, expected_low * 2 - 1, atol=0, rtol=0)
     assert torch.equal(before, torch.get_rng_state())
