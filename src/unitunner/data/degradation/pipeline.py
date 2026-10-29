@@ -145,25 +145,11 @@ def _resize_scale(stage: StageConfig, rng: np.random.Generator) -> float:
     return 1.0
 
 
-def _noise_grid_gain(shape: tuple[int, int], output_size: tuple[int, int]) -> float:
-    """Gently reduce noise amplitude as its output pixel footprint grows.
-
-    This is an engineering normalization, not an exact interpolation/noise model.
-    Use the inverse linear enlargement to the power 0.85 rather than 1.0,
-    retaining more noise at small grids. Larger grids are never amplified.
-    """
-    if min(*shape, *output_size) < 1:
-        raise ValueError("Noise grids must have positive dimensions")
-    ratio = math.sqrt((shape[0] / output_size[0]) * (shape[1] / output_size[1]))
-    return min(1.0, ratio**0.85)
-
-
 def add_noise(
     image: Pixels,
     settings: NoiseConfig,
     rng: np.random.Generator,
     *,
-    output_size: tuple[int, int] | None = None,
     trace: list[dict] | None = None,
 ) -> Pixels:
     """HYPIR Gaussian/Poisson sampling, followed by clipping without rounding."""
@@ -182,16 +168,12 @@ def add_noise(
         amplitude = _sample(settings.poisson_scale, rng)
         noise = (rng.poisson(signal * levels) / levels - signal) * amplitude
         kind, parameter = "poisson", amplitude
-    gain = _noise_grid_gain(image.shape[:2], output_size) if output_size is not None else 1.0
-    noise = noise * gain
     if trace is not None:
         trace.append(
             {
                 "op": "noise",
                 "kind": kind,
                 "parameter": parameter,
-                "effective_parameter": parameter * gain,
-                "grid_gain": gain,
                 "gray": gray,
                 "noise_rms_255": float(np.sqrt(np.mean(noise**2)) * 255),
                 "shape": list(image.shape[:2]),
@@ -379,13 +361,7 @@ def degrade_pair(
         )
         record("resize", image, stage=index, factor=resize)
         if noise_rng.random() < stage.noise_probability:
-            image = add_noise(
-                image,
-                stage.noise,
-                noise_rng,
-                output_size=(height, width),
-                trace=trace,
-            )
+            image = add_noise(image, stage.noise, noise_rng, trace=trace)
         if index == 1 and codec_rng.random() < stage.compression_probability:
             image = _compress(image, stage.compression, codec_rng, trace)
 

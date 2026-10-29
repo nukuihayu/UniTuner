@@ -13,7 +13,7 @@ from unitunner.data.degradation.pipeline import degrade_image, degrade_pair
 
 
 def baseline(config: DegradationConfig) -> DegradationConfig:
-    """Fixed blur kernels and JPEG only; built-in scale/noise adaptation remains."""
+    """Fixed blur kernels and JPEG only; built-in scale adaptation remains."""
     data = config.model_dump()
     data["resolution_exponent"] = 0.0
     data["final_grain"]["probability"] = 0.0
@@ -101,7 +101,7 @@ def main() -> None:
             records.append({"resolution": size, "scale": scale, "trace": trace})
     (args.output / "traces.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
     print(f"Saved {len(rows)} visual samples and 25 resolution/scale checks to {args.output}")
-    print("*Fixed kernels/JPEG-only reference retains built-in scale/noise adaptation; not a native HYPIR run.")
+    print("*Fixed kernels/JPEG-only reference retains built-in scale adaptation; not a native HYPIR run.")
 
 
 if __name__ == "__main__":

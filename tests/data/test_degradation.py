@@ -20,7 +20,6 @@ from unitunner.data.degradation.config import (
     StageConfig,
 )
 from unitunner.data.degradation.pipeline import (
-    _noise_grid_gain,
     _resize,
     _resize_scale,
     _resolution_scale,
@@ -319,42 +318,7 @@ def test_gaussian_noise_uses_full_official_sigma():
 
 
 @pytest.mark.parametrize("scale", [1, 2, 4, 6, 8, 16])
-@pytest.mark.parametrize("gaussian", [False, True])
-def test_grid_adaptation_scales_noise_before_clipping_without_changing_draws(scale, gaussian):
-    source = np.full((128, 192, 3), 0.5, dtype=np.float32)
-    cfg = NoiseConfig(
-        gaussian_probability=float(gaussian),
-        gaussian_sigma=(10.0, 10.0),
-        poisson_scale=(0.05, 0.05),
-        gray_probability=1,
-    )
-    before_trace, after_trace = [], []
-    before = add_noise(source, cfg, np.random.default_rng(1), trace=before_trace)
-    after = add_noise(
-        source,
-        cfg,
-        np.random.default_rng(1),
-        output_size=(128 * scale, 192 * scale),
-        trace=after_trace,
-    )
-    attenuation = scale**0.85
-    np.testing.assert_allclose(after - source, (before - source) / attenuation, atol=6e-8, rtol=0)
-    assert after_trace[0]["parameter"] == before_trace[0]["parameter"]
-    assert after_trace[0]["effective_parameter"] == pytest.approx(before_trace[0]["parameter"] / attenuation)
-    assert after_trace[0]["noise_rms_255"] == pytest.approx(before_trace[0]["noise_rms_255"] / attenuation)
-    if gaussian:
-        assert after.std() * 255 == pytest.approx(10 / attenuation, rel=0.025)
-
-
-def test_noise_grid_gain_uses_actual_rectangular_grid_and_never_amplifies():
-    assert _noise_grid_gain((64, 128), (256, 256)) == pytest.approx((1 / 8) ** 0.425)
-    assert _noise_grid_gain((2048, 3072), (1024, 1536)) == 1
-    assert _noise_grid_gain((89, 89), (1024, 1024)) == pytest.approx((89 / 1024) ** 0.85)
-    with pytest.raises(ValueError):
-        _noise_grid_gain((0, 128), (256, 256))
-
-
-def test_x8_pipeline_limits_gaussian_tail_on_actual_lq_grid():
+def test_pipeline_keeps_hypir_noise_amplitude_at_every_scale(scale):
     stage = StageConfig(
         blur_probability=0, noise_probability=0, compression_probability=0, resize_probabilities=(0.0, 0.0, 1.0)
     )
@@ -365,21 +329,20 @@ def test_x8_pipeline_limits_gaussian_tail_on_actual_lq_grid():
         noise=SecondNoiseConfig(gaussian_probability=1.0, gaussian_sigma=(25.0, 25.0)),
     )
     cfg = DegradationConfig(
-        scales=(8.0,),
+        scales=(float(scale),),
         first=stage,
         second=second,
         final_sinc_probability=0,
         final_grain=GrainConfig(probability=0),
         output_mode="native",
     )
-    source = torch.full((3, 256, 384), 0.5)
+    source = torch.full((3, 512, 768), 0.5)
     trace = []
     result = degrade_image(source, cfg, 18, trace=trace)
     noise = next(e for e in trace if e["op"] == "noise")
-    assert noise["shape"] == [32, 48] and noise["grid_gain"] == pytest.approx(8**-0.85)
+    assert noise["shape"] == [512 // scale, 768 // scale]
     assert noise["parameter"] == 25
-    assert noise["effective_parameter"] == pytest.approx(25 / 8**0.85)
-    assert result.std() * 255 == pytest.approx(25 / 8**0.85, rel=0.06)
+    assert result.std() * 255 == pytest.approx(25, rel=0.06)
 
 
 @pytest.mark.parametrize("removed", ["high_scale_protection", "noise_grid_adaptation"])
