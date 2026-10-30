@@ -12,6 +12,7 @@ from unitunner.models.components.conditioning import Caption
 from unitunner.models.flux.conditioning import FluxCondition, FluxTextFeatures
 from unitunner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, reference_tokens, text_tokens
 from unitunner.models.flux3.transformer import Flux3Transformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 def build_schedule(steps: int, *, shift: float = 16.0) -> Tensor:
@@ -45,7 +46,7 @@ def sample_latents(
     guidance: float | None = None,
     allow_cpu_frozen: bool = False,
 ) -> Tensor:
-    """Return FP32 BCHW packed-VAE latents using explicit noise and LD captions.
+    """Return floating BCHW packed-VAE latents using explicit noise and LD captions.
 
     Base uses [negative,positive] packed samples and unconditional + guidance *
     (conditional-unconditional), defaulting to 50 steps and guidance 4.0.
@@ -55,28 +56,30 @@ def sample_latents(
 
     The caller owns model mode, VAE, text encoding and Gaussian noise policy.
     No input storage, module mode or RNG is changed. Sigma and Euler accumulation
-    remain FP32 with ambient autocast disabled. This is the FP32 inference policy;
-    the official application's BF16 weights/time/noise rounding is not implied.
-    Low precision/quantized weights are rejected until separately validated.
+    retain the caller's floating noise dtype. Transformer compute follows the
+    scoped preview policy or resident floating dtype, including quantized bases.
+    Native timestep rounding remains inside the model boundary.
     """
     if (
         noise.ndim != 4
         or min(noise.shape) < 1
-        or noise.dtype != torch.float32
+        or noise.dtype not in FLOAT_DTYPES.values()
         or noise.shape[1] != model.config.image_channels
         or len(captions) != noise.shape[0]
         or (references and len(references) != noise.shape[0])
     ):
-        raise ValueError("FLUX3 sampling requires nonempty FP32 BCHW noise and one caption/reference row per sample")
+        raise ValueError(
+            "FLUX3 sampling requires nonempty floating BCHW noise and one caption/reference row per sample"
+        )
     if any(
-        parameter.dtype != torch.float32
+        (parameter.is_floating_point() and parameter.dtype == torch.float64)
         or (
             parameter.device != noise.device
             and not (allow_cpu_frozen and parameter.device.type == "cpu" and not parameter.requires_grad)
         )
         for parameter in model.parameters()
     ):
-        raise ValueError("FLUX3 sampling requires FP32 weights on the noise device")
+        raise ValueError("FLUX3 sampling requires supported weights on the noise device")
     distilled = model.config.variant == "distilled"
     if distilled:
         if guidance is not None or negative is not None:
@@ -91,21 +94,21 @@ def sample_latents(
     positive = [
         Flux3Sample(
             image_tokens(value),
-            text_tokens(captions[index]),
-            reference_tokens(references[index]) if references else None,
+            text_tokens(captions[index].to(noise.dtype)),
+            reference_tokens(tuple(value.to(noise.dtype) for value in references[index])) if references else None,
         )
         for index, value in enumerate(noise)
     ]
     samples = positive
     if negative is not None:
         samples = [
-            replace(sample, text=text_tokens(negative[index])) for index, sample in enumerate(positive)
+            replace(sample, text=text_tokens(negative[index].to(noise.dtype))) for index, sample in enumerate(positive)
         ] + positive
     packed = pack_samples(samples, torch.zeros(len(samples), device=noise.device, dtype=torch.float32))
     state = torch.cat([sample.image.values for sample in positive]).clone()
     # Subtract on the native FP32 schedule before conversion to host scalars.
     deltas = (schedule[1:] - schedule[:-1]).tolist()
-    with torch.autocast(noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for current, following, delta in zip(schedule[:-1].tolist(), schedule[1:].tolist(), deltas, strict=True):
             packed = replace(
                 packed,
@@ -117,7 +120,7 @@ def sample_latents(
             if not distilled:
                 unconditional, conditional = prediction.chunk(2)
                 prediction = unconditional + guidance * (conditional - unconditional)
-            state = state + delta * prediction
+            state = state + delta * prediction.to(noise.dtype)
     return state.reshape(noise.shape[0], noise.shape[2], noise.shape[3], noise.shape[1]).permute(0, 3, 1, 2)
 
 
@@ -189,7 +192,9 @@ def generate_latents(
         .to(torch.bfloat16)
         .float()
     )
-    noise = noise.T.reshape(1, model.config.image_channels, height, width).to(parameter.device)
+    noise = noise.T.reshape(1, model.config.image_channels, height, width).to(
+        device=parameter.device, dtype=sampling_dtype(model)
+    )
     return sample_latents(
         model,
         noise,

@@ -7,7 +7,7 @@ from torch import Tensor
 class UniPCState:
     """Own at most two data predictions and one corrected sample for one trajectory.
 
-    The enclosing solver validates FP32 BCFHW geometry and ordered step indices.
+    The enclosing solver validates floating BCFHW geometry and ordered step indices.
     Sigma coefficients stay on CPU as in the native scheduler; the order-two
     corrector's small linear system executes on the sample device. Only the
     default predict-x0/bh2/order2/lower-order-final policy is implemented.
@@ -80,7 +80,7 @@ class UniPCState:
             rhs = torch.tensor(
                 [phi_next / phi, (phi_next / hh - 0.5) * 2 / phi], dtype=sample.dtype, device=sample.device
             )
-            coefficients = torch.linalg.solve(matrix, rhs).to(sample.dtype)
+            coefficients = torch.linalg.solve(matrix.float(), rhs.float()).to(sample.dtype)
             derivatives = torch.stack([(self.history[-2] - m0) / ratio], dim=1)
             residual = torch.einsum("k,bkc...->bc...", coefficients[:-1], derivatives)
         return base - alpha_t * phi * (residual + coefficients[-1] * (data - m0))

@@ -10,6 +10,7 @@ from unitunner.config.sampling import SamplingConfig, validate_image_sampling
 from unitunner.models.components.conditioning import Caption
 from unitunner.models.flux.conditioning import FluxCondition, FluxTextFeatures
 from unitunner.models.moss_image.transformer import MossImageTransformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 def build_schedule(steps: int, *, shift: float = 5.0, training_shift: float = 1.0, total: int = 1000) -> Tensor:
@@ -59,12 +60,12 @@ def sample_latents(
     references: tuple[Tensor, ...] = (),
     use_reference_cache: bool = True,
 ) -> Tensor:
-    """Return normalized FP32 BCHW latents from explicit caller-owned Gaussian noise.
+    """Return normalized floating BCHW latents from explicit caller-owned Gaussian noise.
 
     Positive/negative BLD features may have different caption lengths and BL
     prefix masks. Features/masks move once to the model device. State/velocity
-    accumulation stays FP32; transformer inputs use its parameter dtype with
-    ambient autocast disabled. No RNG is consumed or input storage mutated.
+    accumulation retains the noise dtype; compute uses the scoped preview
+    policy or resident floating dtype. No RNG is consumed or input storage mutated.
     The caller owns eval mode, residency, VAE and parameter installations.
 
     CFG is negative+guidance*(positive-negative). During the half-open SLG
@@ -78,11 +79,11 @@ def sample_latents(
     if (
         noise.ndim != 4
         or not noise.numel()
-        or noise.dtype != torch.float32
+        or noise.dtype not in FLOAT_DTYPES.values()
         or noise.shape[1] != model.config.latent_channels
         or noise.device != parameter.device
     ):
-        raise ValueError("MOSS sampling noise must be nonempty FP32 BCHW on the model device")
+        raise ValueError("MOSS sampling noise must be nonempty floating BCHW on the model device")
     if (
         not math.isfinite(guidance)
         or guidance < 0
@@ -118,17 +119,17 @@ def sample_latents(
                 host.bool(), torch.arange(host.shape[1])[None] < lengths[:, None]
             ):
                 raise ValueError("MOSS sampling masks require nonempty right-padded prefixes")
-    positive = positive.to(device=noise.device, dtype=parameter.dtype)
-    negative = None if negative is None else negative.to(device=noise.device, dtype=parameter.dtype)
+    positive = positive.to(device=noise.device, dtype=sampling_dtype(model))
+    negative = None if negative is None else negative.to(device=noise.device, dtype=sampling_dtype(model))
     positive_mask = None if positive_mask is None else positive_mask.to(noise.device)
     negative_mask = None if negative_mask is None else negative_mask.to(noise.device)
     times = build_schedule(steps, shift=shift, training_shift=training_shift)
     native_times = (times[:-1] * 1000).to(noise.device)
     latents = noise.clone()
-    references = tuple(value.to(device=noise.device, dtype=parameter.dtype) for value in references)
+    references = tuple(value.to(device=noise.device, dtype=sampling_dtype(model)) for value in references)
     if bool(references) != (model.config.variant == "edit"):
         raise ValueError("MOSS edit requires references; base/sft do not accept them")
-    with torch.autocast(device_type=noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         caches: dict[tuple[int, ...], tuple[tuple[Tensor, Tensor], ...]] = {}
 
         def predict(
@@ -142,7 +143,7 @@ def sample_latents(
             return model(inputs, time, text, mask, skip_layers=skipped, references=references).float()
 
         for index in range(len(times) - 1):
-            inputs = latents.to(parameter.dtype)
+            inputs = latents.to(sampling_dtype(model))
             active = slg_start <= index / (len(times) - 1) < slg_stop
             conditional = predict(inputs, native_times[index], positive, positive_mask)
             prediction = conditional
@@ -160,7 +161,7 @@ def sample_latents(
                 if guidance == 1:
                     prediction = skipped
                 prediction = prediction + slg_scale * (conditional - skipped)
-            latents = latents + float(times[index + 1] - times[index]) * prediction
+            latents = latents + float(times[index + 1] - times[index]) * prediction.to(noise.dtype)
     return latents
 
 
@@ -222,7 +223,7 @@ def generate_latents(
     noise = torch.randn(
         (1, model.config.latent_channels, sampling.height // vae_factor, sampling.width // vae_factor),
         generator=generator,
-    ).to(parameter.device)
+    ).to(device=parameter.device, dtype=sampling_dtype(model))
     return sample_latents(
         model,
         noise,

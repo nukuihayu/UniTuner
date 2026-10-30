@@ -11,6 +11,7 @@ from unitunner.config.sampling import SamplingConfig, validate_image_sampling
 from unitunner.models.flux.conditioning import FluxCondition
 from unitunner.models.krea2.conditioning import Krea2TextFeatures, image_positions, pack_latents, unpack_latents
 from unitunner.models.krea2.transformer import Krea2Transformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 def build_schedule(image_count: int, steps: int, *, mu: float | None = None) -> list[float]:
@@ -42,7 +43,7 @@ def sample_latents(
     mu: float | None = None,
     guidance: float = 5.5,
 ) -> Tensor:
-    """Return FP32 BCHW from explicit noise and BSLD captions without ownership changes.
+    """Return floating BCHW from explicit noise and BSLD captions without ownership changes.
 
     Native image-first patch order uses channel/row/column. Time is normalized
     directly, without the training entrance's1000 roundtrip. CFG above1 requires
@@ -56,13 +57,13 @@ def sample_latents(
         or min(noise.shape) < 1
         or noise.shape[1] != model.config.in_channels
         or any(size % model.config.patch_size for size in noise.shape[-2:])
-        or noise.dtype != torch.float32
-        or parameter.dtype != torch.float32
+        or noise.dtype not in FLOAT_DTYPES.values()
+        or parameter.dtype == torch.float64
         or parameter.device != noise.device
         or not torch.isfinite(noise).all()
         or not math.isfinite(guidance)
     ):
-        raise ValueError("Krea2 sampling requires finite FP32 BCHW noise on the matching model and finite CFG")
+        raise ValueError("Krea2 sampling requires finite floating BCHW noise on the matching model and finite CFG")
     if guidance > 1 and negative is None:
         raise ValueError("Krea2 CFG above1 requires negative text features")
     for branch in (positive, negative) if guidance > 1 else (positive,):
@@ -72,30 +73,32 @@ def sample_latents(
             branch.features.ndim != 4
             or branch.features.shape[0] != noise.shape[0]
             or branch.features.shape[2:] != (model.config.text_layers, model.config.text_dim)
-            or branch.features.dtype != torch.float32
+            or branch.features.dtype not in FLOAT_DTYPES.values()
             or len(branch.lengths) != noise.shape[0]
             or any(type(length) is not int or not 1 <= length <= branch.features.shape[1] for length in branch.lengths)
             or not torch.isfinite(branch.features).all()
         ):
-            raise ValueError("Krea2 requires finite FP32 BSLD features and one nonempty valid prefix per image")
+            raise ValueError("Krea2 requires finite floating BSLD features and one nonempty valid prefix per image")
     state = pack_latents(noise, patch=model.config.patch_size)
     schedule = build_schedule(state.shape[1], steps, mu=mu)
     positions = image_positions(noise, patch=model.config.patch_size, text_count=positive.features.shape[1])
-    context = positive.features.to(noise.device)
-    negative_context = negative.features.to(noise.device) if guidance > 1 and negative is not None else None
+    context = positive.features.to(device=noise.device, dtype=noise.dtype)
+    negative_context = (
+        negative.features.to(device=noise.device, dtype=noise.dtype) if guidance > 1 and negative is not None else None
+    )
     negative_positions = (
         image_positions(noise, patch=model.config.patch_size, text_count=negative.features.shape[1])
         if guidance > 1 and negative is not None
         else None
     )
-    with torch.autocast(noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for current, following in pairwise(schedule):
             time = torch.full((noise.shape[0],), current, dtype=noise.dtype, device=noise.device)
             velocity = model(state, context, time, positions, text_lengths=positive.lengths)
             if negative_context is not None and negative_positions is not None and negative is not None:
                 unconditional = model(state, negative_context, time, negative_positions, text_lengths=negative.lengths)
                 velocity = unconditional + guidance * (velocity - unconditional)
-            state = state + (following - current) * velocity
+            state = state + (following - current) * velocity.to(noise.dtype)
     return unpack_latents(state, patch=model.config.patch_size, height=noise.shape[-2], width=noise.shape[-1])
 
 
@@ -157,7 +160,7 @@ def generate_latents(
     )
     return sample_latents(
         model,
-        noise,
+        noise.to(sampling_dtype(model)),
         positive,
         negative=negative,
         steps=28 if sampling.steps is None else sampling.steps,

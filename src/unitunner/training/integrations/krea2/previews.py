@@ -9,7 +9,7 @@ from unitunner.config.training import TrainingConfig
 from unitunner.data.media.image import save_image
 from unitunner.inference.decoding import decode_on_device
 from unitunner.inference.sampling import generate_latents
-from unitunner.models.components.conditioning import Caption
+from unitunner.models.krea2.conditioning import Krea2TextFeatures
 from unitunner.models.krea2.inference.conditioning import encode_krea2_prompts
 from unitunner.models.krea2.text.encoder import load_krea2_text
 from unitunner.models.krea2.transformer import Krea2Transformer
@@ -29,7 +29,7 @@ class ImagePreviews:
         self.model = model
 
     def __call__(self, update: int) -> None:
-        """Encode CPU captions and decode live FP32 Krea2 samples to truncated RGB PNGs.
+        """Encode CPU captions and decode live Krea2 samples to truncated RGB PNGs.
 
         The shared preview context owns no-grad, eval and RNG restoration. This
         function borrows active adapters, moves only the VAE for decode and returns
@@ -54,7 +54,9 @@ class ImagePreviews:
         directory = Path(config.output.directory) / "previews"
         device = next(model.parameters()).device
 
-        def render(entry: tuple[SamplingConfig, tuple[Caption, Caption | None]]) -> tuple[torch.Tensor, ...]:
+        def render(
+            entry: tuple[SamplingConfig, tuple[Krea2TextFeatures, Krea2TextFeatures | None]],
+        ) -> tuple[torch.Tensor, ...]:
             sample, (positive, negative) = entry
             latents = generate_latents(model, positive, sample, negative=negative)
             pixels = decode_on_device(vae, latents.unsqueeze(2), device=device)

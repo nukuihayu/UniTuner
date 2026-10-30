@@ -12,6 +12,7 @@ from unitunner.models.wan.conditioning import validate_wan_vae
 from unitunner.models.wan.config.sampling import WanSamplingConfig
 from unitunner.models.wan.inference.solvers import WanSolver
 from unitunner.models.wan.transformer import WanTransformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 if TYPE_CHECKING:
     from unitunner.models.wan.inference.inputs import WanVideoInputs
@@ -36,7 +37,7 @@ def sample_latents(
     high_noise_guidance: float | None = None,
     allow_cpu_frozen: bool = False,
 ) -> Tensor:
-    """Integrate caller-supplied FP32 B16FHW noise using one or two resident experts.
+    """Integrate caller-supplied floating B16FHW noise using one or two resident experts.
 
     Caption tuples contain unpadded LD text. Optional conditioning is an already
     assembled native BCFHW image/control input; CLIP features retain their native
@@ -51,8 +52,8 @@ def sample_latents(
     expert transition. Borrow models/conditions without changing mode, weights,
     RNG or input storage. Model offload, SLG and full FLF2V are unsupported here.
     """
-    if noise.ndim != 5 or min(noise.shape) < 1 or noise.dtype != torch.float32:
-        raise ValueError("Wan sampling requires nonempty FP32 BCFHW noise")
+    if noise.ndim != 5 or min(noise.shape) < 1 or noise.dtype not in FLOAT_DTYPES.values():
+        raise ValueError("Wan sampling requires nonempty floating BCFHW noise")
     if model.config.variant == "flf2v":
         raise ValueError("Full FLF2V sampling is not accepted by this application yet")
     if noise.shape[1] != model.config.out_channels:
@@ -73,14 +74,20 @@ def sample_latents(
     high_steps = (False,) * steps if boundary is None else integration.schedule.high_noise_steps(boundary=boundary)
     if conditioning is not None and conditioning.shape[0] != noise.shape[0]:
         raise ValueError("Wan conditioning batch differs from noise")
+    # The native Wan entrance owns FP32 feature/time arithmetic. Keep this
+    # conversion local; the trajectory itself retains the caller's noise dtype.
+    captions = tuple(value.float() for value in captions)
+    negative_captions = None if negative_captions is None else tuple(value.float() for value in negative_captions)
+    conditioning = None if conditioning is None else conditioning.float()
+    image_features = None if image_features is None else image_features.float()
     conditions = None if conditioning is None else tuple(conditioning.unbind())
-    clips = tuple(noise.unbind())
+    clips = tuple(noise.float().unbind())
     sequence_length = math.prod(noise.shape[2:]) // math.prod(model.config.patch_size)
     times = integration.schedule.timesteps.to(device=noise.device, dtype=torch.float32)
     with torch.autocast(noise.device.type, enabled=False):
         for expert in (model,) if high_noise_model is None else (model, high_noise_model):
             if any(
-                parameter.dtype not in (torch.float32, torch.float16, torch.bfloat16)
+                (parameter.is_floating_point() and parameter.dtype == torch.float64)
                 or (
                     parameter.device != noise.device
                     and not (allow_cpu_frozen and parameter.device.type == "cpu" and not parameter.requires_grad)
@@ -99,18 +106,12 @@ def sample_latents(
                     frame_indices,
                 )
     sample = noise
-    compute_dtype = model.patch_embedding.weight.dtype
-    with torch.autocast(
-        noise.device.type,
-        dtype=compute_dtype if compute_dtype != torch.float32 else torch.bfloat16,
-        enabled=compute_dtype != torch.float32,
-        cache_enabled=False,
-    ):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for timestep, high in zip(times.unbind(), high_steps, strict=True):
             expert = high_noise_model if high and high_noise_model is not None else model
             scale = high_noise_guidance if high and high_noise_guidance is not None else guidance
             timesteps = timestep.expand(noise.shape[0])
-            clips = tuple(sample.unbind())
+            clips = tuple(sample.float().unbind())
             positive = torch.stack(
                 expert(
                     clips,
@@ -139,7 +140,7 @@ def sample_latents(
                 if scale is None:
                     raise RuntimeError("Wan CFG scale was not resolved")
                 prediction = negative + scale * (positive - negative)
-            sample = integration.step(prediction, sample)
+            sample = integration.step(prediction.to(sample.dtype), sample)
     return sample
 
 
@@ -157,7 +158,7 @@ def render_wan_video(
 ) -> Tensor:
     """Return CPU RGB CTHW pixels using a local noise generator and shared native sampler.
 
-    Borrow a frozen eval CPU VAE and resident FP32 model(s). Move the VAE to
+    Borrow a frozen eval CPU VAE and resident training model(s). Move the VAE to
     the model device only for decode and return it to CPU even after failure.
     Preserve model mode/weights and global RNG; caller owns adapters/preview
     context. Input conditions stay on CPU and are copied explicitly per render.
@@ -170,7 +171,7 @@ def render_wan_video(
     noise = torch.randn(
         (1, 16, (sampling.frames - 1) // 4 + 1, height // 8, width // 8),
         generator=torch.Generator(device=device).manual_seed(sampling.seed),
-        dtype=torch.float32,
+        dtype=sampling_dtype(model),
         device=device,
     )
     with inference_attention(sampling.attention_backend):
@@ -192,7 +193,7 @@ def render_wan_video(
         )
     try:
         vae.to(device)
-        pixels = vae.decode(latents).detach().cpu()[0]
+        pixels = vae.decode(latents.float()).detach().cpu()[0]
     finally:
         vae.to("cpu")
     if pixels.shape != (3, sampling.frames, height, width) or not torch.isfinite(pixels).all():

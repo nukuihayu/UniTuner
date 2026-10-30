@@ -13,6 +13,7 @@ from unitunner.models.qwen_image.inference.sampling import build_schedule
 from unitunner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures, pack_latents, unpack_latents
 from unitunner.models.qwen_image_2_1.conditioning import unpack_latents as unpack_qwen21_latents
 from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 @torch.no_grad()
@@ -28,27 +29,27 @@ def sample_latents(
     shift: float | None = None,
     guidance: float = 1.0,
 ) -> Tensor:
-    """Return FP32 1C1HW latents from explicit noise without mode/RNG/residency changes.
+    """Return floating 1C1HW latents from explicit noise without mode/RNG/residency changes.
 
     Use native terminal-stretched Qwen sigmas; a one-step request is exactly
     [1,0] with no terminal stretching. Model time follows sigma*1000/1000.
     Plain CFG runs only above1, with separate positive/negative insertion slots;
     no previous-Qwen norm rescaling applies. Reference latents are independent
-    normalized1C1HW images. Optional FP32 1N1 mask uses white for repaint and
+    normalized1C1HW images. Optional floating 1N1 mask uses white for repaint and
     blends the first reference at the next sigma, ending with clean reference.
     """
     if (
         noise.ndim != 5
         or noise.shape[:3] != (1, model.config.in_channels, 1)
         or min(noise.shape) < 1
-        or noise.dtype != torch.float32
+        or noise.dtype not in FLOAT_DTYPES.values()
         or model.config.out_channels != noise.shape[1]
         or not torch.isfinite(noise).all()
     ):
-        raise ValueError("Qwen Image2.1 sampling requires finite FP32 1C1HW native-channel noise")
+        raise ValueError("Qwen Image2.1 sampling requires finite floating 1C1HW native-channel noise")
     parameter = next(model.parameters())
-    if parameter.device != noise.device or parameter.dtype != torch.float32:
-        raise ValueError("Qwen Image2.1 sampling requires a matching FP32 model device")
+    if parameter.device != noise.device or parameter.dtype == torch.float64:
+        raise ValueError("Qwen Image2.1 sampling requires supported weights on the matching model device")
     if type(steps) is not int or steps < 1 or not math.isfinite(guidance):
         raise ValueError("Qwen Image2.1 sampling requires positive integer steps and finite guidance")
     if shift is not None and (not math.isfinite(shift) or shift <= 0 or shift > torch.finfo(torch.float32).max):
@@ -58,11 +59,12 @@ def sample_latents(
             reference.ndim != 5
             or reference.shape[:3] != noise.shape[:3]
             or min(reference.shape) < 1
-            or reference.dtype != noise.dtype
+            or reference.dtype not in FLOAT_DTYPES.values()
             or reference.device != noise.device
             or not torch.isfinite(reference).all()
         ):
             raise ValueError("Qwen Image2.1 references must be finite matching1C1HW with independent positive grids")
+    references = tuple(value.to(noise.dtype) for value in references)
     shapes = tuple((reference.shape[-2], reference.shape[-1]) for reference in references)
     for prompt in (positive, negative) if guidance > 1 else (positive,):
         if prompt is None:
@@ -85,15 +87,17 @@ def sample_latents(
             not references
             or references[0].shape != noise.shape
             or inpainting_mask.shape != (1, count, 1)
-            or inpainting_mask.dtype != noise.dtype
+            or inpainting_mask.dtype not in FLOAT_DTYPES.values()
             or inpainting_mask.device != noise.device
             or not torch.isfinite(inpainting_mask).all()
             or torch.any(inpainting_mask < 0)
             or torch.any(inpainting_mask > 1)
         ):
             raise ValueError(
-                "Qwen Image2.1 inpainting requires a matching first reference and finite FP32 1N1 mask in[0,1]"
+                "Qwen Image2.1 inpainting requires a matching first reference and finite floating 1N1 mask in[0,1]"
             )
+    if inpainting_mask is not None:
+        inpainting_mask = inpainting_mask.to(noise.dtype)
     schedule = (
         torch.tensor([1.0, 0.0], device="cpu", dtype=torch.float32)
         if steps == 1
@@ -104,9 +108,9 @@ def sample_latents(
     grids = (*((1, height, width) for height, width in shapes), (1, noise.shape[-2], noise.shape[-1]))
     initial = pack_latents(noise)
     state = initial
-    positive_context = positive.features.to(device=noise.device, dtype=torch.float32)[None]
+    positive_context = positive.features.to(device=noise.device, dtype=noise.dtype)[None]
     negative_context = (
-        negative.features.to(device=noise.device, dtype=torch.float32)[None]
+        negative.features.to(device=noise.device, dtype=noise.dtype)[None]
         if guidance > 1 and negative is not None
         else None
     )
@@ -122,7 +126,7 @@ def sample_latents(
             image_slots=(slots,),
         )
 
-    with torch.autocast(noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for index, time in enumerate(times):
             prediction = predict(positive_context, positive.image_slots, time)
             if guidance > 1:
@@ -130,12 +134,12 @@ def sample_latents(
                     raise ValueError("Qwen Image2.1 CFG requires negative prompt")
                 unconditioned = predict(negative_context, negative.image_slots, time)
                 prediction = unconditioned + guidance * (prediction - unconditioned)
-            state = state + (schedule[index + 1] - schedule[index]) * prediction
+            state = state + (schedule[index + 1] - schedule[index]) * prediction.to(noise.dtype)
             if inpainting_mask is not None:
                 sigma = schedule[index + 1]
                 control = reference_tokens[0] * (1 - sigma) + initial * sigma
                 state = state * inpainting_mask + control * (1 - inpainting_mask)
-    return unpack_latents(state, height=noise.shape[-2], width=noise.shape[-1])
+    return unpack_latents(state.to(noise.dtype), height=noise.shape[-2], width=noise.shape[-1])
 
 
 @torch.no_grad()
@@ -190,11 +194,13 @@ def generate_latents(
     )
     return sample_latents(
         model,
-        unpack_qwen21_latents(tokens, height=height, width=width).to(parameter.device),
+        unpack_qwen21_latents(tokens, height=height, width=width).to(
+            device=parameter.device, dtype=sampling_dtype(model)
+        ),
         positive,
         negative=negative,
-        references=tuple(value.to(parameter.device) for value in references),
-        inpainting_mask=None if inpainting_mask is None else inpainting_mask.to(parameter.device),
+        references=tuple(value.to(device=parameter.device, dtype=sampling_dtype(model)) for value in references),
+        inpainting_mask=None if inpainting_mask is None else inpainting_mask.to(device=parameter.device),
         steps=25 if sampling.steps is None else sampling.steps,
         shift=sampling.shift,
         guidance=1.0 if sampling.guidance is None else sampling.guidance,

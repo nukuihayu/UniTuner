@@ -10,6 +10,7 @@ from unitunner.models.qwen_image.loading import load_qwen_image_vae
 from unitunner.models.wan.inference.inputs import build_wan_video_inputs
 from unitunner.models.wan.inference.sampling import render_wan_video
 from unitunner.models.wan.transformer import WanTransformer
+from unitunner.precision import sampling_precision
 from unitunner.training.previews.context import preview_context
 
 
@@ -34,8 +35,11 @@ class VideoPreviews:
         if config.preview is None or config.model.vae is None:
             raise ValueError("Wan previews require vae and preview configuration")
         device = next(model.parameters()).device
-        with preview_context(
-            model, additional_models=(branches,), cuda_devices=(device.index or 0,) if device.type == "cuda" else ()
+        with (
+            sampling_precision(config.execution.precision),
+            preview_context(
+                model, additional_models=(branches,), cuda_devices=(device.index or 0,) if device.type == "cuda" else ()
+            ),
         ):
             vae = load_qwen_image_vae(Path(config.model.vae)).eval().requires_grad_(False)
             for index, sampling in enumerate(config.preview.videos):

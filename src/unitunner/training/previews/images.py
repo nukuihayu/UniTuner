@@ -17,7 +17,7 @@ from unitunner.models.moss_image.transformer import MossImageTransformer
 from unitunner.models.qwen_image.transformer import QwenImageTransformer
 from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
 from unitunner.models.z_image.transformer import ZImageTransformer
-from unitunner.precision import compute_context
+from unitunner.precision import compute_context, sampling_precision
 from unitunner.training.methods.restoration import RestorationMethod
 from unitunner.training.previews.context import preview_context
 from unitunner.training.previews.restoration import RestorationPreviews
@@ -63,9 +63,8 @@ class PreviewImages:
         with preview_context(
             model, additional_models=additional, cuda_devices=(device.index or 0,) if device.type == "cuda" else ()
         ):
-            with compute_context(
-                device, "fp32" if config.execution.precision == "auto" else config.execution.precision
-            ):
+            precision = "fp32" if config.execution.precision == "auto" else config.execution.precision
+            with sampling_precision(config.execution.precision), compute_context(device, precision):
                 if method is not None:
                     if self.dataset is None:
                         raise ValueError("Restoration previews require indexed dataset items")

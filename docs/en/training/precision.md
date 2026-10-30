@@ -29,6 +29,8 @@ unitunner train train.toml --device cuda --precision int8_rowwise
 
 Floating frozen adapter bases load directly into the selected BF16/FP16/FP32 storage. Full training and adapter factors retain FP32 master parameters while forward follows the selected AMP policy. Required native FP32 time/projection islands remain protected. Packed codes/scales retain their representation. Restoration VGG and DINO load and compute in BF16 by default independently of denoiser precision; override with `method.restoration.feature_precision = "fp32"`. Restoration VAE convolution compute follows denoiser precision while VAE parameter storage stays FP32.
 
+Training previews use `execution.precision` for transformer compute and sampling state: FP32, BF16 and FP16 are supported without requiring all model weights to be FP32 or temporarily converting live training weights. Images, video and audio/video share this policy; required native high precision operations and VAE decoding handle their own boundaries. Direct sampler calls preserve the input noise's floating dtype for output state, allowing FP32, BF16 or FP16 independently. Preview completion or failure restores training modes, RNG and the scoped precision policy.
+
 FP16 uses fixed loss scaling, default `execution.fp16_loss_scale = 128.0`. Gradients are unscaled before sample normalization and clipping. Nonfinite gradients fail before any optimizer update; lower the configured scale if necessary. Batches are not silently skipped. BF16 needs no loss scaling. Storage and scaling policies participate in resume identity; resume requires a matching numerical identity.
 
 ## Native precision safeguards

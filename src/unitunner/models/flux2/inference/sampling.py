@@ -11,6 +11,7 @@ from unitunner.models.components.conditioning import Caption
 from unitunner.models.flux.conditioning import FluxCondition, FluxTextFeatures
 from unitunner.models.flux2.conditioning import build_image_inputs, pack_text, unpack_image
 from unitunner.models.flux2.transformer import Flux2Transformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 def build_schedule(steps: int, token_count: int, *, shift: float | None = None) -> tuple[float, ...]:
@@ -62,7 +63,7 @@ def sample_latents(
     guidance: float | None = None,
     allow_cpu_frozen: bool = False,
 ) -> Tensor:
-    """Return FP32 BCHW packed-VAE latents from explicit noise and LD captions.
+    """Return floating BCHW packed-VAE latents from explicit noise and LD captions.
 
     Dev uses embedded guidance(default4) and50 steps. Klein base requires negative
     context and external CFG(default4) with50 steps; distilled Klein defaults to
@@ -70,24 +71,24 @@ def sample_latents(
     Reference CHW tensors remain fixed, with native time offsets10,20,... .
     Samples execute independently without inventing attention padding. Text keeps
     every supplied padding token. Caller owns weights, modes, RNG and any initial
-    BF16 value rounding; this FP32 resident policy does not claim BF16 pipeline
-    acceptance. Ambient autocast is disabled and inputs remain unchanged.
+    native value rounding. Preview compute follows training precision; state
+    retains the noise dtype and inputs remain unchanged.
     """
     if (
         noise.ndim != 4
         or min(noise.shape) < 1
-        or noise.dtype != torch.float32
+        or noise.dtype not in FLOAT_DTYPES.values()
         or noise.shape[1] != model.config.in_channels
         or len(captions) != noise.shape[0]
         or (references and len(references) != noise.shape[0])
     ):
-        raise ValueError("FLUX.2 sampling requires FP32 BCHW noise and one caption/reference row per sample")
+        raise ValueError("FLUX.2 sampling requires floating BCHW noise and one caption/reference row per sample")
     if any(
-        p.dtype != torch.float32
+        (p.is_floating_point() and p.dtype == torch.float64)
         or (p.device != noise.device and not (allow_cpu_frozen and p.device.type == "cpu" and not p.requires_grad))
         for p in model.parameters()
     ):
-        raise ValueError("FLUX.2 sampling requires FP32 weights on the noise device")
+        raise ValueError("FLUX.2 sampling requires supported weights on the noise device")
     cfg = model.config.variant == "base"
     if cfg:
         if negative is None or len(negative) != noise.shape[0]:
@@ -108,17 +109,19 @@ def sample_latents(
         shift=shift,
     )
     rows = []
-    with torch.autocast(noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for index, initial in enumerate(noise):
-            image = build_image_inputs(initial, references[index] if references else ())
+            image = build_image_inputs(
+                initial, tuple(value.to(noise.dtype) for value in references[index]) if references else ()
+            )
             context, context_ids = pack_text(captions[index])
-            if context.device != noise.device or context.dtype != torch.float32:
-                raise ValueError("FLUX.2 captions must be FP32 on the noise device")
+            if context.device != noise.device or context.dtype not in FLOAT_DTYPES.values():
+                raise ValueError("FLUX.2 captions must be floating on the noise device")
             negative_context = negative_ids = None
             if negative is not None:
                 negative_context, negative_ids = pack_text(negative[index])
-                if negative_context.device != noise.device or negative_context.dtype != torch.float32:
-                    raise ValueError("FLUX.2 negative captions must be FP32 on the noise device")
+                if negative_context.device != noise.device or negative_context.dtype not in FLOAT_DTYPES.values():
+                    raise ValueError("FLUX.2 negative captions must be floating on the noise device")
             state = image.tokens[:, : image.target_count].clone()
             clean = image.tokens[:, image.target_count :]
             embedded = state.new_full((1,), guidance) if model.config.use_guidance_embed else None
@@ -131,7 +134,7 @@ def sample_latents(
                         tokens, image.ids, time, negative_context.unsqueeze(0), negative_ids.unsqueeze(0), None
                     )
                     prediction = unconditional + guidance * (prediction - unconditional)
-                state = state + (following - current) * prediction[:, : image.target_count]
+                state = state + (following - current) * prediction.to(noise.dtype)[:, : image.target_count]
             rows.append(unpack_image(state[0], height=noise.shape[2], width=noise.shape[3]))
     return torch.stack(rows)
 
@@ -208,7 +211,7 @@ def generate_latents(
     )
     return sample_latents(
         model,
-        noise.to(parameter.device),
+        noise.to(device=parameter.device, dtype=sampling_dtype(model)),
         (positive.features[0].to(device=parameter.device, dtype=torch.float32),),
         negative=None if negative is None else (negative.features[0].to(device=parameter.device, dtype=torch.float32),),
         references=(tuple(value.to(device=parameter.device, dtype=torch.float32) for value in references),),

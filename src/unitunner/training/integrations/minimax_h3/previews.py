@@ -15,6 +15,7 @@ from unitunner.models.minimax_h3.inference.loading import (
 )
 from unitunner.models.minimax_h3.inference.sampling import render_minimax_h3
 from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unitunner.precision import sampling_precision
 from unitunner.training.previews.context import preview_context
 
 
@@ -61,7 +62,10 @@ class AudioVideoPreviews:
         cuda_devices = {device.index or 0} if device.type == "cuda" else set()
         if config.model.minimax_h3 is not None and config.model.minimax_h3.text_device == "cuda":
             cuda_devices.add(torch.cuda.current_device())
-        with preview_context(model, additional_models=(branches,), cuda_devices=tuple(sorted(cuda_devices))):
+        with (
+            sampling_precision(config.execution.precision),
+            preview_context(model, additional_models=(branches,), cuda_devices=tuple(sorted(cuda_devices))),
+        ):
             if self._resources is None:
                 self._resources = load_minimax_h3_render_resources(config.model, samples, self._resolved, device=device)
             resources = self._resources

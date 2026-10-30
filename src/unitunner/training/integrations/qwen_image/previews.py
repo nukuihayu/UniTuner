@@ -30,7 +30,7 @@ class ImagePreviews:
         self.model = model
 
     def __call__(self, update: int) -> None:
-        """Publish each RGB/RGBA layer while borrowing the active FP32 denoiser.
+        """Publish each RGB/RGBA layer while borrowing the active training denoiser.
 
         The caller owns no-grad, evaluation mode and RNG restoration. Reload references
         and encode captions on each preview so edits to image or text assets take effect.

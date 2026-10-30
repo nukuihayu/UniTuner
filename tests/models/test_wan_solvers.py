@@ -19,14 +19,15 @@ def test_native_time_truncation_controls_expert_boundary_without_training_offset
 
 
 @pytest.mark.parametrize("solver", ["euler", "dpm++", "unipc"])
-def test_solver_owns_one_trajectory_and_rejects_invalid_steps_without_advancing(solver):
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float16])
+def test_solver_owns_one_trajectory_and_rejects_invalid_steps_without_advancing(solver, dtype):
     torch.manual_seed(541)
     state = torch.get_rng_state().clone()
     session = WanSolver(3, solver=solver, shift=5.0)
     assert torch.equal(torch.get_rng_state(), state)
-    sample, velocity = torch.randn(1, 16, 2, 4, 4), torch.randn(1, 16, 2, 4, 4)
+    sample, velocity = torch.randn(1, 16, 2, 4, 4).to(dtype), torch.randn(1, 16, 2, 4, 4).to(dtype)
     original_sample, original_velocity = sample.clone(), velocity.clone()
-    with pytest.raises(ValueError, match="matching FP32"):
+    with pytest.raises(ValueError, match="matching floating"):
         session.step(velocity.double(), sample)
     assert session.step_index == 0
     result = session.step(velocity, sample)
@@ -39,6 +40,7 @@ def test_solver_owns_one_trajectory_and_rejects_invalid_steps_without_advancing(
     result = session.step(velocity, result)
     result = session.step(velocity, result)
     assert torch.isfinite(result).all()
+    assert result.dtype == dtype
     assert session.step_index == 3
 
     with pytest.raises(ValueError, match="exhausted"):

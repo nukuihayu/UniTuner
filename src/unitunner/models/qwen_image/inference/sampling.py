@@ -13,6 +13,7 @@ from unitunner.models.components.conditioning import Caption
 from unitunner.models.flux.conditioning import FluxCondition, FluxTextFeatures
 from unitunner.models.qwen_image.conditioning import pack_latents, unpack_latents
 from unitunner.models.qwen_image.transformer import QwenImageTransformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 def build_schedule(steps: int, token_count: int, *, shift: float | None = None, layered: bool = False) -> Tensor:
@@ -81,7 +82,7 @@ def _context(caption: Caption, model: QwenImageTransformer, device: torch.device
         values = values[:, mask[0]]
     if values.shape[1] == 0 or not torch.isfinite(values).all():
         raise ValueError("Qwen caption must contain finite real tokens")
-    return values.to(device=device, dtype=torch.float32)
+    return values.to(device=device)
 
 
 @torch.no_grad()
@@ -98,7 +99,7 @@ def sample_latents(
     guidance: float = 4.0,
     allow_cpu_frozen: bool = False,
 ) -> Tensor:
-    """Return normalized FP32 BCLHW image/layer latents from explicit Gaussian noise.
+    """Return normalized floating BCLHW image/layer latents from explicit Gaussian noise.
 
     One request per call; each ordered reference is normalized1C1HW with even
     spatial extents. Layered noise includes composite plus foreground layers and
@@ -109,30 +110,29 @@ def sample_latents(
     Optional edit mask is1N1 in packed patch order, white for regenerated tokens;
     the first reference must match output geometry. Blend the current state with
     the noised reference after prediction, before Euler, preserving native order.
-    Times remain FP32 through the native0..1000 schedule then division by1000;
-    accumulation is FP32. No RNG, input storage, model mode or residency changes.
-    The caller owns initial BF16 noise/reference/text rounding. This FP32 policy
-    does not claim default BF16 pipeline acceptance.
+    Schedule coefficients retain their native precision; state retains the
+    caller's noise dtype. Preview compute follows training precision without
+    changing model weights, RNG, input storage, mode or residency.
     """
     if (
         noise.ndim != 5
         or noise.shape[0] != 1
         or min(noise.shape) < 1
         or noise.shape[1] != model.config.out_channels
-        or noise.dtype != torch.float32
+        or noise.dtype not in FLOAT_DTYPES.values()
         or any(value % 2 for value in noise.shape[-2:])
         or not torch.isfinite(noise).all()
     ):
-        raise ValueError("Qwen sampling requires finite FP32 nonempty1CLHW noise with even H/W")
+        raise ValueError("Qwen sampling requires finite floating nonempty1CLHW noise with even H/W")
     if any(
-        parameter.dtype != torch.float32
+        (parameter.is_floating_point() and parameter.dtype == torch.float64)
         or (
             parameter.device != noise.device
             and not (allow_cpu_frozen and parameter.device.type == "cpu" and not parameter.requires_grad)
         )
         for parameter in model.parameters()
     ):
-        raise ValueError("Qwen sampling requires FP32 weights on the noise device")
+        raise ValueError("Qwen sampling requires supported weights on the noise device")
     if not math.isfinite(guidance):
         raise ValueError("Qwen guidance must be finite")
     layered = model.config.variant == "layered"
@@ -149,11 +149,12 @@ def sample_latents(
             or min(reference.shape) < 1
             or any(value % 2 for value in reference.shape[-2:])
             or reference.device != noise.device
-            or reference.dtype != torch.float32
+            or reference.dtype not in FLOAT_DTYPES.values()
             or not torch.isfinite(reference).all()
         ):
-            raise ValueError("Qwen references require finite normalized FP32 1C1HW with even H/W on noise device")
+            raise ValueError("Qwen references require finite normalized floating 1C1HW with even H/W on noise device")
         grids.append((1, reference.shape[-2] // 2, reference.shape[-1] // 2))
+    references = tuple(value.to(noise.dtype) for value in references)
     state = pack_latents(noise).clone()
     initial = state
     fixed = None if not references else torch.cat([pack_latents(value) for value in references], dim=1)
@@ -163,21 +164,23 @@ def sample_latents(
         or references[0].shape[-2:] != noise.shape[-2:]
         or inpainting_mask.shape != (1, state.shape[1], 1)
         or inpainting_mask.device != noise.device
-        or inpainting_mask.dtype != torch.float32
+        or inpainting_mask.dtype not in FLOAT_DTYPES.values()
         or not torch.isfinite(inpainting_mask).all()
         or torch.any((inpainting_mask < 0) | (inpainting_mask > 1))
     ):
         raise ValueError("Qwen mask requires an edit reference matching output geometry and finite1N1 weights in[0,1]")
+    if inpainting_mask is not None:
+        inpainting_mask = inpainting_mask.to(noise.dtype)
     source = pack_latents(references[0]) if inpainting_mask is not None else None
-    context = _context(positive, model, noise.device)
+    context = _context(positive, model, noise.device).to(noise.dtype)
     if guidance != 1 and negative is None:
         raise ValueError("Qwen CFG requires a negative caption when guidance differs from one")
-    negative_context = None if negative is None else _context(negative, model, noise.device)
+    negative_context = None if negative is None else _context(negative, model, noise.device).to(noise.dtype)
     count = pack_latents(references[0]).shape[1] if layered else state.shape[1]
     schedule = build_schedule(steps, count, shift=shift, layered=layered).to(noise.device)
     times = schedule[:-1] * 1000
     condition = torch.zeros(1, dtype=torch.int64, device=noise.device) if layered else None
-    with torch.autocast(noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for index, time in enumerate(times):
             tokens = state if fixed is None else torch.cat((state, fixed), dim=1)
             timestep = time.expand(1) / 1000
@@ -195,8 +198,8 @@ def sample_latents(
                     raise RuntimeError("Qwen masked source was not assembled")
                 noised = source * (1 - fraction) + initial * fraction
                 state = state * inpainting_mask + noised * (1.0 - inpainting_mask)
-            state = state + (schedule[index + 1] - schedule[index]) * prediction
-    return unpack_latents(state, layers=noise.shape[2], height=noise.shape[-2], width=noise.shape[-1])
+            state = state + (schedule[index + 1] - schedule[index]) * prediction.to(noise.dtype)
+    return unpack_latents(state.to(noise.dtype), layers=noise.shape[2], height=noise.shape[-2], width=noise.shape[-1])
 
 
 @torch.no_grad()
@@ -265,7 +268,7 @@ def generate_latents(
         )
         .transpose(1, 2)
         .float()
-        .to(parameter.device)
+        .to(device=parameter.device, dtype=sampling_dtype(model))
     )
     return sample_latents(
         model,
@@ -273,7 +276,7 @@ def generate_latents(
         positive,
         negative=negative,
         references=tuple(value.to(device=parameter.device, dtype=torch.float32) for value in references),
-        inpainting_mask=None if inpainting_mask is None else inpainting_mask.to(parameter.device),
+        inpainting_mask=None if inpainting_mask is None else inpainting_mask.to(device=parameter.device),
         allow_cpu_frozen=allow_cpu_frozen,
         steps=25 if sampling.steps is None else sampling.steps,
         shift=sampling.shift,

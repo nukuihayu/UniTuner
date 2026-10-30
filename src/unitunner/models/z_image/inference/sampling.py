@@ -11,6 +11,7 @@ from unitunner.config.sampling import SamplingConfig, validate_image_sampling
 from unitunner.models.components.conditioning import Caption
 from unitunner.models.flux.conditioning import FluxCondition, FluxTextFeatures
 from unitunner.models.z_image.transformer import ZImageTransformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,9 +48,9 @@ def sample_latents(
     shift: float = 3.0,
     guidance: float | None = None,
 ) -> Tensor:
-    """Integrate explicit FP32 BCHW noise into model-normalized BCHW latents.
+    """Integrate explicit floating BCHW noise into model-normalized BCHW latents.
 
-    Model inputs use the model's parameter dtype; the Euler state stays FP32.
+    Model inputs use the model's parameter dtype; the Euler state retains the noise dtype.
     Native time is 1-sigma and solver velocity is minus the native prediction.
     Guidance deliberately preserves positive+guidance*(positive-negative) for
     guidance>1. Missing negative means zero features with the positive mask.
@@ -60,8 +61,8 @@ def sample_latents(
         steps = 9 if model.config.variant == "turbo" else 50
     if guidance is None:
         guidance = 0.0 if model.config.variant == "turbo" else 4.0
-    if noise.ndim != 4 or noise.dtype != torch.float32 or noise.shape[1] != model.config.in_channels:
-        raise ValueError("Sampling noise requires FP32 BCHW with configured channels")
+    if noise.ndim != 4 or noise.dtype not in FLOAT_DTYPES.values() or noise.shape[1] != model.config.in_channels:
+        raise ValueError("Sampling noise requires floating BCHW with configured channels")
     if not math.isfinite(guidance):
         raise ValueError("Z-Image guidance must be finite")
     parameter = next(model.parameters())
@@ -70,25 +71,26 @@ def sample_latents(
     schedule = build_schedule(steps, shift=shift)
     sigmas = schedule.sigmas.to(noise.device)
     native_timesteps = schedule.timesteps.to(noise.device)
-    positive_features = positive.features.to(device=noise.device, dtype=parameter.dtype)
+    positive_features = positive.features.to(device=noise.device, dtype=sampling_dtype(model))
     positive_mask = None if positive.mask is None else positive.mask.to(noise.device)
     negative_features, negative_mask = positive_features, positive_mask
     if guidance > 1:
         if negative is None:
             negative = Caption(torch.zeros_like(positive_features), positive.mask)
-        negative_features = negative.features.to(device=noise.device, dtype=parameter.dtype)
+        negative_features = negative.features.to(device=noise.device, dtype=sampling_dtype(model))
         negative_mask = None if negative.mask is None else negative.mask.to(noise.device)
     latents = noise.clone()
-    for index in range(steps):
-        timesteps = (1000 - native_timesteps[index].expand(latents.shape[0])) / 1000
-        inputs = latents.to(parameter.dtype).unsqueeze(2)
-        prediction = model(inputs, timesteps, positive_features, positive_mask)
-        if guidance > 1:
-            if negative is None:
-                raise RuntimeError("Negative conditioning was not constructed")
-            unconditional = model(inputs, timesteps, negative_features, negative_mask)
-            prediction = prediction + guidance * (prediction - unconditional)
-        latents = latents + (sigmas[index + 1] - sigmas[index]) * -prediction.squeeze(2).float()
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
+        for index in range(steps):
+            timesteps = (1000 - native_timesteps[index].expand(latents.shape[0])) / 1000
+            inputs = latents.to(sampling_dtype(model)).unsqueeze(2)
+            prediction = model(inputs, timesteps, positive_features, positive_mask)
+            if guidance > 1:
+                if negative is None:
+                    raise RuntimeError("Negative conditioning was not constructed")
+                unconditional = model(inputs, timesteps, negative_features, negative_mask)
+                prediction = prediction + guidance * (prediction - unconditional)
+            latents = latents + (sigmas[index + 1] - sigmas[index]) * -prediction.squeeze(2).to(noise.dtype)
     return latents
 
 
@@ -150,7 +152,7 @@ def generate_latents(
     noise = torch.randn(
         (1, model.config.in_channels, sampling.height // vae_factor, sampling.width // vae_factor),
         generator=generator,
-    ).to(parameter.device)
+    ).to(device=parameter.device, dtype=sampling_dtype(model))
     return sample_latents(
         model,
         noise,

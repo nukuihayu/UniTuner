@@ -29,6 +29,8 @@ unitunner train train.toml --device cuda --precision int8_rowwise
 
 Adapter 模式的普通冻结底模直接以所选 BF16／FP16／FP32 存储；全参数训练保留 FP32 主参数，并按选择使用 AMP。Adapter 因子也保留 FP32。模型必要的 FP32 时间／投影区域继续保留，量化码和 scale 不做普通 dtype 转换。修复的 VGG、DINO 默认以 BF16 加载并使用 BF16 AMP，独立于 denoiser 精度；可用 `method.restoration.feature_precision = "fp32"` 覆盖。VAE 的修复卷积计算跟随 denoiser 精度，参数仍保留 FP32。
 
+训练预览的模型计算与采样状态跟随 `execution.precision`，支持 FP32、BF16、FP16，不要求底模权重全部为 FP32，也不会临时转换训练权重。图像、视频及音视频共用这一策略；原生算子必要的高精度计算和 VAE 解码在各自边界处理。直接调用底层采样器时，输出状态保留传入噪声的浮点 dtype，可独立使用 FP32、BF16 或 FP16。预览结束或失败后会恢复训练模式、随机数状态与精度作用域。
+
 FP16 使用固定 loss scale，默认 `execution.fp16_loss_scale = 128.0`，反向后先取消缩放，再按样本数归一化并裁剪。非有限梯度会在任何 optimizer 更新前报错，可显式降低 loss scale；不自动跳过 batch。BF16 不需要 loss scaling。浮点存储策略与缩放设置参与续训身份，恢复训练时必须通过相应身份检查。
 
 ## 原生精度保护

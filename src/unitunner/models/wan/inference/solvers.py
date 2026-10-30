@@ -7,10 +7,11 @@ from torch import Tensor
 
 from unitunner.models.wan.inference.schedules import build_schedule
 from unitunner.models.wan.inference.unipc import UniPCState
+from unitunner.precision import FLOAT_DTYPES
 
 
 class WanSolver:
-    """Own one FP32 inference trajectory and bounded solver prediction history.
+    """Own one floating inference trajectory and bounded solver prediction history.
 
     The caller supplies finite model velocities and sample tensors on CPU/CUDA.
     Each step allocates a sample, preserves both inputs and consumes no RNG.
@@ -31,7 +32,7 @@ class WanSolver:
 
     @torch.no_grad()
     def step(self, velocity: Tensor, sample: Tensor) -> Tensor:
-        """Advance one full trajectory interval for matching FP32 BCFHW inputs.
+        """Advance one full trajectory interval for matching floating BCFHW inputs.
 
         Reject exhausted sessions and history shape/device changes before state
         mutation. Model timesteps are supplied separately from the host schedule;
@@ -41,15 +42,17 @@ class WanSolver:
         if (
             sample.ndim != 5
             or min(sample.shape) < 1
-            or sample.dtype != torch.float32
+            or sample.dtype not in FLOAT_DTYPES.values()
             or velocity.shape != sample.shape
             or velocity.dtype != sample.dtype
             or velocity.device != sample.device
             or sample.device.type not in ("cpu", "cuda")
         ):
-            raise ValueError("Wan solver requires matching FP32 BCFHW sample/velocity on CPU/CUDA")
+            raise ValueError("Wan solver requires matching floating BCFHW sample/velocity on CPU/CUDA")
         previous = self._previous_data
-        if previous is not None and (previous.shape != sample.shape or previous.device != sample.device):
+        if previous is not None and (
+            previous.shape != sample.shape or previous.device != sample.device or previous.dtype != sample.dtype
+        ):
             raise ValueError("Wan solver history differs from current sample shape/device")
         index = self.step_index
         if index >= len(self.schedule.timesteps):
@@ -83,4 +86,4 @@ class WanSolver:
                 )
         self._previous_data = data
         self.step_index += 1
-        return result
+        return result.to(sample.dtype)

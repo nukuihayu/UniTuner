@@ -26,6 +26,7 @@ from unitunner.models.minimax_h3.layout import (
 from unitunner.models.minimax_h3.packing import MiniMaxH3Targets
 from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
 from unitunner.models.minimax_h3.vae import MiniMaxH3AudioVAE, MiniMaxH3VideoVAE
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 _CPU = torch.device("cpu")
 
@@ -67,23 +68,23 @@ def _validate_initial(
     conditions: tuple[Tensor, ...],
     allow_cpu_frozen: bool,
 ) -> None:
-    """Validate finite native inputs and resident FP32 model ownership once before sampling."""
+    """Validate finite native inputs and resident model ownership once before sampling."""
     expected_video = (1, 24, layout.target_video.frames, layout.target_video.height, layout.target_video.width)
     if tuple(video.shape) != expected_video or tuple(audio.shape) != (1, 32, 2, layout.target_audio_frames):
         raise ValueError("MiniMaxH3 sampling requires native B=1 target geometry matching the layout")
     if text.shape != (1, layout.text_length, model.config.text_dim) or tags.shape != (1, layout.text_length):
         raise ValueError("MiniMaxH3 sampling text/tags differ from layout and model text width")
-    if text.dtype not in (torch.float32, torch.bfloat16) or not torch.isfinite(text).all():
-        raise ValueError("MiniMaxH3 sampling text must be finite FP32 or native BF16 rows")
+    if text.dtype not in FLOAT_DTYPES.values() or not torch.isfinite(text).all():
+        raise ValueError("MiniMaxH3 sampling text must be finite FP32/BF16/FP16 rows")
     if tags.dtype != torch.int64:
         raise ValueError("MiniMaxH3 sampling modality tags must be int64")
     if any(
-        value.dtype != torch.float32 or value.device != video.device or not torch.isfinite(value).all()
+        value.dtype not in FLOAT_DTYPES.values() or value.device != video.device or not torch.isfinite(value).all()
         for value in (video, audio, *conditions)
     ):
-        raise ValueError("MiniMaxH3 sampling targets/conditions must be finite FP32 on one device")
+        raise ValueError("MiniMaxH3 sampling targets/conditions must be finite floating on one device")
     if any(
-        parameter.dtype not in (torch.float32, torch.float16, torch.bfloat16)
+        (parameter.is_floating_point() and parameter.dtype == torch.float64)
         or (
             parameter.device != video.device
             and not (allow_cpu_frozen and parameter.device.type == "cpu" and not parameter.requires_grad)
@@ -113,12 +114,12 @@ def sample_latents(
     x0_callback: Callable[[int, Tensor, Tensor], None] | None = None,
     allow_cpu_frozen: bool = False,
 ) -> MiniMaxH3Targets:
-    """Integrate explicit FP32 B24FHW/B32ST noise with native dataward Euler updates.
+    """Integrate explicit floating B24FHW/B32ST noise with native dataward Euler updates.
 
     Model clean times are1-sigma. Preserve video/audio independent FP64 schedule
     deltas before casting to target dtype: x_next=x+delta*(x0-eps). Conditions
     are already augmented and remain fixed across steps. Borrow model mode,
-    RNG, parameters and inputs without changing them. Disable ambient autocast.
+    RNG, parameters and inputs without changing them. Use the scoped preview compute policy or resident floating dtype.
     Optional x0 snapshots use x+sigma*velocity before each update; callbacks
     receive independent estimates, not live sampling storage.
     """
@@ -138,12 +139,7 @@ def sample_latents(
         raise ValueError("MiniMaxH3 sampling condition clean coefficients must be finite in[0,1]")
     schedule = build_schedule(steps, video_shift=video_shift, audio_shift=audio_shift, device=video_noise.device)
     video, audio = video_noise, audio_noise
-    with torch.autocast(
-        video.device.type,
-        dtype=model.dtype if model.dtype != torch.float32 else torch.bfloat16,
-        enabled=model.dtype != torch.float32,
-        cache_enabled=False,
-    ):
+    with sampling_context(model, video.device, state_dtype=video.dtype):
         for index in range(steps):
             sigma_video = schedule.video[index].to(dtype=torch.float32)
             sigma_audio = schedule.audio[index].to(dtype=torch.float32)
@@ -170,8 +166,8 @@ def sample_latents(
                 )
             video_delta = (schedule.video[index] - schedule.video[index + 1]).to(video)
             audio_delta = (schedule.audio[index] - schedule.audio[index + 1]).to(audio)
-            video = video + video_delta * prediction.video
-            audio = audio + audio_delta * prediction.audio
+            video = video + video_delta * prediction.video.to(video.dtype)
+            audio = audio + audio_delta * prediction.audio.to(audio.dtype)
             if step_callback is not None:
                 step_callback(index + 1, steps)
     return MiniMaxH3Targets(video, audio)
@@ -211,7 +207,7 @@ def sample_seeded_latents(
     x0_callback: Callable[[int, Tensor, Tensor], None] | None = None,
     allow_cpu_frozen: bool = False,
 ) -> MiniMaxH3Targets:
-    """Draw one CPU seed stream and return owned CPU FP32 joint sampling results.
+    """Draw one CPU seed stream and return owned CPU floating joint sampling results.
 
     Preserve original video→audio→visual conditions→audio conditions RNG order.
     Original generation rounds text to BF16 before model execution, even for an
@@ -224,10 +220,10 @@ def sample_seeded_latents(
         generator=generator,
         dtype=torch.float32,
         device="cpu",
-    ).to(device)
+    ).to(device=device, dtype=sampling_dtype(model))
     audio = torch.randn(
         (1, 32, 2, layout.target_audio_frames), generator=generator, dtype=torch.float32, device="cpu"
-    ).to(device)
+    ).to(device=device, dtype=sampling_dtype(model))
     visuals = _augment_conditions(visual_conditions, generator=generator, clean=visual_condition_clean, device=device)
     audios = _augment_conditions(audio_conditions, generator=generator, clean=audio_condition_clean, device=device)
     result = sample_latents(
@@ -289,7 +285,7 @@ def render_minimax_h3(
 ) -> MiniMaxH3DecodedImage | MiniMaxH3DecodedAV:
     """Sample jointly and return owned CPU RGB or synchronized RGB/stereo media.
 
-    Borrow a resident FP32 transformer and frozen eval CPU FP32 VAEs. Decode
+    Borrow a resident training transformer and frozen eval CPU FP32 VAEs. Decode
     video then audio, moving one VAE at a time to the transformer device and
     restoring it to CPU even after failure. Single-frame output samples both
     branches but never invokes the audio decoder. Preserve global RNG, model
@@ -343,7 +339,7 @@ def render_minimax_h3(
     try:
         video_vae.to(device)
         with torch.autocast(device.type, enabled=False):
-            pixels = video_vae.decode(latents.video.to(device)).detach().cpu()
+            pixels = video_vae.decode(latents.video.to(device=device, dtype=torch.float32)).detach().cpu()
     finally:
         video_vae.to("cpu")
     if (
@@ -361,7 +357,7 @@ def render_minimax_h3(
     try:
         audio_vae.to(device)
         with torch.autocast(device.type, enabled=False):
-            waveform = audio_vae.decode(latents.audio.to(device)).detach().cpu()
+            waveform = audio_vae.decode(latents.audio.to(device=device, dtype=torch.float32)).detach().cpu()
     finally:
         audio_vae.to("cpu")
     return synchronize_decoded_av(pixels, waveform, frame_count=sampling.frames, fps=sampling.fps)

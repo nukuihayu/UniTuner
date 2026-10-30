@@ -92,8 +92,8 @@ def test_flux3_sampler_matches_individual_euler_and_preserves_inputs(variant):
     assert not result.requires_grad
     with pytest.raises(ValueError, match=r"CFG|guidance"):
         sample_latents(model, noise, positive, steps=3, guidance=float("nan"))
-    with pytest.raises(ValueError, match="FP32 weights"):
-        sample_latents(model.to(torch.bfloat16), noise, positive, negative=negative, steps=3)
+    low = sample_latents(model.to(torch.bfloat16), noise, positive, negative=negative, steps=3)
+    assert low.dtype == noise.dtype and torch.isfinite(low).all()
 
 
 def test_flux3_public_generation_uses_official_token_noise_rounding_and_truncated_png(tmp_path):

@@ -17,6 +17,7 @@ from unitunner.models.flux.conditioning import (
     unpack_latents,
 )
 from unitunner.models.flux.transformer import FluxTransformer
+from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype
 
 
 def build_schedule(steps: int, token_count: int, *, shift: float | None = None) -> tuple[float, ...]:
@@ -60,26 +61,34 @@ def sample_latents(
     guidance: float | None = None,
     allow_cpu_frozen: bool = False,
 ) -> Tensor:
-    """Return model-normalized FP32 BCHW latents from caller-supplied noise.
+    """Return model-normalized floating BCHW latents from caller-supplied noise.
 
     Guidance is a native learned scalar embedding, with Dev/Kontext/Fill defaults
     3.5/2.5/30; it is not classifier-free guidance. Explicit conditions use packed
     reference tokens or Fill masked-image/mask features. Keep references fixed and
     update only target tokens. The caller owns model mode, weights and RNG;
-    ambient autocast is disabled. FP16/BF16/quantized execution remains unsupported.
+    compute follows preview policy or resident floating dtype. State retains the
+    caller's FP32/FP16/BF16 noise dtype, including with quantized base storage.
     """
-    if noise.dtype != torch.float32:
-        raise ValueError("FLUX sampling requires FP32 noise")
+    if noise.dtype not in FLOAT_DTYPES.values():
+        raise ValueError("FLUX sampling requires FP32, BF16 or FP16 noise")
     if any(
-        parameter.dtype != torch.float32
+        (parameter.is_floating_point() and parameter.dtype == torch.float64)
         or (
             parameter.device != noise.device
             and not (allow_cpu_frozen and parameter.device.type == "cpu" and not parameter.requires_grad)
         )
         for parameter in model.parameters()
     ):
-        raise ValueError("FLUX sampling requires FP32 weights on the noise device")
+        raise ValueError("FLUX sampling requires supported weights on the noise device")
     packed = pack_latents(noise)
+    if condition is not None:
+        condition = FluxCondition(
+            condition.tokens.to(noise.dtype),
+            condition.ids,
+            condition.lengths,
+            None if condition.fill_mask is None else condition.fill_mask.to(noise.dtype),
+        )
     if packed.shape[2] != model.config.out_channels:
         raise ValueError("FLUX noise channels differ from transformer output width")
     if model.config.guidance_embed:
@@ -95,7 +104,7 @@ def sample_latents(
     ids = image_ids(noise.shape[0], noise.shape[2] // 2, noise.shape[3] // 2, device=noise.device)
     txt_ids = torch.zeros((*captions.shape[:2], 3), dtype=torch.float32, device=noise.device)
     schedule = build_schedule(steps, packed.shape[1], shift=shift)
-    with torch.autocast(noise.device.type, enabled=False):
+    with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for current, previous in pairwise(schedule):
             inputs = build_inputs(model.config.variant, packed, ids, condition)
             timesteps = torch.full((noise.shape[0],), current, dtype=torch.float32, device=noise.device)
@@ -109,7 +118,7 @@ def sample_latents(
                 guidance_vector,
                 control_lengths=inputs.control_lengths,
             )
-            packed = packed + (previous - current) * prediction[:, : packed.shape[1]]
+            packed = packed + (previous - current) * prediction.to(noise.dtype)[:, : packed.shape[1]]
     return unpack_latents(packed, noise.shape[2], noise.shape[3])
 
 
@@ -170,10 +179,12 @@ def generate_latents(
     height, width = (sampling.height // vae_factor, sampling.width // vae_factor)
     if condition is not None:
         condition = FluxCondition(
-            condition.tokens.to(parameter.device),
-            None if condition.ids is None else condition.ids.to(parameter.device),
+            condition.tokens.to(device=parameter.device, dtype=sampling_dtype(model)),
+            None if condition.ids is None else condition.ids.to(device=parameter.device),
             condition.lengths,
-            None if condition.fill_mask is None else condition.fill_mask.to(parameter.device),
+            None
+            if condition.fill_mask is None
+            else condition.fill_mask.to(device=parameter.device, dtype=sampling_dtype(model)),
         )
     noise = unpack_latents(
         torch.randn(
@@ -184,9 +195,9 @@ def generate_latents(
     )
     return sample_latents(
         model,
-        noise.to(parameter.device),
-        positive.captions.to(device=parameter.device, dtype=parameter.dtype),
-        positive.pooled.to(device=parameter.device, dtype=parameter.dtype),
+        noise.to(device=parameter.device, dtype=sampling_dtype(model)),
+        positive.captions.to(device=parameter.device, dtype=sampling_dtype(model)),
+        positive.pooled.to(device=parameter.device, dtype=sampling_dtype(model)),
         condition=condition,
         allow_cpu_frozen=allow_cpu_frozen,
         steps=25 if sampling.steps is None else sampling.steps,
