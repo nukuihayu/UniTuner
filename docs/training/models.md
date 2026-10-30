@@ -95,8 +95,7 @@ reference_sources = ["/data/reference-a", "/data/reference-b"]
 ```
 
 按目标文件主体匹配每个条件来源，有序列表决定参考顺序；条件图不是额外的独立训练样本。
-只使用一个参考来源时删除第二项。参考图处理规则：先根据目标图
-选择 bucket，再将每张参考图 resize、中心裁剪到同一个 bucket。Qwen2.1 可显式启用独立参考图分辨率模式（见下文）。
+只使用一个参考来源时删除第二项。目标与参考图分别按各自尺寸选择 bucket，再独立缩放、中心裁剪。Qwen2.1 可显式设置参考图面积预算（见下文）。
 原始尺寸相同且已经对齐的图片对使用相同缩放比例和裁剪坐标；不同构图的参考图不会因此自动配准。
 放大使用 Lanczos，缩小使用 area，缩放尺寸按 half-up 舍入。
 
@@ -104,15 +103,15 @@ reference_sources = ["/data/reference-a", "/data/reference-b"]
 | --- | --- |
 | FLUX Dev | 不接受 reference_sources |
 | FLUX Kontext／Fill | 恰好一个来源；Fill 可另设 mask_source |
-| FLUX.2 | 有序参考来源，与目标 bucket 使用相同几何预处理 |
-| FLUX3 | 最多10个来源，与目标 bucket 使用相同几何预处理 |
+| FLUX.2 | 有序参考来源，按自身尺寸分桶，同尺寸配对与目标对齐 |
+| FLUX3 | 最多10个来源，按自身尺寸分桶，同尺寸配对与目标对齐 |
 | Qwen edit 系列 | 最初 edit 必须有参考，2509／2511 可无参考 |
-| Qwen2.1 | 有序参考来源，与目标 bucket 使用相同几何预处理 |
+| Qwen2.1 | 有序参考来源，按自身尺寸分桶，同尺寸配对与目标对齐 |
 | Qwen original／layered | 不接受编辑参考目录；layered 使用 layer_sources |
 
-Qwen2.1 默认使用对齐模式：目标图和参考图均先转 RGBA，再调用相同的缩放、half-up 舍入和中心裁剪；相同原始尺寸使用相同几何变换，最终尺寸一致。VAE 保留 alpha，视觉编码器仅将 alpha 合成到白底；两者共享同一份处理后的参考像素，视觉编码器不会再次缩放。
+训练参考图默认按自身尺寸和数据集面积预算分桶；两者独立使用相同的分桶配置与缩放裁剪算子，因此相同原始尺寸自然得到对齐的输出。关闭数据集分桶时，目标和默认参考图均使用配置的固定 resolution。Qwen2.1 的目标图和参考图均先转 RGBA，再缩放裁剪。VAE 保留 alpha，视觉编码器仅将 alpha 合成到白底；两者共享同一份处理后的参考像素，视觉编码器不会再次缩放。
 
-参考图与目标构图不同时，可显式启用独立分辨率模式：
+Qwen2.1 可显式覆盖参考图面积预算：
 
 ```toml
 [dataset.groups.main]
@@ -124,11 +123,11 @@ reference_sources = ["/data/references"]
 reference_resolution = [1024, 1024]
 ```
 
-`reference_resolution` 是参考图的独立面积预算（宽×高），不是强制方形输出。每张参考图按自身长宽比选择 32 对齐的 bucket，再使用相同的缩放／中心裁剪算子；竖图会选竖向 bucket，而不裁到目标方图。桶对齐仍可能带来少量边缘裁剪。省略此字段即使用默认对齐模式，不添加补边；该选项目前仅支持 Qwen2.1。模式或预算变更会改变缓存身份，需重新缓存。
+`reference_resolution` 是参考图的独立面积预算（宽×高），不是强制方形输出。每张参考图按自身长宽比选择 32 对齐的 bucket，再使用相同的缩放／中心裁剪算子；竖图会选竖向 bucket，而不裁到目标方图。桶对齐仍可能带来少量边缘裁剪。省略时使用数据集面积预算，同尺寸配对保持对齐，其他参考图按自身比例分桶，不添加补边；该选项目前仅支持 Qwen2.1。模式或预算变更会改变缓存身份，需重新缓存。
 
 上例通过 `enable_bucket = false` 将目标固定为 1024×1024，参考图仍使用独立长宽比。若开启分桶，目标也会按自身比例选择 bucket。
 
-Qwen2.1 的原图＋区域遮罩可分别放入两个 `reference_sources` 目录；目标、原图和遮罩必须预先同尺寸、同坐标，且不设置 `reference_resolution`，才能保留配对对齐。这里遮罩是图像参考条件，不会自动成为损失遮罩。`mask_source` 是 FLUX Fill 的原生重绘遮罩：训练和推理均等比缩放、中心裁剪，遮罩最近邻插值保留标签，alpha 遮罩不参与 RGB 颜色重采样。FLUX Fill 的目标、原图及显式遮罩必须同尺寸；修复后应重建 Fill 缓存。
+Qwen2.1 的原图＋区域遮罩可分别放入两个 `reference_sources` 目录；目标、原图和遮罩必须预先同尺寸、同坐标，且不设置 `reference_resolution`，才能保留配对对齐。这里遮罩是图像参考条件，不会自动成为损失遮罩。`mask_source` 是 FLUX Fill 的原生重绘遮罩：训练和推理均等比缩放、中心裁剪，遮罩最近邻插值保留标签，alpha 遮罩不参与 RGB 颜色重采样。FLUX Fill 的目标、原图及显式遮罩必须同尺寸；修改预处理配置后应重建缓存。
 
 训练缓存与生成推理是独立的预处理边界；本节描述训练数据集。改变预处理后需要重新生成缓存。
 
@@ -177,7 +176,7 @@ max_frames 至少5，原生音频32kHz立体声。JSONL 是其 AV 记录格式�
 训练只对目标加噪并计算 flow loss，参考分支保留梯度；支持全参数和已有 adapter 算法。
 
 - [训练示例](../examples/moss-edit-flow.toml)：`source` 放编辑后的目标图及同名指令 `.txt`，
-  `reference_sources` 放按文件名 stem 匹配的原图，可按顺序提供多个目录。训练参考图使用目标 bucket 尺寸。
+  `reference_sources` 放按文件名 stem 匹配的原图，可按顺序提供多个目录。训练参考图按自身尺寸分桶，相同原始尺寸自然得到对齐的输出。
 - 先执行 `unitunner cache <配置> --device cuda`，再执行 `unitunner train <配置> --device cuda`。
   编辑缓存保存有序参考 latent，不能混用原版 MOSS 缓存；缓存身份包含参考图内容。
 - [生成示例](../examples/moss-edit-generate.toml)：使用 `sampling.reference_images`；参考图保留各自尺寸，

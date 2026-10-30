@@ -31,7 +31,11 @@ def test_paired_original_and_grayscale_mask_landmarks(tmp_path, size, bucketed):
     resolution = ImageBuckets((1024, 1024), alignment=32, enabled=bucketed).for_image(path)
     mask = image.getchannel("R").convert("RGBA")
     target = resize_pixels(np.array(image.convert("RGBA")), resolution)
-    original = resize_pixels(np.array(image.convert("RGBA")), resolution)
+    reference = tmp_path / "reference.png"
+    image.save(reference)
+    reference_size = ImageBuckets((1024, 1024), alignment=32, enabled=bucketed).for_image(reference)
+    assert reference_size == resolution
+    original = resize_pixels(np.array(image.convert("RGBA")), reference_size)
     region = resize_pixels(np.array(mask), resolution)
     assert target.shape == original.shape == region.shape == (resolution[1], resolution[0], 4)
     assert np.array_equal(target, original)
@@ -54,3 +58,18 @@ def test_independent_reference_preserves_circle_and_aspect(size):
     assert output[..., 3].min() == 255
     ys, xs = np.where(output[..., 0] > 200)
     assert abs((xs.max() - xs.min()) - (ys.max() - ys.min())) <= 2
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("no_upscale", [False, True])
+def test_mismatched_reference_uses_own_bucket(tmp_path, enabled, no_upscale):
+    target, reference = tmp_path / "target.png", tmp_path / "reference.png"
+    Image.new("RGB", (128, 64)).save(target)
+    Image.new("RGB", (64, 128)).save(reference)
+    buckets = ImageBuckets((256, 256), alignment=32, enabled=enabled, no_upscale=no_upscale)
+    size = buckets.for_image(reference)
+    if enabled:
+        assert size[1] > size[0]
+    else:
+        assert size == (256, 256)
+    assert size == buckets.select((64, 128))

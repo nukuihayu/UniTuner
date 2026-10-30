@@ -25,11 +25,17 @@ from unitunner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
 from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
+def test_public_cache_default_mismatched_references(tmp_path):
+    test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, 2, False, True, different=True)
+
+
 @pytest.mark.parametrize(
     "count,independent,bucketed",
     [(0, False, False), (2, False, False), (2, False, True), (1, False, False), (2, True, False), (1, False, True)],
 )
-def test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, count, independent, bucketed):
+def test_public_cache_mean_text_metadata_reuse_and_invalidation(
+    tmp_path, count, independent, bucketed, *, different=False
+):
     previous = torch.get_num_threads()
     torch.set_num_threads(1)
     try:
@@ -46,7 +52,7 @@ def test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, count,
             for index, name in enumerate(["a", "b"]):
                 height, width = (
                     ((35, 49) if index == 0 else (95, 113))
-                    if directory == "images" or (not independent and count > 0)
+                    if directory == "images" or (not independent and not different and count > 0)
                     else (32, 64)
                     if directory == "ref0"
                     else (64, 32)
@@ -56,16 +62,16 @@ def test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, count,
                     np.arange(height * width * channels, dtype=np.uint32).reshape(height, width, channels) * 17
                     + index * 11
                 ).astype(np.uint8)
-                if count == 2 and not independent:
+                if count == 2 and not independent and not different:
                     # A region landmark shared by target, original and grayscale
                     # mask detects crop offsets and channel-conversion differences.
                     pixels[..., 0] = 0
                     pixels[height // 4 : height * 3 // 4, width // 3 : width * 2 // 3, 0] = 255
                     if channels == 4:
                         pixels[..., 3] = 255
-                Image.fromarray(pixels[..., 0] if directory == "ref1" and not independent else pixels).save(
-                    tmp_path / directory / f"{name}.png"
-                )
+                Image.fromarray(
+                    pixels[..., 0] if directory == "ref1" and not independent and not different else pixels
+                ).save(tmp_path / directory / f"{name}.png")
         (tmp_path / "images/a.txt").write_text("short")
         (tmp_path / "images/b.txt").write_text("longer caption about textures")
         config = tmp_path / "cache.toml"
@@ -119,17 +125,21 @@ parameter_mode = "full"
                 size = (
                     reference_resolution(rgba.shape[1], rgba.shape[0], area=128 * 64, alignment=32)
                     if independent
+                    else (64, 32)
+                    if different and i == 0
+                    else (32, 64)
+                    if different
                     else resolution
                 )
                 controls.append(resize_pixels(rgba, size))
             expected = encode_images(frozen, [target, *controls])
-            if count == 2 and not independent:
+            if count == 2 and not independent and not different:
                 assert target.shape == controls[0].shape == controls[1].shape
                 assert np.array_equal(target, controls[0])
                 assert np.array_equal(target[..., 0], controls[1][..., 0])
             assert torch.equal(record.latents, expected[0])
             assert all(torch.equal(a, b) for a, b in zip(record.references, expected[1:], strict=True))
-            if count == 1:
+            if count == 1 and not different:
                 # Identical target/control pixels must stay exactly aligned for
                 # both upsampling and downsampling, including the posterior mean.
                 assert torch.equal(record.latents, record.references[0])
@@ -139,9 +149,13 @@ parameter_mode = "full"
             assert record.image_slots.tolist() == list(encoded.image_slots)
             assert record.reference_grids.tolist() == [list(grid) for grid in encoded.image_shapes]
             if count:
-                assert record.references[0].shape[-2:] == ((4, 8) if independent else record.latents.shape[-2:])
+                assert record.references[0].shape[-2:] == (
+                    (4, 8) if independent else (2, 4) if different else record.latents.shape[-2:]
+                )
             if count == 2:
-                assert record.references[1].shape[-2:] == ((8, 4) if independent else record.latents.shape[-2:])
+                assert record.references[1].shape[-2:] == (
+                    (8, 4) if independent else (4, 2) if different else record.latents.shape[-2:]
+                )
             hashes = [
                 list(hashlib.sha256(f"{image.shape[1]}x{image.shape[0]}:".encode() + image.tobytes()).digest())
                 for image in controls
@@ -179,16 +193,15 @@ parameter_mode = "full"
         updated = load_latent_manifest(destination)
         assert updated.entries[0] != manifest.entries[0] and updated.entries[1] == manifest.entries[1]
         if independent:
-            # Switching back to paired geometry must not reuse independent caches.
+            # Changing the area budget must rebuild references.
             config.write_text(config.read_text().replace("reference_resolution = [128,64]", ""))
             assert main_with_local_tokenizers(["cache", str(config), "--device", str(device)]) == 0
             paired = load_latent_manifest(destination)
             assert all(a.file != b.file for a, b in zip(paired.entries, updated.entries, strict=True))
-            assert all(
-                ref.shape[-2:] == (2, 4)
-                for entry in paired.entries
-                for ref in read_qwen_image_21_record(destination, entry, device=device).references
-            )
+            for entry in paired.entries:
+                refs = read_qwen_image_21_record(destination, entry, device=device).references
+                assert refs[0].shape[-2:] == (2, 4)
+                assert refs[1].shape[-2:] == (2, 4)
         assert torch.equal(rng, torch.get_rng_state())
         if cuda_rng is not None:
             assert torch.equal(cuda_rng, torch.cuda.get_rng_state())

@@ -89,7 +89,12 @@ def cache_qwen_image(
             "schema": "qwen-image/image-layer-text-1",
             "variant": variant,
             "resolution_width_height": list(resolution),
-            "reference_geometry": "target-bucket/lanczos-up-area-down/half-up-center-crop",
+            "reference_bucket_policy": {
+                "geometry": "independent-source-buckets-v1",
+                "no_upscale": False if buckets is None else buckets.no_upscale,
+                "enabled": False if buckets is None else buckets.enabled,
+            },
+            "reference_geometry": "independent-source-buckets/lanczos-up-area-down/half-up-center-crop",
             "reference_count": len(references),
             "foreground_count": len(layers),
             "pixels": "native-lanczos-up/area-down/half-up/center-crop/alpha-before-resize/127.5-1",
@@ -117,6 +122,7 @@ def cache_qwen_image(
             "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
         }
     )
+    reference_buckets = buckets or ImageBuckets(resolution, alignment=16, enabled=False)
     previous = load_latent_manifest(destination) if (destination / "manifest.json").exists() else None
     reusable = {} if previous is None else {entry.file: entry for entry in previous.entries}
     entries: list[CacheEntry] = []
@@ -154,7 +160,7 @@ def cache_qwen_image(
             control_latents, vision = [], []
             for index in references:
                 control_path = index[path.stem]
-                size = resolution
+                size = reference_buckets.for_image(control_path)
                 control = read_image(control_path, size, channels=4)[:3]
                 control_latents.append(vae.encode(control[None, :, None].to(parameter.device))[0])
                 values = ((control + 1) * 127.5).round().to(torch.uint8).permute(1, 2, 0).contiguous().numpy()

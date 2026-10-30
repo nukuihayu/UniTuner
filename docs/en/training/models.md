@@ -88,27 +88,27 @@ reference_sources = ["/data/reference-a", "/data/reference-b"]
 
 Each source matches target file stems; list order defines reference order. References are conditions, not additional training examples. Use one entry if only one reference is needed.
 
-Training reference geometry: select a bucket from the target, then resize and center-crop each reference into that same bucket. Aligned equal-sized pairs share scale and crop coordinates; differently composed references are not automatically registered. Upscaling uses Lanczos, downscaling uses area, and resized dimensions use half-up rounding. Qwen 2.1 also supports the explicit independent reference mode described below.
+Targets and references independently select buckets from their own source dimensions, then resize and center-crop. Equal-sized aligned inputs naturally share scale and crop coordinates; differently composed references are not automatically registered. Upscaling uses Lanczos, downscaling uses area, and resized dimensions use half-up rounding. Qwen 2.1 also supports a separate reference area budget.
 
 | Model | Reference constraints |
 | --- | --- |
 | FLUX Dev | Rejects `reference_sources` |
 | FLUX Kontext / Fill | Exactly one source; Fill optionally accepts `mask_source` |
-| FLUX.2 | Ordered references with the target's bucket geometry |
-| FLUX3 | At most ten sources with the target's bucket geometry |
+| FLUX.2 | Ordered references independently using the dataset bucket settings |
+| FLUX3 | At most ten sources independently using the dataset bucket settings |
 | Qwen edit | Original edit requires references; 2509/2511 can run without them |
-| Qwen 2.1 | Ordered references with the target's bucket geometry |
+| Qwen 2.1 | Ordered references independently using the dataset bucket settings |
 | Qwen original / layered | Reject edit-reference directories; layered uses `layer_sources` |
 
-Qwen 2.1 defaults to paired geometry: target and references convert to RGBA, then share the same resizing, half-up rounding and center-crop operators and target bucket. Equal source dimensions therefore produce equal output dimensions and aligned content. VAE and vision use the same processed reference pixels; only vision composites alpha over white, without another resize.
+Training references select aspect buckets using their own dimensions and the dataset area budget. The same bucket settings and resize/crop operators apply independently, so equal source dimensions produce aligned outputs. Disabling dataset bucketing fixes both target and default reference sizes to resolution. Qwen 2.1 converts both to RGBA before resizing. VAE and vision use the same processed reference pixels; only vision composites alpha over white, without another resize.
 
-To enable independent reference geometry, set `reference_resolution = [1024, 1024]` next to `reference_sources` in `[dataset.groups.main]`. This is an area budget (width × height), not a forced square shape. Each reference selects its own 32-aligned aspect bucket and uses the same resampler/crop operator. Portrait references use portrait buckets; alignment can still crop a small border. Omitting the field preserves paired geometry, without padding. This option currently supports Qwen 2.1 only. Changing mode or budget invalidates cache identity; rebuild the cache.
+To override the Qwen 2.1 reference area budget, set `reference_resolution = [1024, 1024]` next to `reference_sources` in `[dataset.groups.main]`. This is an area budget (width × height), not a forced square shape. Each reference selects its own 32-aligned aspect bucket and uses the same resampler/crop operator. Portrait references use portrait buckets; alignment can still crop a small border. Omitting the field uses the dataset budget; equal-sized pairs remain aligned, while other references use their own aspect buckets without padding. This option currently supports Qwen 2.1 only. Changing mode or budget invalidates cache identity; rebuild the cache.
 
 These are training-cache rules. Generation is a separate preprocessing boundary. Rebuild caches after changing preprocessing. Old family-specific aliases such as `dataset.groups.main.flux2.reference_sources` are not used.
 
 For a fixed 1024×1024 target, set `resolution = [1024, 1024]` and `enable_bucket = false`; `reference_resolution = [1024, 1024]` still selects independent reference aspect buckets. Enabling target buckets allows target dimensions to vary with aspect ratio.
 
-For Qwen2.1 original-plus-region-mask conditions, use two ordered `reference_sources` directories and omit `reference_resolution`. Target, original and mask must already share source dimensions and coordinates. The mask is an image reference, not an automatic loss mask. FLUX Fill instead uses native `mask_source`: training and inference share uniform scaling and center cropping, with nearest interpolation for masks. Alpha used as a mask never participates in RGB resampling. Fill target, source and explicit mask must have equal dimensions. Rebuild Fill caches after this fix.
+For Qwen2.1 original-plus-region-mask conditions, use two ordered `reference_sources` directories and omit `reference_resolution`. Target, original and mask must already share source dimensions and coordinates. The mask is an image reference, not an automatic loss mask. FLUX Fill instead uses native `mask_source`: training and inference share uniform scaling and center cropping, with nearest interpolation for masks. Alpha used as a mask never participates in RGB resampling. Fill target, source and explicit mask must have equal dimensions. Rebuild caches after changing preprocessing settings.
 
 ## Required family-specific settings
 
@@ -147,7 +147,7 @@ Reference IDs start at 1, their frame/text coordinate stays at 0, and target coo
 Training adds noise and computes flow loss only on the target, retaining gradients through reference features. Full parameter training and existing adapter algorithms are supported.
 
 - [Training example](../../examples/moss-edit-flow.toml): `source` holds edited targets and matching instruction `.txt` files.
-  Ordered `reference_sources` directories hold source images matched by filename stem. Training references use the target bucket size.
+  Ordered `reference_sources` directories hold source images matched by filename stem. Training references use their own aspect buckets; equal-sized source pairs share target geometry.
 - Run `unitunner cache <config> --device cuda`, then `unitunner train <config> --device cuda`.
   Edit caches store ordered reference latents and include reference content in their identity. Original MOSS caches are incompatible.
 - [Generation example](../../examples/moss-edit-generate.toml): set `sampling.reference_images`.

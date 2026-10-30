@@ -121,7 +121,7 @@ A single `[1024,1024]` keeps using cache_directory directly. Nested lists, even 
 
 Most image families require 16-aligned dimensions; Qwen Image 2.1 and H3 require 32 alignment. Larger dimensions increase activation/attention cost. Reduce batch_size before comparing recomputation or lower resolution.
 
-Condition images use the target bucket. Matching filenames do not register images with different compositions. Check LQ/HQ geometry before paired restoration.
+Reference images use their own aspect buckets; equal-sized target/reference pairs share resizing and cropping. Spatially aligned controls and masks use the target bucket. Matching filenames do not register images with different compositions. Check LQ/HQ geometry before paired restoration.
 
 ## Real LQ/HQ restoration pairs
 

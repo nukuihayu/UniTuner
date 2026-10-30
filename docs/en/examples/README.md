@@ -52,7 +52,7 @@ Training examples use the training schema; cache-only examples use the encoding 
 | FLUX Dev | [flux-flow.toml](../../examples/flux-flow.toml) | T5 path and bundle-local CLIP |
 | FLUX Fill | [flux-fill-flow.toml](../../examples/flux-fill-flow.toml) | One reference directory plus mask; for Kontext change weights/variant and remove `mask_source` |
 | FLUX.2 | [flux2-flow.toml](../../examples/flux2-flow.toml) | Klein 4B base without references |
-| FLUX.2 references | [flux2-reference-flow.toml](../../examples/flux2-reference-flow.toml) | Ordered references use the target bucket |
+| FLUX.2 references | [flux2-reference-flow.toml](../../examples/flux2-reference-flow.toml) | Ordered references use their own aspect buckets; equal-sized pairs stay aligned |
 | FLUX3 | [flux3-flow.toml](../../examples/flux3-flow.toml) | See model guide for references |
 | MOSS | [moss-flow.toml](../../examples/moss-flow.toml) | Native skip-layer preview parameters must match topology |
 | MOSS Edit | [moss-edit-flow.toml](../../examples/moss-edit-flow.toml) | Reference-conditioned editing; text-start layout |

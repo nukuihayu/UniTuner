@@ -196,6 +196,11 @@ def cache_images(
             "schema": f"{family}/image-text-1",
             **({"batch_size": batch_size} if batch_size > 1 else {}),
             "resolution_width_height": list(resolution),
+            "reference_bucket_policy": {
+                "geometry": "independent-source-buckets-v1",
+                "no_upscale": False if buckets is None else buckets.no_upscale,
+                "enabled": False if buckets is None else buckets.enabled,
+            },
             "resize": "lanczos-up/area-down/half-up/center-crop",
             "pixels": "RGB/drop-alpha/no-exif/float32/127.5-1",
             "posterior": posterior,
@@ -224,7 +229,7 @@ def cache_images(
             else text.max_length,
             **(
                 {
-                    "references": "target-bucket/alpha-after-resize/no-exif/mean-BF16-roundtrip",
+                    "references": "own-aspect-bucket/alpha-after-resize/no-exif/mean-BF16-roundtrip",
                     "reference_count": len(reference_indices),
                     "text_padding_multiple": 80,
                     "text_layers": [4, 8, 12, 16, 20, 24, 28, 32],
@@ -235,7 +240,7 @@ def cache_images(
             ),
             **(
                 {
-                    "references": "target-bucket/alpha-after-resize/no-exif/mean-BF16-roundtrip",
+                    "references": "own-aspect-bucket/alpha-after-resize/no-exif/mean-BF16-roundtrip",
                     "reference_count": len(reference_indices),
                     "text_layers": [10, 20, 30] if version == "dev" else [9, 18, 27],
                     "text_output_dtype": "float32",
@@ -245,7 +250,7 @@ def cache_images(
             ),
             **(
                 {
-                    "references": "target-bucket/mean-FP32",
+                    "references": "own-aspect-bucket/mean-FP32",
                     "reference_count": len(reference_indices),
                     "edit_contract": "index_timestep_zero_text_start",
                 }
@@ -271,6 +276,7 @@ def cache_images(
             },
         }
     )
+    reference_buckets = buckets or ImageBuckets(resolution, alignment=16, enabled=False)
     previous = load_latent_manifest(destination) if (destination / "manifest.json").exists() else None
     reusable = {} if previous is None else {entry.file: entry for entry in previous.entries}
     entries: list[CacheEntry] = []
@@ -343,7 +349,9 @@ def cache_images(
                         )
                         fill_mask = pack_fill_mask(mask.unsqueeze(0))[0]
                     else:
-                        control_pixels = read_image(conditions[path.stem], resolution)
+                        control_pixels = read_image(
+                            conditions[path.stem], reference_buckets.for_image(conditions[path.stem])
+                        )
                     control_latents = encode_latents(
                         vae,
                         control_pixels.unsqueeze(0).to(parameter.device),
@@ -361,7 +369,12 @@ def cache_images(
                     raise TypeError("Flux cache requires matched native text provider")
                 if isinstance(text, Flux2TextEncoder | Flux3TextEncoder) and isinstance(vae, Flux2VAE):
                     reference_latents = tuple(
-                        _packed_mean(vae, read_image(index[path.stem], resolution)[None].to(parameter.device))
+                        _packed_mean(
+                            vae,
+                            read_image(index[path.stem], reference_buckets.for_image(index[path.stem]))[None].to(
+                                parameter.device
+                            ),
+                        )
                         .to(torch.bfloat16)
                         .float()
                         .cpu()
@@ -371,7 +384,12 @@ def cache_images(
                 else:
                     if moss_edit and isinstance(vae, Flux2VAE):
                         reference_latents = tuple(
-                            _packed_mean(vae, read_image(index[path.stem], resolution)[None].to(parameter.device))
+                            _packed_mean(
+                                vae,
+                                read_image(index[path.stem], reference_buckets.for_image(index[path.stem]))[None].to(
+                                    parameter.device
+                                ),
+                            )
                             .float()
                             .cpu()
                             for index in reference_indices

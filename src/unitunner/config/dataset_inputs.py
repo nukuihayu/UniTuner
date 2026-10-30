@@ -10,8 +10,8 @@ class DatasetInputConfig(BaseModel):
 
     Paths identify directories matched to target filename stems, not independent
     training samples. Repeated references retain their order. Training references
-    use the target bucket by default, matching Musubi's paired dataset geometry.
-    Qwen2.1 can explicitly select an independent reference area budget.
+    independently use the dataset bucket settings. Equal source dimensions
+    yield aligned geometry. Qwen2.1 can override the reference area budget.
     Capability checks reject unsupported conditions before artifact IO.
     """
 
@@ -19,7 +19,7 @@ class DatasetInputConfig(BaseModel):
     reference_sources: tuple[str, ...] = ()
     reference_resolution: tuple[int, int] | None = Field(
         default=None,
-        description="Qwen2.1 independent reference area budget (width,height); omitted references share the target bucket",
+        description="Qwen2.1 independent reference area budget (width,height); omitted references use the dataset budget and their own aspect",
     )
     control_source: str | None = Field(default=None, min_length=1)
     mask_source: str | None = Field(default=None, min_length=1)
