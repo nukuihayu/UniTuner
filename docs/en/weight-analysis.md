@@ -73,3 +73,5 @@ All figures use a common sans-serif publication style and blue/red palette. Arti
 ---
 
 [Documentation](README.md) · [Parameter reference](training/parameters.md) · [Troubleshooting](troubleshooting.md)
+
+Static export reuses an installed Chrome/Chromium or automatically downloads Chrome to Kaleido’s user cache on first use, without administrator privileges. The first download requires network access and has a 180-second timeout; set `BROWSER_PATH` for an existing browser in offline environments. Linux still needs the browser’s system libraries. Download, browser startup and rendering failures propagate to the caller while preserving CSV tables and `summary.md`. `--show never` disables display, not PNG/PDF export.

@@ -30,7 +30,7 @@ report = analyze_run("runs/oil-skin-lora", show="auto")
 
 绘图统一使用 Plotly，不依赖 Matplotlib 或 Seaborn。Notebook 直接调用会显示可缩放、悬停查看完整参数路径的 Plotly 交互图；`!uv run ...` 是独立进程，不等同于 notebook 内联显示。终端输出数值摘要，支持的终端内联显示图像；桌面终端可打开查看器，无图形界面时保存文件。`--show never` 禁止显示。
 
-PNG/PDF 导出由 Kaleido 完成，需要 Chrome/Chromium。未安装时执行 `uv run plotly_get_chrome -y`；Linux 还需浏览器的系统运行库。已有浏览器可通过 `BROWSER_PATH` 指定。渲染失败会给出明确错误并保留已生成的数值表，不会回退其他绘图库。
+PNG/PDF 导出由 Kaleido 完成。优先复用已有 Chrome/Chromium；未找到时自动下载到 Kaleido 用户缓存，后续复用，无需管理员权限。首次导出需要联网，自动下载最多等待 180 秒；离线环境可通过 `BROWSER_PATH` 指定已有浏览器。Linux 仍需浏览器的系统运行库。下载、浏览器启动或渲染失败时会给出明确错误，并保留 CSV 和 `summary.md`，不会挂起等待后台线程或回退其他绘图库。`--show never` 只禁止显示，仍会导出 PNG/PDF。
 
 每次自动保存到 `项目/analysis/时间戳/`，包含 PNG、多页 `figures.pdf`、CSV 和 `summary.md`，没有 HTML 或中间数据文件。`--output` 可指定结果目录。
 

@@ -1,16 +1,19 @@
 """Save final scientific figures/tables and display them in notebooks or supported terminals."""
 
+import asyncio
 import base64
 import csv
 import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 
 import kaleido
 import plotly.graph_objects as go
+from choreographer.browsers.chromium import Chromium
 from pypdf import PdfWriter
 
 from unitunner.artifacts.atomic import atomic_output
@@ -179,9 +182,69 @@ def terminal_table(report):
     print(f"Numerical errors: {errors}. See summary.md for observations, coverage and next checks.\n")
 
 
+def browser_path():
+    """Reuse an installed browser or install Kaleido's cached Chrome once."""
+    explicit = os.environ.get("BROWSER_PATH")
+    if explicit:
+        return explicit
+    installed = Chromium.find_browser(skip_local=False)
+    if installed:
+        return installed
+    status("[analyze] Chrome not found; downloading Chrome to Kaleido's user cache (first export only)")
+    # Isolate the downloader so a stalled network can be stopped without changing
+    # process-wide socket defaults or leaving a live download thread behind.
+    result = subprocess.run(
+        [sys.executable, "-c", "import kaleido; print(kaleido.get_chrome_sync())"],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    if result.returncode:
+        raise RuntimeError(f"Chrome download failed: {result.stderr.strip()[-2000:]}")
+    path = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if not path or not Path(path).is_file():
+        raise RuntimeError("Chrome downloader did not return an installed browser")
+    return path
+
+
+async def export_figures(report, directory, browser, *, interactive):
+    """Own one browser and propagate startup/render errors through the awaiting caller."""
+    from unitunner.analysis.figures import generate
+
+    captions = ["# Figure captions", ""]
+    displayed = []
+    pdf = PdfWriter()
+    try:
+        async with kaleido.Kaleido(n=1, path=browser) as renderer:
+            for name, fig in generate(report):
+                name = re.sub(r"[^\w.-]", "_", name)
+                export = go.Figure(fig)
+                if export.layout.updatemenus:
+                    export.layout.updatemenus = ()
+                    export.update_layout(margin_b=170)
+                captions.extend([f"## {name}", "", (fig.layout.meta or {}).get("caption", name), ""])
+                png = await renderer.calc_fig(export, opts={"format": "png", "scale": 1.5})
+                page = await renderer.calc_fig(export, opts={"format": "pdf"})
+                path = directory / f"{name}.png"
+                with atomic_output(path) as image:
+                    image.write_bytes(png)
+                pdf.append(BytesIO(page))
+                status(f"[analyze] Figure saved: {path}")
+                displayed.append((path, fig if interactive else None))
+        with atomic_output(directory / "figure-captions.md") as temporary:
+            temporary.write_text("\n".join(captions), encoding="utf-8")
+        with atomic_output(directory / "figures.pdf") as temporary:
+            with temporary.open("wb") as stream:
+                pdf.write(stream)
+    finally:
+        pdf.close()
+    return displayed
+
+
 def publish(report: dict, directory: Path, *, show="auto") -> Path:
     """Save only final deliverables: PNG, a multipage PDF, scientific CSV tables and Markdown."""
-    from unitunner.analysis.figures import generate, label_map
+    from unitunner.analysis.figures import label_map
 
     if show not in {"auto", "always", "never"}:
         raise ValueError("show must be auto, always or never")
@@ -316,43 +379,31 @@ def publish(report: dict, directory: Path, *, show="auto") -> Path:
         write_csv(directory / "training-metrics.csv", ["step", "metric", "value"], metrics)
     with atomic_output(directory / "summary.md") as temporary:
         temporary.write_text(summary(report), encoding="utf-8")
-    # Reuse one browser across pages; keep PDF page bytes in memory, not intermediate files.
-    pdf = PdfWriter()
-    captions = ["# Figure captions", ""]
+    interactive = show != "never" and notebook()
     try:
-        kaleido.start_sync_server(n=1, silence_warnings=True)
-        for index, (name, fig) in enumerate(generate(report)):
-            name = re.sub(r"[^\w.-]", "_", name)
-            path = directory / f"{name}.png"
-            export = go.Figure(fig)
-            if export.layout.updatemenus:
-                export.layout.updatemenus = ()
-                export.update_layout(margin_b=170)
-            captions.extend([f"## {name}", "", (fig.layout.meta or {}).get("caption", name), ""])
-            try:
-                png = kaleido.calc_fig_sync(export, opts={"format": "png", "scale": 1.5})
-                page = kaleido.calc_fig_sync(export, opts={"format": "pdf"})
-            except Exception as error:
-                raise RuntimeError(
-                    "Plotly static export failed. Kaleido requires Chrome/Chromium and its system libraries. "
-                    "Install Chrome with `uv run plotly_get_chrome -y` (Linux may also need Chrome system libraries), "
-                    "or set BROWSER_PATH to a compatible installed browser. "
-                    f"Numeric tables are preserved in {directory}. Renderer error: {error}"
-                ) from error
-            with atomic_output(path) as image:
-                image.write_bytes(png)
-            pdf.append(BytesIO(page))
-            status(f"[analyze] Figure saved: {path}")
-            if show != "never" and notebook():
-                fig.show(renderer="plotly_mimetype")
-            else:
-                display_image(path, show, first=index == 0)
-        with atomic_output(directory / "figure-captions.md") as temporary:
-            temporary.write_text("\n".join(captions), encoding="utf-8")
-        with atomic_output(directory / "figures.pdf") as temporary:
-            with temporary.open("wb") as stream:
-                pdf.write(stream)
-    finally:
-        pdf.close()
-        kaleido.stop_sync_server(silence_warnings=True)
+        browser = browser_path()
+
+        def render():
+            return asyncio.run(export_figures(report, directory, browser, interactive=interactive))
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            figures = render()
+        else:
+            # Notebook kernels own an event loop; keep ours isolated and joined.
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                figures = executor.submit(render).result()
+    except Exception as error:
+        raise RuntimeError(
+            "Plotly static export failed. Missing Chrome is installed automatically; "
+            'if downloading is unavailable, install it with `python -c "import kaleido; kaleido.get_chrome_sync()"` '
+            "or set BROWSER_PATH to an installed Chrome/Chromium. Linux may also need Chrome system libraries. "
+            f"Numeric tables and summary.md are preserved in {directory}. Renderer error: {error}"
+        ) from error
+    for index, (path, fig) in enumerate(figures):
+        if fig is not None:
+            fig.show(renderer="plotly_mimetype")
+        else:
+            display_image(path, show, first=index == 0)
     return directory / "summary.md"
