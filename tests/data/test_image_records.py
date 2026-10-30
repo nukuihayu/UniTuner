@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.data.cache.storage import (
+from unituner.data.cache.schema import CacheIdentity
+from unituner.data.cache.storage import (
     LatentManifest,
     load_latent_manifest,
     read_latent_record,
@@ -56,8 +56,8 @@ def test_flux_record_requires_native_conditions_and_rejects_nonfinite_collisions
 
 
 def test_moss_edit_records_preserve_ordered_references_and_reject_base_cache(tmp_path):
-    from unitunner.config.dataset_inputs import DatasetInputConfig
-    from unitunner.config.sampling import SamplingConfig, validate_image_sampling
+    from unituner.config.dataset_inputs import DatasetInputConfig
+    from unituner.config.sampling import SamplingConfig, validate_image_sampling
 
     identity = CacheIdentity(
         source_sha256="a" * 64, encoder_sha256="b" * 64, transform_sha256="c" * 64, layout="moss-image/edit/CHW+LD+R2"

@@ -10,12 +10,12 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
-from unitunner.models.qwen_image_2_1.loading import save_qwen_image_21, save_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
+from unituner.artifacts.tensors import TensorReader
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
+from unituner.models.qwen_image_2_1.loading import save_qwen_image_21, save_qwen_image_21_vae
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -39,7 +39,7 @@ def test_qwen21_restoration_shared_runner_resume_preview_and_export(tmp_path, al
         torch.manual_seed(809)
         root = tmp_path
         width, height = 64, 32
-        device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+        device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         write_text_assets(root / "text")
         save_qwen_image_21_vae(
             QwenImage21VAE(
@@ -220,7 +220,7 @@ alpha = 3.0
         with Image.open(root / "odd-restored.png") as image:
             assert image.size == (19, 13) and image.mode == "RGB"
         with TensorReader(root / "run/weights/model.safetensors") as reader:
-            sigma = reader.metadata()["unitunner.restoration.sigma"]
+            sigma = reader.metadata()["unituner.restoration.sigma"]
         path.write_text(
             restore.replace('prompt = "restore colors"', f'prompt = "restore colors"\nsigma = {float(sigma) / 2}')
         )

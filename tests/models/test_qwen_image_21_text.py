@@ -9,7 +9,7 @@ from safetensors.torch import load_file, save_file
 from tests.support.assertions import invalid_input
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import local_text_config
-from unitunner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
+from unituner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
 
 
 @pytest.fixture

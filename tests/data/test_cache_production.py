@@ -9,12 +9,12 @@ from types import ModuleType, SimpleNamespace
 import pytest
 import torch
 
-from unitunner.config.cache import CacheOptions
-from unitunner.config.datasets import CacheDatasetConfig
-from unitunner.config.model import EncoderModelConfig
-from unitunner.config.text import TextEncodingConfig, TokenizerSourceConfig
-from unitunner.models.catalog import ModelFamily
-from unitunner.models.components.text_artifacts import text_encoding_identity
+from unituner.config.cache import CacheOptions
+from unituner.config.datasets import CacheDatasetConfig
+from unituner.config.model import EncoderModelConfig
+from unituner.config.text import TextEncodingConfig, TokenizerSourceConfig
+from unituner.models.catalog import ModelFamily
+from unituner.models.components.text_artifacts import text_encoding_identity
 
 CASES = (
     ("z_image", "z-image", "turbo", None),
@@ -47,11 +47,11 @@ def model_config(family, variant, version):
 
 def test_entry_and_image_assembly_do_not_import_optional_providers():
     code = (
-        "import sys; import unitunner.data.build; import unitunner.data.production.images; "
-        "import unitunner.inference.restoration.run; "
+        "import sys; import unituner.data.build; import unituner.data.production.images; "
+        "import unituner.inference.restoration.run; "
         "assert 'transformers' not in sys.modules; assert 'av' not in sys.modules; "
-        "assert 'unitunner.data.production.wan' not in sys.modules; "
-        "assert 'unitunner.data.production.minimax_h3' not in sys.modules"
+        "assert 'unituner.data.production.wan' not in sys.modules; "
+        "assert 'unituner.data.production.minimax_h3' not in sys.modules"
     )
     environment = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[2] / "src")}
     result = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True)
@@ -68,7 +68,7 @@ def test_entry_and_image_assembly_do_not_import_optional_providers():
     ),
 )
 def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, variant, version):
-    from unitunner.data.production import images as image_encoders
+    from unituner.data.production import images as image_encoders
 
     calls = []
     vae = torch.nn.Linear(1, 1)
@@ -83,8 +83,8 @@ def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, var
         return text
 
     name = "load_qwen_image_21_text" if module == "qwen_image_2_1" else f"load_{module}_text"
-    fake_module(monkeypatch, f"unitunner.models.{module}.text.encoder", **{name: load_text})
-    from unitunner.models.components import image_encoders as native
+    fake_module(monkeypatch, f"unituner.models.{module}.text.encoder", **{name: load_text})
+    from unituner.models.components import image_encoders as native
 
     vae_family = (
         "flux2" if module in ("flux2", "flux3", "moss_image") else "qwen_image" if module == "krea2" else module
@@ -111,7 +111,7 @@ def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, var
 
 @pytest.mark.parametrize("module,family,variant,version", CASES)
 def test_group_loop_preserves_identity_options_and_order(monkeypatch, tmp_path, module, family, variant, version):
-    from unitunner.data.production import images
+    from unituner.data.production import images
 
     model = model_config(family, variant, version)
     groups = {
@@ -144,11 +144,11 @@ def test_group_loop_preserves_identity_options_and_order(monkeypatch, tmp_path, 
         return SimpleNamespace(entries=[1, 2])
 
     providers = {
-        "krea2": ("unitunner.models.krea2.data.cache", "cache_krea2"),
-        "qwen_image": ("unitunner.models.qwen_image.data.cache", "cache_qwen_image"),
-        "qwen_image_2_1": ("unitunner.models.qwen_image_2_1.data.cache.encoding", "cache_qwen_image_21"),
+        "krea2": ("unituner.models.krea2.data.cache", "cache_krea2"),
+        "qwen_image": ("unituner.models.qwen_image.data.cache", "cache_qwen_image"),
+        "qwen_image_2_1": ("unituner.models.qwen_image_2_1.data.cache.encoding", "cache_qwen_image_21"),
     }
-    provider, name = providers.get(module, ("unitunner.data.cache.images", "cache_images"))
+    provider, name = providers.get(module, ("unituner.data.cache.images", "cache_images"))
     fake_module(monkeypatch, provider, **{name: encode})
     assert images.produce_images(config, device="cpu", repa=repa, tokenizer_digests={"text": "tokenizer"}) == 4
     for (source, destination, options), data in zip(seen, groups.values(), strict=True):
@@ -167,7 +167,7 @@ def test_group_loop_preserves_identity_options_and_order(monkeypatch, tmp_path, 
 
 
 def test_missing_condition_fails_before_hashing_or_loading(monkeypatch, tmp_path):
-    from unitunner.data.production import images
+    from unituner.data.production import images
 
     data = CacheDatasetConfig(
         source=str(tmp_path),
@@ -205,7 +205,7 @@ def test_text_policy_identity_preserves_default_and_tokenizer_only_sections():
     ],
 )
 def test_dispatch_preserves_shared_owners(monkeypatch, family, module, name):
-    from unitunner.data.build import _run
+    from unituner.data.build import _run
 
     config = SimpleNamespace(model=SimpleNamespace(family=ModelFamily(family)))
     repa, digests = object(), {"text": "digest"}
@@ -215,13 +215,13 @@ def test_dispatch_preserves_shared_owners(monkeypatch, family, module, name):
         assert options == {"device": "cuda:1", "repa": repa, "tokenizer_digests": digests}
         return 13
 
-    fake_module(monkeypatch, f"unitunner.data.production.{module}", **{name: produce})
+    fake_module(monkeypatch, f"unituner.data.production.{module}", **{name: produce})
     assert _run(config, device="cuda:1", repa=repa, tokenizer_digests=digests) == 13
 
 
 @pytest.mark.parametrize("family,variant,version", [("qwen-image", "original", None), ("flux2", "distilled", "dev")])
 def test_invalid_encoder_topology_fails_before_loading_weights(monkeypatch, family, variant, version):
-    from unitunner.data.production import images
+    from unituner.data.production import images
 
     model = model_config(family, variant, version)
     model = model.model_copy(update={"variant": "unknown"} if family == "qwen-image" else {"version": None})

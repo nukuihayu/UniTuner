@@ -8,14 +8,14 @@ import torch
 from torch.nn import functional as F
 
 from tests.support.assertions import require_value
-from unitunner.artifacts.hashing import file_sha256
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.config.features import RepaConfig
-from unitunner.data.cache.feature_encoding import RepaCacheWriter
-from unitunner.data.cache.representation import RepaTargets
-from unitunner.data.cache.storage import CacheEntry
-from unitunner.models.features.vit import DinoViT, DinoViTConfig
-from unitunner.training.losses.representation import RepaProjection, VisualGrid
+from unituner.artifacts.hashing import file_sha256
+from unituner.artifacts.tensors import save_tensors
+from unituner.config.features import RepaConfig
+from unituner.data.cache.feature_encoding import RepaCacheWriter
+from unituner.data.cache.representation import RepaTargets
+from unituner.data.cache.storage import CacheEntry
+from unituner.models.features.vit import DinoViT, DinoViTConfig
+from unituner.training.losses.representation import RepaProjection, VisualGrid
 
 
 def test_real_encoder_exact_crop_frames_and_tamper_rejection(tmp_path):
@@ -26,7 +26,7 @@ def test_real_encoder_exact_crop_frames_and_tamper_rejection(tmp_path):
         .requires_grad_(False)
     )
     path = tmp_path / "encoder.safetensors"
-    save_tensors(model.state_dict(), path, metadata={"unitunner.dinov3": json.dumps(asdict(model.config))})
+    save_tensors(model.state_dict(), path, metadata={"unituner.dinov3": json.dumps(asdict(model.config))})
     config = RepaConfig(
         encoder_dim=16,
         encoder_sha256=file_sha256(path),
@@ -93,10 +93,10 @@ def test_repa_original_projection_interpolation_and_stopped_target_gradients():
 
 def test_qwen_layered_remove_base_keeps_repa_targets_in_native_order(tmp_path):
     from tests.training import test_qwen_image
-    from unitunner.config.routing import TreadConfig
-    from unitunner.data.cache.representation import RepaManifest, save_repa_manifest, save_repa_target
-    from unitunner.training.objectives import FeatureAlignment, TokenRoutingInstallation
-    from unitunner.training.session import TrainingSession
+    from unituner.config.routing import TreadConfig
+    from unituner.data.cache.representation import RepaManifest, save_repa_manifest, save_repa_target
+    from unituner.training.objectives import FeatureAlignment, TokenRoutingInstallation
+    from unituner.training.session import TrainingSession
 
     torch.set_num_threads(1)
     torch.manual_seed(73)
@@ -151,7 +151,7 @@ def test_qwen_layered_remove_base_keeps_repa_targets_in_native_order(tmp_path):
 
 
 def test_changed_repa_features_preserve_previous_published_inventory(tmp_path):
-    from unitunner.data.cache.representation import RepaManifest, save_repa_manifest, save_repa_target
+    from unituner.data.cache.representation import RepaManifest, save_repa_manifest, save_repa_target
 
     source = CacheEntry(file="b" * 64 + ".safetensors", sha256="c" * 64)
     first = save_repa_target(tmp_path, source, torch.ones(1, 2, 3, 7), encoder_sha256="a" * 64)

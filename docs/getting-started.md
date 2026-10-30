@@ -25,11 +25,11 @@
 在已配置兼容 CUDA 驱动的环境中运行：
 
 ```bash
-git clone https://github.com/nukuihayu/UniTunner.git
-cd UniTunner
+git clone https://github.com/nukuihayu/UniTuner.git
+cd UniTuner
 uv python install 3.13
 uv sync --locked --no-dev --extra media --extra text
-uv run --no-dev unitunner --help
+uv run --no-dev unituner --help
 ```
 
 `media` 提供图像/视频/音频读写，`text` 提供文本编码与分词依赖。后续命令都在仓库根目录执行。
@@ -167,16 +167,16 @@ seed = 42
 ## 6. 校验、缓存和训练
 
 ```bash
-uv run --no-dev unitunner validate train.toml
-uv run --no-dev unitunner cache train.toml --device cuda
-uv run --no-dev unitunner train train.toml --device cuda
+uv run --no-dev unituner validate train.toml
+uv run --no-dev unituner cache train.toml --device cuda
+uv run --no-dev unituner train train.toml --device cuda
 ```
 
 `validate` 检查字段和组合，不加载权重。`cache` 加载 VAE 与文本编码器，生成 latent/文本特征；训练读取缓存。修改图片、提示词、VAE、文本编码器或预处理后重建缓存。
 
 每次执行 `cache` 都重新编码，成功后替换旧缓存；失败保留旧缓存。重建期间不要启动读取同一缓存的训练。
 
-Z-Image 可用 `uv run --no-dev unitunner cache train.toml --device cuda --cache.batch-size 16` 批量编码 VAE 和文本；也可在 TOML 的 `[cache]` 中设置 `batch_size = 16`。这不改变训练批大小。默认 1；显存不足时降低缓存批大小，其他模型目前保持 1。
+Z-Image 可用 `uv run --no-dev unituner cache train.toml --device cuda --cache.batch-size 16` 批量编码 VAE 和文本；也可在 TOML 的 `[cache]` 中设置 `batch_size = 16`。这不改变训练批大小。默认 1；显存不足时降低缓存批大小，其他模型目前保持 1。
 
 终端原位显示进度和指标。后台或重定向默认每 60 秒输出摘要，首步和末步必报；通常无需设置 `log_every_seconds`。完整分损失、梯度范数、学习率、耗时和显存写入 JSONL 与已启用的 TensorBoard。
 
@@ -199,7 +199,7 @@ runs/garden/
 `garden.safetensors` 跟随每次导出更新，编号文件用于保留训练版本。只有 `resume/` 中的状态用于精确续训；普通 LoRA 文件不含优化器和随机状态。
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --resume runs/garden/resume/garden.state-00000100.safetensors
+uv run --no-dev unituner train train.toml --device cuda --resume runs/garden/resume/garden.state-00000100.safetensors
 tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 ```
 
@@ -209,7 +209,7 @@ tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 
 ```bash
 cp docs/examples/tutorial-generate.toml generate.toml
-uv run --no-dev unitunner generate generate.toml --device cuda
+uv run --no-dev unituner generate generate.toml --device cuda
 ```
 
 在推理配置中填写相同底模/VAE/文本编码器；`adapter.weights` 填 `runs/garden/weights/garden.safetensors`，算法、rank、alpha 与训练一致。修改 `[sampling]` 中的提示词、尺寸和种子。检查输出路径，不要覆盖输入图片。

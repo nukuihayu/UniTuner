@@ -10,12 +10,12 @@ import pytest
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.config.loading import load_training_config
-from unitunner.models.minimax_h3.inference import loading as minimax_h3_loading
-from unitunner.models.minimax_h3.loading import load_minimax_h3
-from unitunner.models.minimax_h3.vae import MiniMaxH3VideoVAE
-from unitunner.training.integrations.minimax_h3 import previews as minimax_h3_previews
-from unitunner.training.integrations.minimax_h3.previews import AudioVideoPreviews
+from unituner.config.loading import load_training_config
+from unituner.models.minimax_h3.inference import loading as minimax_h3_loading
+from unituner.models.minimax_h3.loading import load_minimax_h3
+from unituner.models.minimax_h3.vae import MiniMaxH3VideoVAE
+from unituner.training.integrations.minimax_h3 import previews as minimax_h3_previews
+from unituner.training.integrations.minimax_h3.previews import AudioVideoPreviews
 
 PROJECT = Path(__file__).resolve().parents[2]
 

@@ -2,7 +2,7 @@
 
 简体中文 · [English](../en/training/quantized-base.md) · [训练指南](README.md)
 
-UniTunner 支持冻结量化基模并训练 LoRA、LoHa 或 LoKr。所有精度共用 `QuantizedLinear`：只量化权重，前向临时恢复当前层的浮点权重，反向重新恢复同一权重并计算输入梯度。输入保持浮点，不进行动态激活量化，也不调用整数矩阵乘法。
+UniTuner 支持冻结量化基模并训练 LoRA、LoHa 或 LoKr。所有精度共用 `QuantizedLinear`：只量化权重，前向临时恢复当前层的浮点权重，反向重新恢复同一权重并计算输入梯度。输入保持浮点，不进行动态激活量化，也不调用整数矩阵乘法。
 
 这会降低基模的常驻存储和块传输量，但当前层仍需临时浮点权重，前向与反向还会增加反量化开销。它不保证加速，也不保证与原始浮点基模训练结果相同；梯度对应的是反量化后实际执行的浮点线性运算。
 
@@ -43,8 +43,8 @@ recompute = "block"
 这是配置修改片段；保留原配置中的模型、数据、优化器、步数和输出路径。源文件可为 BF16、FP16 或 FP32。原生训练加载器建立 FP32 基模，然后在适配器、优化器和执行策略安装前量化。
 
 ```bash
-uv run unitunner cache train.toml --device cuda
-uv run unitunner train train.toml --device cuda
+uv run unituner cache train.toml --device cuda
+uv run unituner train train.toml --device cuda
 ```
 
 使用 CUDA 训练时，浮点基模先保留在 CPU，每次只把一个投影送入 GPU 量化，再将量化结果放回 CPU。全部准备好后，resident 模式将量化模型移入 GPU；frozen-blocks／VBAR 按各自的驻留策略传输。完整浮点基模不会先占用 GPU，但仍需要相应的主机内存。CPU 训练则在 CPU 量化。
@@ -63,7 +63,7 @@ uv run unitunner train train.toml --device cuda
 | `convrot_w4a4`、`convrot_w4a8` | ConvRot 4 位权重布局 |
 | `asym_w4a8_int8`、`w6a8_int8` | 分组 4／6 位权重布局 |
 
-名称中的 A4／A8 是上游布局名称，在 UniTunner 中仍使用浮点激活。`fp8` 是 `float8_e4m3fn` 的别名，`convrot-int8` 是 `int8_convrot` 的别名；它们只选择权重格式。AWQ／SVDQuant 需要离线校准，不参与训练前自动量化，原生训练加载器可读取已经离线校准的规范 AWQ／SVDQuant 基模。
+名称中的 A4／A8 是上游布局名称，在 UniTuner 中仍使用浮点激活。`fp8` 是 `float8_e4m3fn` 的别名，`convrot-int8` 是 `int8_convrot` 的别名；它们只选择权重格式。AWQ／SVDQuant 需要离线校准，不参与训练前自动量化，原生训练加载器可读取已经离线校准的规范 AWQ／SVDQuant 基模。
 
 ConvRot 默认旋转组为 256，可通过 `quantization_rotation_size` 调整；INT8 ConvRot 的组大小必须为至少 4 的 4 的幂，且整除投影输入宽度。分组格式通过 `quantization_group_size` 设置组大小，默认 16。尺寸不兼容会明确报错。需要选择性保留不兼容层时，先使用独立转换命令及 `--on-incompatible keep`。
 
@@ -72,7 +72,7 @@ ConvRot 默认旋转组为 256，可通过 `quantization_rotation_size` 调整�
 也可以提前转换为可复用文件：
 
 ```bash
-uv run unitunner weights convert models/qwen21.safetensors models/qwen21-fp8.safetensors \
+uv run unituner weights convert models/qwen21.safetensors models/qwen21-fp8.safetensors \
   --family qwen-image-2-1 --precision float8_e4m3fn --device cuda
 ```
 

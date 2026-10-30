@@ -5,16 +5,16 @@ from pathlib import Path
 import pytest
 import torch
 
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.schema import build_resume_identity
-from unitunner.config.loading import load_training_config
-from unitunner.training import checkpointing
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phases
-from unitunner.training.optimizers.adamw import create_adamw
-from unitunner.training.output import resume_path
-from unitunner.training.parameters import ParameterGroup
+from unituner.artifacts.tensors import TensorReader
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.schema import build_resume_identity
+from unituner.config.loading import load_training_config
+from unituner.training import checkpointing
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phases
+from unituner.training.optimizers.adamw import create_adamw
+from unituner.training.output import resume_path
+from unituner.training.parameters import ParameterGroup
 
 EXAMPLE = Path(__file__).parents[2] / "docs/examples/full.toml"
 
@@ -101,10 +101,10 @@ def test_named_phase_snapshot_preserves_state_and_failure_keeps_previous_snapsho
 @pytest.mark.parametrize("backend", ["single", "foreach"])
 def test_image_workflow_uses_optimizer_settings_in_periodic_snapshots(tmp_path, backend):
     from tests.models.test_z_image import build_model
-    from unitunner.data.cache.schema import CacheIdentity
-    from unitunner.data.cache.storage import LatentManifest, save_latent_manifest, save_latent_record
-    from unitunner.models.z_image.loading import load_z_image, save_z_image
-    from unitunner.training.workflows.common.images import train
+    from unituner.data.cache.schema import CacheIdentity
+    from unituner.data.cache.storage import LatentManifest, save_latent_manifest, save_latent_record
+    from unituner.models.z_image.loading import load_z_image, save_z_image
+    from unituner.training.workflows.common.images import train
 
     previous_threads = torch.get_num_threads()
     torch.set_num_threads(1)
@@ -143,7 +143,7 @@ def test_image_workflow_uses_optimizer_settings_in_periodic_snapshots(tmp_path, 
         with TensorReader(resume_path(config, 2)) as reader:
             import json
 
-            manifest = json.loads(reader.metadata()["unitunner.checkpoint"])
+            manifest = json.loads(reader.metadata()["unituner.checkpoint"])
             identity = build_resume_identity(
                 config,
                 dataset_manifest_sha256=manifest["identity"]["dataset_manifest_sha256"],
@@ -166,8 +166,8 @@ def test_image_workflow_uses_optimizer_settings_in_periodic_snapshots(tmp_path, 
 
 @pytest.mark.parametrize("changed", ["name", "scale"])
 def test_checkpoint_rejects_group_policy_change_before_any_phase_mutation(tmp_path, changed):
-    from unitunner.checkpoints.saving import save_checkpoint
-    from unitunner.checkpoints.schema import CheckpointCursor
+    from unituner.checkpoints.saving import save_checkpoint
+    from unituner.checkpoints.schema import CheckpointCursor
 
     config = load_training_config(EXAMPLE)
     identity = build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)

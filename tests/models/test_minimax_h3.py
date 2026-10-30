@@ -7,22 +7,22 @@ import torch
 from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.artifacts.formats.adapters import (
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loading import LoadedAdapter
+from unituner.artifacts.formats.adapters import (
     AdapterTargetKeys,
     adapter_key_map,
     adapter_prefixes,
     convert_adapter_keys,
 )
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.cli.main import main
-from unitunner.models.minimax_h3.config.model import MiniMaxH3Config
-from unitunner.models.minimax_h3.layout import build_layout
-from unitunner.models.minimax_h3.loading import load_minimax_h3, save_minimax_h3
-from unitunner.models.minimax_h3.projections import adapter_projections
-from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
-from unitunner.training.parameters import ParameterInstallation
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.cli.main import main
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
+from unituner.models.minimax_h3.layout import build_layout
+from unituner.models.minimax_h3.loading import load_minimax_h3, save_minimax_h3
+from unituner.models.minimax_h3.projections import adapter_projections
+from unituner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unituner.training.parameters import ParameterInstallation
 
 
 def _model(variant):
@@ -154,7 +154,7 @@ def test_native_adapters_close_reload_and_export_without_changing_base(tmp_path,
         published = convert_adapter_keys(owner.branches.state_dict(), mapping)
         artifact = tmp_path / "adapter.safetensors"
         save_tensors(
-            published, artifact, metadata={"unitunner.adapter.layout": "minimax-h3-native", "network_alpha": "7.0"}
+            published, artifact, metadata={"unituner.adapter.layout": "minimax-h3-native", "network_alpha": "7.0"}
         )
     assert tuple(parameter.requires_grad for parameter in model.parameters()) == flags
     assert tuple(map(id, model.parameters())) == identities
@@ -186,7 +186,7 @@ def test_native_adapters_close_reload_and_export_without_changing_base(tmp_path,
         == 0
     )
     with TensorReader(destination) as reader:
-        assert reader.metadata()["unitunner.adapter.layout"] == "minimax-h3-comfyui"
+        assert reader.metadata()["unituner.adapter.layout"] == "minimax-h3-comfyui"
         assert not any(key.startswith("ss_") for key in reader.metadata())
         consumer_map = adapter_key_map(
             [AdapterTargetKeys(str(index), "diffusion_model." + name) for index, name in enumerate(targets)],

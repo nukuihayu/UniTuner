@@ -6,15 +6,15 @@ import pytest
 import torch
 
 from tests.support.assertions import require_value
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.loading import load_qwen_image, save_qwen_image
-from unitunner.models.qwen_image.positions import build_rotary
-from unitunner.models.qwen_image.projections import adapter_projections
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.loading import load_qwen_image, save_qwen_image
+from unituner.models.qwen_image.positions import build_rotary
+from unituner.models.qwen_image.projections import adapter_projections
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture(autouse=True)

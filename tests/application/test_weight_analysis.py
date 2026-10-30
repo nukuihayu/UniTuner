@@ -10,18 +10,18 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.adapters.loha import LoHa
-from unitunner.adapters.lokr import LoKr
-from unitunner.adapters.lora import LoRA
-from unitunner.analysis.adapters import compare_deltas, groups, load_delta, summarize
-from unitunner.analysis.artifacts import discover, inspect_artifact
-from unitunner.analysis.run import analyze, analyze_run
-from unitunner.analysis.statistics import compare, describe
-from unitunner.analysis.subspaces import align, declared_heads, singular_basis
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.cli.main import main
+from unituner.adapters.loha import LoHa
+from unituner.adapters.lokr import LoKr
+from unituner.adapters.lora import LoRA
+from unituner.analysis.adapters import compare_deltas, groups, load_delta, summarize
+from unituner.analysis.artifacts import discover, inspect_artifact
+from unituner.analysis.run import analyze, analyze_run
+from unituner.analysis.statistics import compare, describe
+from unituner.analysis.subspaces import align, declared_heads, singular_basis
+from unituner.artifacts.tensors import save_tensors
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.cli.main import main
 
 
 def test_exact_statistics_and_undefined_denominators():
@@ -57,7 +57,7 @@ def test_effective_adapter_metrics_match_dense_oracle(tmp_path, algorithm):
         if not (algorithm == "encoder" and key == "alpha")
     }
     path = tmp_path / "adapter.safetensors"
-    save_tensors(state, path, metadata={"unitunner.encoder.targets": "[]"} if algorithm == "encoder" else None)
+    save_tensors(state, path, metadata={"unituner.encoder.targets": "[]"} if algorithm == "encoder" else None)
     with inspect_artifact(path) as artifact:
         name, parts = next(iter(groups(artifact).items()))
         delta = load_delta(artifact, name, parts)
@@ -128,7 +128,7 @@ def test_lora_subspaces_and_heads_compare_update_with_merged_weights(tmp_path):
     assert item["heads"]["relative_change"] == pytest.approx(expected.tolist())
     assert item["heads"]["cosine_with_reference"][0] < 0
     assert item["heads"]["cosine_with_reference"][1] is None
-    from unitunner.analysis.figures import heads_plot, subspace
+    from unituner.analysis.figures import heads_plot, subspace
 
     assert -4 <= subspace(item).layout.coloraxis.cmin < 0
     pages = list(heads_plot([item]))
@@ -140,7 +140,7 @@ def test_lora_subspaces_and_heads_compare_update_with_merged_weights(tmp_path):
 
 
 def test_dense_artifact_distributions_use_matched_training_difference(tmp_path):
-    from unitunner.analysis.figures import distribution_pages
+    from unituner.analysis.figures import distribution_pages
 
     base = torch.full((4, 4), 100.0)
     baseline, trained = tmp_path / "base.safetensors", tmp_path / "trained.safetensors"
@@ -216,7 +216,7 @@ def test_cli_and_notebook_save_only_final_scientific_products(analysis_run, tmp_
     output = tmp_path / "results"
     displayed = []
     monkeypatch.setattr(
-        "unitunner.analysis.publication.display_image", lambda path, mode, first: displayed.append(path)
+        "unituner.analysis.publication.display_image", lambda path, mode, first: displayed.append(path)
     )
     assert (
         main(
@@ -269,13 +269,13 @@ def test_nonfinite_and_storage_only_weights_are_visible(tmp_path):
 def test_final_encoder_and_same_identity_exports_remain_independent(tmp_path):
     directory = tmp_path / "weights"
     directory.mkdir()
-    metadata = {"unitunner.analysis.step": "10", "unitunner.analysis.identity": "same"}
+    metadata = {"unituner.analysis.step": "10", "unituner.analysis.identity": "same"}
     for name in ("a", "b"):
         save_tensors({"x.weight": torch.eye(2)}, directory / f"{name}.safetensors", metadata=metadata)
     save_tensors(
         {"x.weight": torch.eye(2)},
         directory / "a.encoder.safetensors",
-        metadata={**metadata, "unitunner.encoder.targets": "[]"},
+        metadata={**metadata, "unituner.encoder.targets": "[]"},
     )
     save_tensors({"x.weight": torch.eye(2)}, directory / "a-00000010.encoder.safetensors")
     report = analyze(tmp_path, base=directory / "a.safetensors")
@@ -293,7 +293,7 @@ def test_periodic_only_directory_does_not_fall_back(tmp_path):
 
 
 def test_many_layer_and_head_pages_have_bounded_rows():
-    from unitunner.analysis.figures import heads_plot, layer_pages
+    from unituner.analysis.figures import heads_plot, layer_pages
 
     rows = [
         {
@@ -321,7 +321,7 @@ def test_many_layer_and_head_pages_have_bounded_rows():
 
 
 def test_readable_labels_natural_order_and_real_module_geometry():
-    from unitunner.analysis.figures import block_heatmaps, label_map, selected_rows
+    from unituner.analysis.figures import block_heatmaps, label_map, selected_rows
 
     rows = [
         {"name": f"weights/blocks.{i}.attention.{module}", "rms": 0.01 * (i + 1), "norm": 1}
@@ -342,7 +342,7 @@ def test_readable_labels_natural_order_and_real_module_geometry():
 
 
 def test_many_final_files_are_paginated_without_series_deduplication():
-    from unitunner.analysis.figures import collection_pages
+    from unituner.analysis.figures import collection_pages
 
     snapshots = [{"label": f"adapter-{i}", "effective": [{"norm": 1.0}], "rows": []} for i in range(49)]
     pages = list(collection_pages(snapshots))
@@ -352,7 +352,7 @@ def test_many_final_files_are_paginated_without_series_deduplication():
 
 
 def test_energy_allocation_rank_capacity_and_peer_scores():
-    from unitunner.analysis.diagnostics import enrich_diagnostics
+    from unituner.analysis.diagnostics import enrich_diagnostics
 
     rows = [
         {
@@ -381,7 +381,7 @@ def test_energy_allocation_rank_capacity_and_peer_scores():
 
 
 def test_zero_energy_and_non_lora_do_not_invent_capacity():
-    from unitunner.analysis.diagnostics import enrich_diagnostics
+    from unituner.analysis.diagnostics import enrich_diagnostics
 
     report = {
         "snapshots": [
@@ -412,12 +412,12 @@ def test_zero_energy_and_non_lora_do_not_invent_capacity():
 
 
 def test_plotly_renderer_failure_keeps_numeric_products(tmp_path, monkeypatch):
-    from unitunner.analysis.run import publish
+    from unituner.analysis.run import publish
 
     path = tmp_path / "final.safetensors"
     save_tensors({"x.weight": torch.eye(2)}, path)
     report = analyze(path)
-    monkeypatch.setattr("unitunner.analysis.publication.browser_path", lambda: "/missing/chrome")
+    monkeypatch.setattr("unituner.analysis.publication.browser_path", lambda: "/missing/chrome")
 
     def unavailable(*args, **kwargs):
         raise RuntimeError("Chrome not found")
@@ -431,10 +431,10 @@ def test_plotly_renderer_failure_keeps_numeric_products(tmp_path, monkeypatch):
 
 
 def test_analysis_downloads_missing_chrome_to_managed_cache(monkeypatch, tmp_path):
-    from unitunner.analysis.publication import browser_path
+    from unituner.analysis.publication import browser_path
 
     monkeypatch.delenv("BROWSER_PATH", raising=False)
-    monkeypatch.setattr("unitunner.analysis.publication.Chromium.find_browser", lambda **kwargs: None)
+    monkeypatch.setattr("unituner.analysis.publication.Chromium.find_browser", lambda **kwargs: None)
     downloads = []
     browser = tmp_path / "chrome"
     browser.touch()
@@ -443,43 +443,43 @@ def test_analysis_downloads_missing_chrome_to_managed_cache(monkeypatch, tmp_pat
         downloads.append(kwargs["timeout"])
         return subprocess.CompletedProcess(command, 0, stdout=f"{browser}\n", stderr="")
 
-    monkeypatch.setattr("unitunner.analysis.publication.subprocess.run", download)
+    monkeypatch.setattr("unituner.analysis.publication.subprocess.run", download)
     assert browser_path() == str(browser)
     assert downloads == [180]
 
 
 @pytest.mark.parametrize("explicit", [True, False])
 def test_analysis_reuses_browser_without_download(monkeypatch, explicit):
-    from unitunner.analysis.publication import browser_path
+    from unituner.analysis.publication import browser_path
 
     if explicit:
         monkeypatch.setenv("BROWSER_PATH", "/custom/chrome")
     else:
         monkeypatch.delenv("BROWSER_PATH", raising=False)
-    monkeypatch.setattr("unitunner.analysis.publication.Chromium.find_browser", lambda **kwargs: "/cached/chrome")
+    monkeypatch.setattr("unituner.analysis.publication.Chromium.find_browser", lambda **kwargs: "/cached/chrome")
 
     def unexpected_download(*args, **kwargs):
         pytest.fail("An available browser must not trigger a download")
 
-    monkeypatch.setattr("unitunner.analysis.publication.subprocess.run", unexpected_download)
+    monkeypatch.setattr("unituner.analysis.publication.subprocess.run", unexpected_download)
     assert browser_path() == ("/custom/chrome" if explicit else "/cached/chrome")
 
 
 @pytest.mark.parametrize("timeout", [False, True])
 def test_analysis_download_failure_keeps_numeric_products(tmp_path, monkeypatch, timeout):
-    from unitunner.analysis.publication import publish
+    from unituner.analysis.publication import publish
 
     path = tmp_path / "final.safetensors"
     save_tensors({"x.weight": torch.eye(2)}, path)
     monkeypatch.delenv("BROWSER_PATH", raising=False)
-    monkeypatch.setattr("unitunner.analysis.publication.Chromium.find_browser", lambda **kwargs: None)
+    monkeypatch.setattr("unituner.analysis.publication.Chromium.find_browser", lambda **kwargs: None)
 
     def offline(command, **kwargs):
         if timeout:
             raise subprocess.TimeoutExpired(command, kwargs["timeout"])
         return subprocess.CompletedProcess(command, 1, stdout="", stderr="Network unavailable")
 
-    monkeypatch.setattr("unitunner.analysis.publication.subprocess.run", offline)
+    monkeypatch.setattr("unituner.analysis.publication.subprocess.run", offline)
     with pytest.raises(RuntimeError, match="timed out" if timeout else "Network unavailable"):
         publish(analyze(path), tmp_path / "output", show="never")
     assert (tmp_path / "output/layers.csv").exists()
@@ -489,7 +489,7 @@ def test_analysis_download_failure_keeps_numeric_products(tmp_path, monkeypatch,
 def test_plotly_notebook_display_is_interactive(analysis_run, tmp_path, monkeypatch):
     project, _ = analysis_run
     shown = []
-    monkeypatch.setattr("unitunner.analysis.publication.notebook", lambda: True)
+    monkeypatch.setattr("unituner.analysis.publication.notebook", lambda: True)
     monkeypatch.setattr("plotly.graph_objects.Figure.show", lambda self, **kwargs: shown.append((self, kwargs)))
 
     async def in_kernel():
@@ -501,7 +501,7 @@ def test_plotly_notebook_display_is_interactive(analysis_run, tmp_path, monkeypa
 
 
 def test_native_plotly_charts_use_meaningful_encodings(analysis_run):
-    from unitunner.analysis.figures import allocation_pages, relationship_pages, spectrum_figure
+    from unituner.analysis.figures import allocation_pages, relationship_pages, spectrum_figure
 
     project, base = analysis_run
     report = analyze(project, base=base)
@@ -518,8 +518,8 @@ def test_native_plotly_charts_use_meaningful_encodings(analysis_run):
 
 
 def test_allocation_ranking_retains_full_population_denominator():
-    from unitunner.analysis.diagnostics import enrich_diagnostics
-    from unitunner.analysis.figures import allocation_pages
+    from unituner.analysis.diagnostics import enrich_diagnostics
+    from unituner.analysis.figures import allocation_pages
 
     rows = [
         {
@@ -545,7 +545,7 @@ def test_allocation_ranking_retains_full_population_denominator():
 
 
 def test_spectrum_controls_have_separate_layout_region(analysis_run):
-    from unitunner.analysis.figures import spectrum_figure
+    from unituner.analysis.figures import spectrum_figure
 
     project, _ = analysis_run
     fig = spectrum_figure(analyze(project)["snapshots"][0])

@@ -6,14 +6,14 @@ import torch
 from PIL import Image
 
 from tests.support.assertions import invalid_input
-from unitunner.artifacts.formats.qwen_image import image21_vae_key_map
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.qwen_image.vae import QwenImageVAEExecution, QwenImageVAETiling
-from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
-from unitunner.models.qwen_image_2_1.data.encoding import encode_images, image_tensor
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21_vae, save_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.vae import (
+from unituner.artifacts.formats.qwen_image import image21_vae_key_map
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.qwen_image.vae import QwenImageVAEExecution, QwenImageVAETiling
+from unituner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
+from unituner.models.qwen_image_2_1.data.encoding import encode_images, image_tensor
+from unituner.models.qwen_image_2_1.loading import load_qwen_image_21_vae, save_qwen_image_21_vae
+from unituner.models.qwen_image_2_1.vae import (
     AverageDownsample,
     DuplicateUpsample,
     ImageConv2d,

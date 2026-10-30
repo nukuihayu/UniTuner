@@ -4,15 +4,15 @@ import pytest
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
-from unitunner.models.minimax_h3.config.model import MiniMaxH3Config
-from unitunner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig
-from unitunner.models.minimax_h3.config.video_vae import MiniMaxH3VideoDecoderConfig, MiniMaxH3VideoVAEConfig
-from unitunner.models.minimax_h3.data.media.output import MiniMaxH3DecodedAV, MiniMaxH3DecodedImage
-from unitunner.models.minimax_h3.inference.sampling import MiniMaxH3VideoInputs, render_minimax_h3
-from unitunner.models.minimax_h3.layout import audio_latent_frames, build_layout
-from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
-from unitunner.models.minimax_h3.vae import MiniMaxH3AudioVAE, MiniMaxH3VideoVAE
+from unituner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
+from unituner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig
+from unituner.models.minimax_h3.config.video_vae import MiniMaxH3VideoDecoderConfig, MiniMaxH3VideoVAEConfig
+from unituner.models.minimax_h3.data.media.output import MiniMaxH3DecodedAV, MiniMaxH3DecodedImage
+from unituner.models.minimax_h3.inference.sampling import MiniMaxH3VideoInputs, render_minimax_h3
+from unituner.models.minimax_h3.layout import audio_latent_frames, build_layout
+from unituner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unituner.models.minimax_h3.vae import MiniMaxH3AudioVAE, MiniMaxH3VideoVAE
 
 
 @pytest.fixture(autouse=True)

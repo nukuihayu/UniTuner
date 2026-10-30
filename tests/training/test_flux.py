@@ -6,20 +6,20 @@ from typing import Literal
 import pytest
 import torch
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.execution.compiler import CompilerInstallation
-from unitunner.execution.recompute import RecomputeInstallation
-from unitunner.models.flux.conditioning import FluxCondition, image_ids, pack_latents
-from unitunner.models.flux.config.model import FluxConfig
-from unitunner.models.flux.transformer import FluxTransformer
-from unitunner.training.contracts import RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.flux.binding import FluxBinding, FluxFlowRequest
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.session import TrainingSession
+from unituner.adapters.config import AdapterConfig
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.execution.compiler import CompilerInstallation
+from unituner.execution.recompute import RecomputeInstallation
+from unituner.models.flux.conditioning import FluxCondition, image_ids, pack_latents
+from unituner.models.flux.config.model import FluxConfig
+from unituner.models.flux.transformer import FluxTransformer
+from unituner.training.contracts import RunState
+from unituner.training.engine import update_phase
+from unituner.training.integrations.flux.binding import FluxBinding, FluxFlowRequest
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.session import TrainingSession
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

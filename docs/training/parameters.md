@@ -34,8 +34,8 @@ name = "portrait-lora"
 ```
 
 ```bash
-uv run unitunner train train.toml --device cuda --train.learning-rate 5e-5
-uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch_size=1'
+uv run unituner train train.toml --device cuda --train.learning-rate 5e-5
+uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_size=1'
 ```
 
 ## `model`
@@ -257,7 +257,7 @@ batch_size = 16
 
 LoRA 格式可以在 TOML 中设置 `output.adapter_format = "diffusers"`，或启动时使用 `--set output.adapter_format=diffusers`。导出直接转换因子，不把 LoRA 合入底模、不合并不同层、不执行 SVD。ComfyUI 支持的拆分投影保持独立，例如 Qwen Image 2.1 的 `gate_layer/proj`。官方布局要求拆分已有融合投影时，只切分输出因子并复用输入因子。
 
-Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`，原始 `alpha/r` 缩放折入 B，默认消费缩放为 1。用支持相应模型架构的 Diffusers/PEFT 加载器消费该格式；UniTunner 原生推理继续使用默认 ComfyUI 导出。LoHa/LoKr 选择 ComfyUI 格式。此参数只影响 denoiser 适配器导出，不改变全参权重、配套 VAE encoder 或续训状态。
+Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`，原始 `alpha/r` 缩放折入 B，默认消费缩放为 1。用支持相应模型架构的 Diffusers/PEFT 加载器消费该格式；UniTuner 原生推理继续使用默认 ComfyUI 导出。LoHa/LoKr 选择 ComfyUI 格式。此参数只影响 denoiser 适配器导出，不改变全参权重、配套 VAE encoder 或续训状态。
 
 ## `preview`
 

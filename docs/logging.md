@@ -33,10 +33,10 @@ log_every_seconds = 120.0
 如果 notebook 环境没有传递该变量，在原有 `%%bash` 单元格的训练命令之前加一行即可：
 
 ```bash
-export UNITUNNER_PROGRESS=always
+export UNITUNER_PROGRESS=always
 ```
 
-`UNITUNNER_PROGRESS` 默认为 `auto`；`always` 强制显示，`never` 禁用进度条，适合重定向日志或消费 JSON stdout。进度条写入 stderr，启用时不再重复打印训练 INFO／JSON 摘要；完整逐步指标仍写入 JSONL 和 TensorBoard。Notebook 前端控制文本回车的呈现，子进程模式不要求安装 `ipywidgets`。
+`UNITUNER_PROGRESS` 默认为 `auto`；`always` 强制显示，`never` 禁用进度条，适合重定向日志或消费 JSON stdout。进度条写入 stderr，启用时不再重复打印训练 INFO／JSON 摘要；完整逐步指标仍写入 JSONL 和 TensorBoard。Notebook 前端控制文本回车的呈现，子进程模式不要求安装 `ipywidgets`。
 
 ## JSONL 完整指标
 
@@ -70,7 +70,7 @@ tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 ## 排查错误
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --log-level DEBUG
+uv run --no-dev unituner train train.toml --device cuda --log-level DEBUG
 ```
 
 终端级别支持 DEBUG/INFO/WARNING/ERROR，JSONL 独立保留 DEBUG 详情。错误会尽可能标明配置字段、设备、源文件、更新数和阶段。先看第一处异常，再查看启动时给出的 JSONL 路径。

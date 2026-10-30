@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from unitunner.cli.main import main
-from unitunner.config.loading import load_training_config
-from unitunner.config.training import OutputConfig
-from unitunner.training.output import (
+from unituner.cli.main import main
+from unituner.config.loading import load_training_config
+from unituner.config.training import OutputConfig
+from unituner.training.output import (
     prepare_training_output,
     prune_checkpoints,
     publish_latest_weights,
@@ -23,17 +23,17 @@ EXAMPLE = Path(__file__).resolve().parents[2] / "docs/examples/flow.toml"
 def test_omitted_directory_shares_execution_name_with_logs_and_tensorboard(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "unitunner.training.output.datetime", SimpleNamespace(now=lambda: datetime(2026, 10, 22, 10, 0))
+        "unituner.training.output.datetime", SimpleNamespace(now=lambda: datetime(2026, 10, 22, 10, 0))
     )
     config = load_training_config(EXAMPLE).model_copy(
         update={"output": OutputConfig(name="oil-skin-lora", tensorboard=str(tmp_path / "events"))}
     )
-    monkeypatch.setattr("unitunner.cli.main.load_training_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr("unituner.cli.main.load_training_config", lambda *args, **kwargs: config)
     executions = []
 
     def run(config, **kwargs):
-        from unitunner.training.contracts import RunState
-        from unitunner.training.telemetry import TrainingTelemetry
+        from unituner.training.contracts import RunState
+        from unituner.training.telemetry import TrainingTelemetry
 
         output = Path(config.output.directory)
         telemetry = TrainingTelemetry(
@@ -48,7 +48,7 @@ def test_omitted_directory_shares_execution_name_with_logs_and_tensorboard(tmp_p
             telemetry.close()
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert main(["train", str(EXAMPLE)]) == 0
     assert main(["train", str(EXAMPLE)]) == 0
     assert executions[0] != executions[1]
@@ -105,7 +105,7 @@ def test_latest_weights_update_with_saves_and_preserve_previous_snapshots(tmp_pa
         def no_links(*args):
             raise OSError("Hard links unavailable")
 
-        monkeypatch.setattr("unitunner.training.output.os.link", no_links)
+        monkeypatch.setattr("unituner.training.output.os.link", no_links)
     for update in (10, 20):
         for encoder in (False, True):
             path = weights_path(config, update=update, encoder=encoder)

@@ -73,7 +73,7 @@ precision = "bf16"
 quantization = "float8_e4m3fn"
 ```
 
-`model.text_encoder` 仍指向原来的本地资产。运行 `unitunner cache train.toml --device cuda` 时，加载器先在 CPU 建立浮点文本模型，再逐层送入 GPU 量化，将每层打包结果放回 CPU，最后移动到文本推理设备。无需先把完整浮点编码器放入 GPU；主机内存仍需容纳浮点源模型。CPU 执行则在 CPU 量化。源文件不会被改写。
+`model.text_encoder` 仍指向原来的本地资产。运行 `unituner cache train.toml --device cuda` 时，加载器先在 CPU 建立浮点文本模型，再逐层送入 GPU 量化，将每层打包结果放回 CPU，最后移动到文本推理设备。无需先把完整浮点编码器放入 GPU；主机内存仍需容纳浮点源模型。CPU 执行则在 CPU 量化。源文件不会被改写。
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ quantization = "float8_e4m3fn"
 为输出目录准备对应的模型 config；tokenizer、chat template 和 processor 可使用上述独立来源，然后转换权重：
 
 ```bash
-uv run unitunner weights convert models/qwen3/model.safetensors models/qwen3-fp8/model.safetensors \
+uv run unituner weights convert models/qwen3/model.safetensors models/qwen3-fp8/model.safetensors \
   --family qwen3 --precision float8_e4m3fn --device cuda
 ```
 

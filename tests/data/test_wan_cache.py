@@ -12,24 +12,24 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import T5Tokenizer
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.config.datasets import VideoDatasetConfig
-from unitunner.config.loading import ConfigError, load_training_config
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.data.media.video import read_video, resample_frame_indices, select_video_windows
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.wan.conditioning import encode_latent_conditions
-from unitunner.models.wan.config.clip import WanClipConfig
-from unitunner.models.wan.config.t5 import WanT5Config
-from unitunner.models.wan.data.cache.storage import load_wan_manifest, read_wan_record, save_wan_record
-from unitunner.models.wan.single_frame import encode_single_frame_conditions
-from unitunner.models.wan.text.loading import save_wan_t5
-from unitunner.models.wan.text.model import WanT5Encoder
-from unitunner.models.wan.vision.encoder import WanImageEncoder
-from unitunner.models.wan.vision.loading import save_wan_clip
-from unitunner.models.wan.vision.model import WanClipVision
+from unituner.artifacts.tensors import TensorReader
+from unituner.config.datasets import VideoDatasetConfig
+from unituner.config.loading import ConfigError, load_training_config
+from unituner.data.cache.schema import CacheIdentity
+from unituner.data.media.video import read_video, resample_frame_indices, select_video_windows
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.models.wan.conditioning import encode_latent_conditions
+from unituner.models.wan.config.clip import WanClipConfig
+from unituner.models.wan.config.t5 import WanT5Config
+from unituner.models.wan.data.cache.storage import load_wan_manifest, read_wan_record, save_wan_record
+from unituner.models.wan.single_frame import encode_single_frame_conditions
+from unituner.models.wan.text.loading import save_wan_t5
+from unituner.models.wan.text.model import WanT5Encoder
+from unituner.models.wan.vision.encoder import WanImageEncoder
+from unituner.models.wan.vision.loading import save_wan_clip
+from unituner.models.wan.vision.model import WanClipVision
 
 
 def write_video(path, pixels, *, fps=24):
@@ -196,7 +196,7 @@ rank = 2
         entry = manifest.entries[0]
         record = read_wan_record(destination, entry, manifest=manifest, device=torch.device("cpu"))
     with TensorReader(destination / entry.file) as reader:
-        identity = CacheIdentity.model_validate_json(reader.metadata()["unitunner.cache.identity"])
+        identity = CacheIdentity.model_validate_json(reader.metadata()["unituner.cache.identity"])
     before = (destination / entry.file).read_bytes()
     with pytest.raises(ValueError, match="finite FP32"):
         save_wan_record(

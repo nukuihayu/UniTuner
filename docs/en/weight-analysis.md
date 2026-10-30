@@ -1,14 +1,14 @@
 # Final weight analysis
 
 ```bash
-uv run unitunner analyze runs/my-run --base /models/base.safetensors
-uv run unitunner analyze --list
+uv run unituner analyze runs/my-run --base /models/base.safetensors
+uv run unituner analyze --list
 ```
 
 The analyzer selects unnumbered portable exports in `weights/`, including separate encoder exports. Legacy root-level exports and explicit safetensors/index paths are supported. Numbered periodic exports and `resume/` states are excluded; missing final exports produce an error. The training writer may refresh the unnumbered latest export during training: this filename does not prove completion. Reports use recorded update metadata.
 
 ```python
-from unitunner.analysis import analyze_run
+from unituner.analysis import analyze_run
 report = analyze_run("runs/my-run", show="auto")
 ```
 

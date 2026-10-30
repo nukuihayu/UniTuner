@@ -16,14 +16,14 @@ from tests.execution.test_frozen_blocks import test_mixed_dtype_strided_weights_
 from tests.execution.test_native_strategies import FAMILIES
 from tests.execution.test_native_strategies import test_native_h2d_forward_backward_three_updates as native_case
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.config.execution import ExecutionConfig
-from unitunner.execution.allocator_bootstrap import vbar_initialized
-from unitunner.execution.frozen_blocks import FrozenBlockInstallation
-from unitunner.execution.installation import ExecutionInstallation
-from unitunner.execution.mapped_weights import VbarArena, VbarWeights
-from unitunner.execution.prefetch import WeightPrefetch
-from unitunner.execution.regions import ModelRegion, ModelRegions
-from unitunner.execution.weight_source import WeightSource
+from unituner.config.execution import ExecutionConfig
+from unituner.execution.allocator_bootstrap import vbar_initialized
+from unituner.execution.frozen_blocks import FrozenBlockInstallation
+from unituner.execution.installation import ExecutionInstallation
+from unituner.execution.mapped_weights import VbarArena, VbarWeights
+from unituner.execution.prefetch import WeightPrefetch
+from unituner.execution.regions import ModelRegion, ModelRegions
+from unituner.execution.weight_source import WeightSource
 
 pytestmark = pytest.mark.skipif(not vbar_initialized(), reason="Run the VBAR comparison driver before importing Torch")
 flux_assets = test_flux_flow.assets
@@ -83,10 +83,10 @@ def test_speculative_headroom_backs_off_only_after_allocator_retries(monkeypatch
 def test_vbar_cold_cuda_context_keeps_weights_resident():
     """Fault resident pages before any Torch CUDA allocation in a fresh process."""
     program = """
-from unitunner.execution.allocator_bootstrap import initialize_vbar
+from unituner.execution.allocator_bootstrap import initialize_vbar
 initialize_vbar()
 import torch
-from unitunner.execution import mapped_weights
+from unituner.execution import mapped_weights
 host = torch.ones(1024 * 1024)
 owner = mapped_weights.VbarWeights((host,), device=torch.device("cuda", 0))
 try:
@@ -481,7 +481,7 @@ def test_vbar_public_training_and_cold_cli_resume(tmp_path, monkeypatch, recompu
 
 
 def _public_training_and_cold_cli_resume(tmp_path, monkeypatch, *, recompute):
-    monkeypatch.setenv("UNITUNNER_TEST_DEVICE", "cuda")
+    monkeypatch.setenv("UNITUNER_TEST_DEVICE", "cuda")
     public_case(tmp_path, "lora", 2, residency="vbar", recompute=recompute, attention_offload=True)
     # The application reference also verifies changed-content resume rejection;
     # restore its original caption before testing a fresh CLI process.
@@ -499,7 +499,7 @@ def _public_training_and_cold_cli_resume(tmp_path, monkeypatch, *, recompute):
         [
             sys.executable,
             "-c",
-            "from unitunner.execution.allocator_bootstrap import initialize_vbar; initialize_vbar(); "
+            "from unituner.execution.allocator_bootstrap import initialize_vbar; initialize_vbar(); "
             "from tests.support.text_assets import main_with_local_tokenizers; import sys; "
             "import torch; torch.use_deterministic_algorithms(True); "
             "from torch.nn.attention import SDPBackend, sdpa_kernel\n"
@@ -521,7 +521,7 @@ def _public_training_and_cold_cli_resume(tmp_path, monkeypatch, *, recompute):
 
 
 def test_vbar_flux_public_training_previews_and_resume(flux_assets, monkeypatch):
-    monkeypatch.setenv("UNITUNNER_TEST_DEVICE", "cuda")
+    monkeypatch.setenv("UNITUNER_TEST_DEVICE", "cuda")
     test_flux_flow.test_flux_real_variant_cache_training_resume_and_content_identity(
         flux_assets, "dev", "lora", residency="vbar"
     )

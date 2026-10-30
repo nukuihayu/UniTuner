@@ -5,8 +5,8 @@ import math
 import pytest
 import torch
 
-from unitunner.training.methods.mid_timestep import restoration_candidates, restoration_sigma
-from unitunner.training.methods.snr_calibration import SNRCalibration, calibration_rng, estimate_mid_timestep
+from unituner.training.methods.mid_timestep import restoration_candidates, restoration_sigma
+from unituner.training.methods.snr_calibration import SNRCalibration, calibration_rng, estimate_mid_timestep
 
 
 def test_estimate_matches_analytic_fm_snr_and_restores_posterior_rng():

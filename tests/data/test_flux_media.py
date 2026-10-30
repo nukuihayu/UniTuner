@@ -5,8 +5,8 @@ import pytest
 import torch
 from PIL import Image
 
-from unitunner.data.media.image import read_image
-from unitunner.models.flux.data.media import read_fill_condition, read_fill_image, read_reference_image
+from unituner.data.media.image import read_image
+from unituner.models.flux.data.media import read_fill_condition, read_fill_image, read_reference_image
 
 
 def test_flux_reference_alpha_is_removed_before_resizing_and_fill_masks_stay_aligned(tmp_path):

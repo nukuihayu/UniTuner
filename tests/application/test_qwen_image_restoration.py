@@ -10,14 +10,14 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.qwen_image import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.models.features.convnext import DinoConvNeXt
-from unitunner.models.features.vgg import Vgg19Features
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.models.qwen_image.vae import QwenImageVAE
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.models.features.convnext import DinoConvNeXt
+from unituner.models.features.vgg import Vgg19Features
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.qwen_image.vae import QwenImageVAE
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -41,7 +41,7 @@ def test_qwen_restoration_shared_runner_resume_preview_and_export(tmp_path, algo
         torch.manual_seed(809)
         root = tmp_path
         width, height = (512, 512) if algorithm == "lora" else (32, 16)
-        device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+        device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         write_text_assets(root / "text")
         save_qwen_image_vae(
             QwenImageVAE(
@@ -234,7 +234,7 @@ alpha = 3.0
         with Image.open(root / "odd-restored.png") as image:
             assert image.size == (19, 13) and image.mode == "RGB"
         with TensorReader(root / "run/weights/model.safetensors") as reader:
-            sigma = reader.metadata()["unitunner.restoration.sigma"]
+            sigma = reader.metadata()["unituner.restoration.sigma"]
         path.write_text(
             restore.replace('prompt = "restore colors"', f'prompt = "restore colors"\nsigma = {float(sigma) / 2}')
         )

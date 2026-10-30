@@ -8,11 +8,11 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.utils.rnn import pad_sequence
 
 from tests.training import test_flux, test_flux2, test_flux3, test_moss_image
-from unitunner.models.components.conditioning import Caption
-from unitunner.models.flux.conditioning import FluxTextFeatures, image_ids, pack_latents, unpack_latents
-from unitunner.models.flux2.conditioning import build_image_inputs, pack_text
-from unitunner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, text_tokens
-from unitunner.training.session import TrainingSession
+from unituner.models.components.conditioning import Caption
+from unituner.models.flux.conditioning import FluxTextFeatures, image_ids, pack_latents, unpack_latents
+from unituner.models.flux2.conditioning import build_image_inputs, pack_text
+from unituner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, text_tokens
+from unituner.training.session import TrainingSession
 
 
 def native_prediction(family, model, low, caption, sigma):
@@ -75,7 +75,7 @@ def native_prediction(family, model, low, caption, sigma):
 )
 def test_native_restoration_gradients_and_three_updates(family, variant, mode):
     helper = {"flux": test_flux, "flux2": test_flux2, "flux3": test_flux3, "moss-image": test_moss_image}[family]
-    device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+    device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
     torch.manual_seed(237)
     with TrainingSession() as actual_session, TrainingSession() as expected_session, sdpa_kernel(SDPBackend.MATH):
         bindings, modules = [], []

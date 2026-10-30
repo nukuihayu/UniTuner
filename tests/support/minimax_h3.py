@@ -11,12 +11,12 @@ from pydantic import JsonValue
 
 from tests.models.test_minimax_h3_audio_vae import _vae as audio_vae
 from tests.support.media import write_media
-from unitunner.models.minimax_h3.config.model import MiniMaxH3Config
-from unitunner.models.minimax_h3.config.video_vae import MiniMaxH3VideoDecoderConfig, MiniMaxH3VideoVAEConfig
-from unitunner.models.minimax_h3.loading import save_minimax_h3
-from unitunner.models.minimax_h3.text.encoder import MiniMaxH3TextFeatures
-from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
-from unitunner.models.minimax_h3.vae import MiniMaxH3VideoVAE, save_audio_vae, save_video_vae
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
+from unituner.models.minimax_h3.config.video_vae import MiniMaxH3VideoDecoderConfig, MiniMaxH3VideoVAEConfig
+from unituner.models.minimax_h3.loading import save_minimax_h3
+from unituner.models.minimax_h3.text.encoder import MiniMaxH3TextFeatures
+from unituner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unituner.models.minimax_h3.vae import MiniMaxH3VideoVAE, save_audio_vae, save_video_vae
 
 
 class FixedTextEncoder:

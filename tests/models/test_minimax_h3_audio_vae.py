@@ -5,10 +5,10 @@ import torch
 from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.minimax_h3.conditioning import encode_audio
-from unitunner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
-from unitunner.models.minimax_h3.vae import MiniMaxH3AudioVAE, load_audio_vae, save_audio_vae
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.minimax_h3.conditioning import encode_audio
+from unituner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
+from unituner.models.minimax_h3.vae import MiniMaxH3AudioVAE, load_audio_vae, save_audio_vae
 
 
 @pytest.fixture(autouse=True)

@@ -7,11 +7,11 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from unitunner.artifacts.conversion import convert_weights
-from unitunner.artifacts.formats.quantization import FORMATS
-from unitunner.artifacts.quantization import read_weight, serialize_weight, tensor_json
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.cli.main import main
+from unituner.artifacts.conversion import convert_weights
+from unituner.artifacts.formats.quantization import FORMATS
+from unituner.artifacts.quantization import read_weight, serialize_weight, tensor_json
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.cli.main import main
 
 DIRECT = tuple(name for name, spec in FORMATS.items() if not spec.calibrated)
 DEVICES = ("cpu", "cuda") if torch.cuda.is_available() else ("cpu",)
@@ -220,7 +220,7 @@ def test_w6_reload_and_excluded_layers_preserve_sidecars(kitchen, tmp_path):
         tensors = {key: reader.read(key) for key in reader.keys()}
         config = tensor_json(tensors["x.comfy_quant"])
         expected = read_weight("x.weight", reader.read, config, device=torch.device("cpu")).dequantize()
-    from unitunner.artifacts.quantization import json_tensor
+    from unituner.artifacts.quantization import json_tensor
 
     tensors["x.comfy_quant"] = json_tensor(config)
     tensors["x.input_scale"] = torch.tensor(0.5)

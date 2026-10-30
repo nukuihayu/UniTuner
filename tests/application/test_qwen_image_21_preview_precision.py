@@ -6,17 +6,17 @@ from PIL import Image
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import local_text_config
-from unitunner.adapters.attachment import AdapterAttachment
-from unitunner.adapters.lora import LoRA
-from unitunner.config.loading import load_training_config
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
-from unitunner.models.qwen_image_2_1.loading import save_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
-from unitunner.precision import FLOAT_DTYPES
-from unitunner.training.integrations.qwen_image_2_1 import previews
-from unitunner.training.previews.images import PreviewImages
+from unituner.adapters.attachment import AdapterAttachment
+from unituner.adapters.lora import LoRA
+from unituner.config.loading import load_training_config
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
+from unituner.models.qwen_image_2_1.loading import save_qwen_image_21_vae
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
+from unituner.precision import FLOAT_DTYPES
+from unituner.training.integrations.qwen_image_2_1 import previews
+from unituner.training.previews.images import PreviewImages
 
 
 @pytest.mark.parametrize("precision", ["fp32", "bf16", "fp16", "auto"])

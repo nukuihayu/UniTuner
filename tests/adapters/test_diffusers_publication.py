@@ -8,20 +8,20 @@ import pytest
 import torch
 
 from tests.models.test_transformer_external_loading import _CASES
-from unitunner.adapters.config import AdapterConfig
-from unitunner.analysis.adapters import groups, load_delta
-from unitunner.analysis.artifacts import inspect_artifact
-from unitunner.artifacts.formats.transformer import convert_transformer
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.publishing import publish_adapter
+from unituner.adapters.config import AdapterConfig
+from unituner.analysis.adapters import groups, load_delta
+from unituner.analysis.artifacts import inspect_artifact
+from unituner.artifacts.formats.transformer import convert_transformer
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.publishing import publish_adapter
 
 
 @pytest.mark.parametrize("module,stem,options", _CASES)
 def test_official_factors_preserve_native_updates_and_source_state(tmp_path, module, stem, options):
-    config = getattr(import_module(f"unitunner.models.{module}.config.model"), stem + "Config")(**options)
-    model = getattr(import_module(f"unitunner.models.{module}.transformer"), stem + "Transformer")(config)
-    targets = import_module(f"unitunner.models.{module}.projections").adapter_projections(model)
+    config = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
+    model = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(config)
+    targets = import_module(f"unituner.models.{module}.projections").adapter_projections(model)
     adapter = AdapterConfig(rank=2, alpha=7.0)
     with closing(ParameterInstallation(model, adapter=adapter, targets=targets)) as installation:
         with torch.no_grad():
@@ -42,7 +42,7 @@ def test_official_factors_preserve_native_updates_and_source_state(tmp_path, mod
             family=module.replace("_", "-"),
         )
         with TensorReader(path) as reader:
-            assert reader.metadata()["unitunner.adapter.format"] == "diffusers"
+            assert reader.metadata()["unituner.adapter.format"] == "diffusers"
             assert all(key.endswith((".lora_A.weight", ".lora_B.weight")) for key in reader.keys())
         published_deltas = {}
         with inspect_artifact(path) as artifact:

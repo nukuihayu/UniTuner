@@ -44,9 +44,9 @@
 4. 按顺序运行校验、缓存、训练。
 
 ```bash
-uv run --no-dev unitunner validate train.toml
-uv run --no-dev unitunner cache train.toml --device cuda
-uv run --no-dev unitunner train train.toml --device cuda
+uv run --no-dev unituner validate train.toml
+uv run --no-dev unituner cache train.toml --device cuda
+uv run --no-dev unituner train train.toml --device cuda
 ```
 
 缓存命令只校验编码所需的参数；不会要求训练专用的优化器、LoRA 或损失参数。单独缓存可复制 image-cache、wan-cache 或 minimax-h3-cache 示例。已有缓存且不需要预览的训练可不加载 VAE/文本编码器；图像修复仍需实时读取图像和 VAE。
@@ -160,7 +160,7 @@ tensorboard = "runs/tensorboard"
 每次达到保存周期及末步同时保存权重和独立 resume。默认只留最近一份 resume，正式权重全部保留。两个 max_* 参数设正整数保留最近 N 份/组，0 不限；encoder 随权重组清理。完整保存成功后才删除旧版本。
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --resume runs/portrait-lora/resume/portrait-lora.state-00001000.safetensors
+uv run --no-dev unituner train train.toml --device cuda --resume runs/portrait-lora/resume/portrait-lora.state-00001000.safetensors
 ```
 
 续训到 max_updates 总数。保留相同底模与数据；影响数值的配置会进行身份校验。save_precision 仅控制正式权重导出，不降低续训文件精度。磁盘紧张时可研究 checkpoint_storage=frozen-reference，它恢复时要求完全相同的冻结底模。
@@ -189,7 +189,7 @@ tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 
 ## 推理与发布
 
-adapter 的正式权重使用对应模型的 ComfyUI 加载键；选择匹配基模的 LoRA 加载器。full 权重作为新底模。修复 encoder 是独立 VAE 增量，UniTunner restore 要与同轮 LoRA 一起填写。完整命令见[推理](../inference.md)。
+adapter 的正式权重使用对应模型的 ComfyUI 加载键；选择匹配基模的 LoRA 加载器。full 权重作为新底模。修复 encoder 是独立 VAE 增量，UniTuner restore 要与同轮 LoRA 一起填写。完整命令见[推理](../inference.md)。
 
 ## 常见填写问题
 

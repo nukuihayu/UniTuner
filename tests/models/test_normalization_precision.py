@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from unitunner.models.moss_image.layers import RMSNorm as MossNorm
-from unitunner.models.wan.layers import RMSNorm as WanNorm
+from unituner.models.moss_image.layers import RMSNorm as MossNorm
+from unituner.models.wan.layers import RMSNorm as WanNorm
 
 DEVICES = ("cpu", "cuda") if torch.cuda.is_available() else ("cpu",)
 

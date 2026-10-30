@@ -5,15 +5,15 @@ from pathlib import Path
 import pytest
 import torch
 
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.schema import build_resume_identity
-from unitunner.config.loading import load_training_config
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import run_updates
-from unitunner.training.optimizers.adamw import create_adamw
-from unitunner.training.output import resume_path
-from unitunner.training.parameters import ParameterGroup
-from unitunner.training.update_schedule import UpdateSchedule
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.schema import build_resume_identity
+from unituner.config.loading import load_training_config
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import run_updates
+from unituner.training.optimizers.adamw import create_adamw
+from unituner.training.output import resume_path
+from unituner.training.parameters import ParameterGroup
+from unituner.training.update_schedule import UpdateSchedule
 
 EXAMPLE = Path(__file__).parents[2] / "docs/examples/full.toml"
 

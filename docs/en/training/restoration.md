@@ -4,7 +4,7 @@
 
 [Documentation](../README.md) · [Training](README.md) · [Examples](../examples/README.md)
 
-Mid-timestep restoration feeds the encoded low-quality (LQ) latent directly into the model at a fixed intermediate time, then performs one restoration step. It adds no extra noise to the LQ latent. Models retain their native timestep units and velocity direction. Training, previews, checkpoints, and `unitunner restore` share the same formula across eight image families, with adapter or full parameter training.
+Mid-timestep restoration feeds the encoded low-quality (LQ) latent directly into the model at a fixed intermediate time, then performs one restoration step. It adds no extra noise to the LQ latent. Models retain their native timestep units and velocity direction. Training, previews, checkpoints, and `unituner restore` share the same formula across eight image families, with adapter or full parameter training.
 
 <details>
 <summary>On this page</summary>
@@ -170,9 +170,9 @@ Start with [FLUX](../../examples/flux-restoration.toml), [FLUX.2](../../examples
 `dataset.groups.main.source` holds HQ images; `dataset.groups.main.low_quality_source` holds aligned LQ images matched by stem. Synthetic degradation and mixed sources follow the [training guide](README.md#restoration-and-intermediate-time). Caching extracts native text features; FLUX keeps T5 and pooled CLIP features. CLIP resides in the bundle's `text_encoder/`; `model.assets` identifies that bundle root, defaulting to the denoiser's parent.
 
 ```bash
-uv run unitunner cache docs/examples/flux3-restoration.toml --device cuda
-uv run unitunner train docs/examples/flux3-restoration.toml --device cuda
-uv run unitunner train docs/examples/flux3-restoration.toml --device cuda --resume runs/flux3-restoration/resume/model.state-00000050.safetensors
+uv run unituner cache docs/examples/flux3-restoration.toml --device cuda
+uv run unituner train docs/examples/flux3-restoration.toml --device cuda
+uv run unituner train docs/examples/flux3-restoration.toml --device cuda --resume runs/flux3-restoration/resume/model.state-00000050.safetensors
 ```
 
 For full parameters, set `train.parameter_mode = "full"` and remove `[train.adapter]`. As in ordinary flow matching, set `[execution] precision = "bf16"` for BF16 AMP in the VAE, DINO, VGG and discriminator convolutions and linear layers. Trainable master parameters and optimizer states follow the shared flow-matching precision policy; FFT and loss statistics retain FP32. Full mode requires floating base weights; adapters can use a [quantized frozen base](quantized-base.md). Full mode uses resident weights and supports block recomputation/CUDA compilation. Frozen-block H2D supports adapters only. LayerSync, REPA, and TREAD are rejected in restoration.
@@ -188,7 +188,7 @@ midtimestep = 244
 ```
 
 ```bash
-uv run unitunner train train.toml --device cuda --midtimestep 244
+uv run unituner train train.toml --device cuda --midtimestep 244
 ```
 
 The integer range is 1..998 and applies only to restoration. An explicit CLI value overrides TOML; 244 is used only when both omit the value. Optional `method.restoration.sigma` directly specifies the noise fraction; `calibrate=true` estimates it from paired data.
@@ -238,7 +238,7 @@ Outputs include the denoiser model/adapter, an optional encoder adapter, and res
 ## Standalone calibration
 
 ```bash
-uv run unitunner mid-timestep docs/examples/restoration-calibration.toml --device cuda
+uv run unituner mid-timestep docs/examples/restoration-calibration.toml --device cuda
 ```
 
 See the [calibration example](../../examples/restoration-calibration.toml) and [full restoration example](../../examples/restoration-full.toml). The command loads images and the local VAE, without the denoiser, text encoder, perceptual networks, optimizer, or precomputed cache. It follows configured pair alignment, synthetic degradation, crop dimensions, and `train.seed`.

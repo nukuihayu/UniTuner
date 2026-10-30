@@ -3,12 +3,12 @@
 import pytest
 import torch
 
-from unitunner.models.components.autoencoder import swish
-from unitunner.models.z_image.vae import ResidualBlock
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phase
-from unitunner.training.optimizers.adamw import create_adamw
-from unitunner.training.parameters import ParameterGroup
+from unituner.models.components.autoencoder import swish
+from unituner.models.z_image.vae import ResidualBlock
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phase
+from unituner.training.optimizers.adamw import create_adamw
+from unituner.training.parameters import ParameterGroup
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])

@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from tests.support.assertions import invalid_input
-from unitunner.models.minimax_h3.layout import (
+from unituner.models.minimax_h3.layout import (
     MiniMaxH3ReferenceGeometry,
     MiniMaxH3TimeOverrides,
     MiniMaxH3VideoGeometry,
@@ -15,9 +15,9 @@ from unitunner.models.minimax_h3.layout import (
     reference_condition_role,
     video_latent_frames,
 )
-from unitunner.models.minimax_h3.packing import pack_audio_rows, pack_video_rows, unpack_targets
-from unitunner.models.minimax_h3.positions import build_position_grid
-from unitunner.models.minimax_h3.timesteps import build_timestep_rows
+from unituner.models.minimax_h3.packing import pack_audio_rows, pack_video_rows, unpack_targets
+from unituner.models.minimax_h3.positions import build_position_grid
+from unituner.models.minimax_h3.timesteps import build_timestep_rows
 
 
 def test_native_modality_time_rows_and_rotary_anchors():

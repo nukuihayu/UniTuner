@@ -3,9 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from unitunner.config.dataset_inputs import DatasetInputConfig
-from unitunner.config.datasets import DatasetConfig
-from unitunner.config.text import TextEncodingConfig
+from unituner.config.dataset_inputs import DatasetInputConfig
+from unituner.config.datasets import DatasetConfig
+from unituner.config.text import TextEncodingConfig
 
 
 def test_ordered_references_keep_native_geometry_and_reject_unsupported_overrides():

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from unitunner.data.cache.rebuild import rebuild_directories
+from unituner.data.cache.rebuild import rebuild_directories
 
 
 def write_cache(path, content):

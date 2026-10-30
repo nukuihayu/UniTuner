@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from unitunner.cli.main import main
-from unitunner.config.loading import load_training_config
+from unituner.cli.main import main
+from unituner.config.loading import load_training_config
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs/examples"
 TRAIN = [
@@ -40,7 +40,7 @@ def test_precision_cli_overrides_toml(tmp_path, monkeypatch, flag, precision):
         received.append(config)
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert main(["train", str(path), flag, precision]) == 0
     expected = "auto" if precision in ("nvfp4", "int8_rowwise") else precision
     assert received[0].execution.precision == expected
@@ -63,13 +63,13 @@ def _flags(document, prefix=""):
 @pytest.mark.parametrize(
     ("command", "example", "module"),
     [
-        ("train", "flow", "unitunner.training.run"),
-        ("cache", "image-cache", "unitunner.data.build"),
-        ("mid-timestep", "mid-timestep", "unitunner.training.calibration"),
-        ("generate", "generate", "unitunner.inference.generation"),
-        ("restore", "restore", "unitunner.inference.restoration.run"),
-        ("generate-video", "wan-generate-video", "unitunner.models.wan.inference.run"),
-        ("generate-video", "minimax-h3-generate", "unitunner.models.minimax_h3.inference.run"),
+        ("train", "flow", "unituner.training.run"),
+        ("cache", "image-cache", "unituner.data.build"),
+        ("mid-timestep", "mid-timestep", "unituner.training.calibration"),
+        ("generate", "generate", "unituner.inference.generation"),
+        ("restore", "restore", "unituner.inference.restoration.run"),
+        ("generate-video", "wan-generate-video", "unituner.models.wan.inference.run"),
+        ("generate-video", "minimax-h3-generate", "unituner.models.minimax_h3.inference.run"),
     ],
 )
 def test_commands_accept_only_cli_configuration(command, example, module, monkeypatch, tmp_path):
@@ -92,8 +92,8 @@ def test_commands_accept_only_cli_configuration(command, example, module, monkey
             return original_open(path, mode, *args, **kwargs)
         pytest.fail("CLI-only configuration must not read a TOML file")
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", imported)
-    monkeypatch.setattr("unitunner.cli.main.find_spec", lambda name: object())
+    monkeypatch.setattr("unituner.cli.main.import_module", imported)
+    monkeypatch.setattr("unituner.cli.main.find_spec", lambda name: object())
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(Path, "open", unexpected_read)
     assert main([command, *_flags(document), "--device", "cuda"]) == 7
@@ -117,7 +117,7 @@ def test_file_and_cli_values_merge_before_validation(file_args, monkeypatch):
         received.append(config)
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert (
         main(
             [
@@ -155,7 +155,7 @@ def test_set_objects_arrays_and_null(monkeypatch):
         received.append(config)
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert (
         main(
             [

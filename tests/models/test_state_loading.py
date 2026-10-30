@@ -4,8 +4,8 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.models.components.state_loading import load_model_state
-from unitunner.precision import compute_context
+from unituner.models.components.state_loading import load_model_state
+from unituner.precision import compute_context
 
 
 @pytest.mark.parametrize("invalid", ["missing", "shape", "integer", "nan", "overflow"])

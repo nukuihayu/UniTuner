@@ -8,8 +8,8 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageOps
 
-from unitunner.data.degradation.config import DegradationConfig
-from unitunner.data.degradation.pipeline import degrade_image, degrade_pair
+from unituner.data.degradation.config import DegradationConfig
+from unituner.data.degradation.pipeline import degrade_image, degrade_pair
 
 
 def baseline(config: DegradationConfig) -> DegradationConfig:

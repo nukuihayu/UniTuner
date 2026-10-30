@@ -16,9 +16,9 @@ Copy `docs/examples/wan-cache.toml` and `docs/examples/wan-flow.toml`. Fill enco
 | dataset.groups.main.video | target_frames, extraction, target_fps and fps_resampling |
 
 ```bash
-uv run --no-dev unitunner cache wan-cache.toml --device cuda
-uv run --no-dev unitunner validate wan-train.toml
-uv run --no-dev unitunner train wan-train.toml --device cuda
+uv run --no-dev unituner cache wan-cache.toml --device cuda
+uv run --no-dev unituner validate wan-train.toml
+uv run --no-dev unituner train wan-train.toml --device cuda
 ```
 
 Name your copies wan-cache.toml and wan-train.toml. Wan target_frames and max_frames must follow 1+4k, such as 81 or 129. Frame count and resolution jointly affect memory: start with short clips rather than extrapolating from image batch sizes.
@@ -42,9 +42,9 @@ Copy minimax-h3-cache.toml and minimax-h3-train.toml. H3 consumes audio/video re
 H3 uses batch_size=1, 32-aligned dimensions and native 32 kHz stereo audio. The example's 124 frames satisfy 17n+5. Keep the standard duration policy unless intentionally testing allow_experimental_duration.
 
 ```bash
-uv run --no-dev unitunner cache h3-cache.toml --device cuda
-uv run --no-dev unitunner validate h3-train.toml
-uv run --no-dev unitunner train h3-train.toml --device cuda
+uv run --no-dev unituner cache h3-cache.toml --device cuda
+uv run --no-dev unituner validate h3-train.toml
+uv run --no-dev unituner train h3-train.toml --device cuda
 ```
 
 Cache/train configurations must reference the same data and cache_directory. method.minimax_h3 controls video/audio schedule shifts, condition cleanliness and audio loss weight. Start with the example recipe and vary one setting at a time.
@@ -56,8 +56,8 @@ Wan uses preview.videos array tables; H3 uses inputs/sampling within preview.aud
 Save cadence, separate inference weights/resume files, retention and TensorBoard work as in image training. Resume uses resume/*.state-*.safetensors; generation loads inference adapters/bases from weights/.
 
 ```bash
-uv run --no-dev unitunner generate-video wan-generate.toml --device cuda
-uv run --no-dev unitunner generate-video h3-generate.toml --device cuda
+uv run --no-dev unituner generate-video wan-generate.toml --device cuda
+uv run --no-dev unituner generate-video h3-generate.toml --device cuda
 ```
 
 Copy wan-generate-video.toml and minimax-h3-generate.toml for inference. Fill output paths, matching bases/adapters, native frame counts and conditions. Add Wan2.2 high_noise settings only when supplying a second expert's weights.

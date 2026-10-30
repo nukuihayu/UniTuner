@@ -6,8 +6,8 @@ import pytest
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.flux.conditioning import (
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.flux.conditioning import (
     FluxCondition,
     build_inputs,
     image_ids,
@@ -15,9 +15,9 @@ from unitunner.models.flux.conditioning import (
     pack_latents,
     unpack_latents,
 )
-from unitunner.models.flux.config.model import FluxConfig
-from unitunner.models.flux.loading import load_flux, save_flux
-from unitunner.models.flux.transformer import FluxTransformer
+from unituner.models.flux.config.model import FluxConfig
+from unituner.models.flux.loading import load_flux, save_flux
+from unituner.models.flux.transformer import FluxTransformer
 
 
 @pytest.fixture(autouse=True)

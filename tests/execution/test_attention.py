@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from unitunner.execution.attention import inference_attention, scaled_dot_product_attention
+from unituner.execution.attention import inference_attention, scaled_dot_product_attention
 
 
 def test_default_attention_keeps_training_gradients():
@@ -20,8 +20,8 @@ def test_default_attention_keeps_training_gradients():
 
 
 def test_fullgraph_attention_context_is_restored_and_inference_policy_is_not_cached():
-    from unitunner.execution import attention
-    from unitunner.execution.compiler import CompilerInstallation
+    from unituner.execution import attention
+    from unituner.execution.compiler import CompilerInstallation
 
     class Model(torch.nn.Module):
         def attend(self, q, k, v):

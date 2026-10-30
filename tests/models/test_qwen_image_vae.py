@@ -3,11 +3,11 @@
 import pytest
 import torch
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import load_qwen_image_vae, save_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE, QwenImageVAEExecution, QwenImageVAETiling
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import load_qwen_image_vae, save_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE, QwenImageVAEExecution, QwenImageVAETiling
 
 
 @pytest.fixture

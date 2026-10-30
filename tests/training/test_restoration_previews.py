@@ -8,10 +8,10 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.data.cache.storage import CacheEntry
-from unitunner.data.datasets.restoration import AlignedImagePair, RestorationDataset
-from unitunner.training.previews.images import PreviewImages
-from unitunner.training.previews.restoration import RestorationPreviews
+from unituner.data.cache.storage import CacheEntry
+from unituner.data.datasets.restoration import AlignedImagePair, RestorationDataset
+from unituner.training.previews.images import PreviewImages
+from unituner.training.previews.restoration import RestorationPreviews
 
 
 def fixture(tmp_path, *, at_start=True, count=2):
@@ -66,7 +66,7 @@ def test_pages_are_repeat_independent_and_resume_from_update(tmp_path, at_start,
 
 
 def test_render_uses_original_group_options_and_publishes_comparison(tmp_path, monkeypatch):
-    from unitunner.training.previews import restoration
+    from unituner.training.previews import restoration
 
     config, dataset, reads = fixture(tmp_path, count=10)
     preview = RestorationPreviews(config, dataset)
@@ -90,7 +90,7 @@ def test_render_uses_original_group_options_and_publishes_comparison(tmp_path, m
 
 
 def test_preview_failure_restores_rng_and_model_modes_and_can_retry(tmp_path, monkeypatch):
-    from unitunner.training.previews import restoration
+    from unituner.training.previews import restoration
 
     config, dataset, reads = fixture(tmp_path)
     renderer = PreviewImages(config, dataset)

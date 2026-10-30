@@ -4,10 +4,10 @@ import pytest
 import torch
 from safetensors.torch import load_file, save_file
 
-from unitunner.models.wan.config.clip import WanClipConfig
-from unitunner.models.wan.vision.encoder import WanImageEncoder, preprocess_clip_videos
-from unitunner.models.wan.vision.loading import load_wan_clip, save_wan_clip
-from unitunner.models.wan.vision.model import WanClipVision
+from unituner.models.wan.config.clip import WanClipConfig
+from unituner.models.wan.vision.encoder import WanImageEncoder, preprocess_clip_videos
+from unituner.models.wan.vision.loading import load_wan_clip, save_wan_clip
+from unituner.models.wan.vision.model import WanClipVision
 
 
 @pytest.fixture

@@ -5,10 +5,10 @@ import torch
 from safetensors.torch import load_file, save_file
 from transformers import AutoTokenizer, T5Tokenizer
 
-from unitunner.models.wan.config.t5 import WanT5Config
-from unitunner.models.wan.text.encoder import WanTextEncoder, clean_text, load_wan_text
-from unitunner.models.wan.text.loading import load_wan_t5, save_wan_t5
-from unitunner.models.wan.text.model import WanT5Encoder
+from unituner.models.wan.config.t5 import WanT5Config
+from unituner.models.wan.text.encoder import WanTextEncoder, clean_text, load_wan_text
+from unituner.models.wan.text.loading import load_wan_t5, save_wan_t5
+from unituner.models.wan.text.model import WanT5Encoder
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@
 
 简体中文 · [English](en/weight-conversion.md) · [文档首页](README.md)
 
-`unitunner weights convert` 将 safetensors 权重转换为普通浮点或 comfy-kitchen 量化布局。它直接调用 Kitchen 的量化与序列化接口，保留每层需要的缩放、旋转、码本和校正数据，不自行实现另一套打包规则。
+`unituner weights convert` 将 safetensors 权重转换为普通浮点或 comfy-kitchen 量化布局。它直接调用 Kitchen 的量化与序列化接口，保留每层需要的缩放、旋转、码本和校正数据，不自行实现另一套打包规则。
 
 转换默认导出 ComfyUI 主模型布局：自动识别 Diffusers／原生权重，完成键名、QKV 和调制参数转换后再处理精度。按块读取和转换，不分配完整模型。使用 `--output-format source` 可保留输入布局。
 
@@ -30,23 +30,23 @@ uv sync --locked --extra kitchen
 将模型转换为 FP8：
 
 ```bash
-uv run unitunner weights convert models/model.safetensors models/model-fp8.safetensors \
+uv run unituner weights convert models/model.safetensors models/model-fp8.safetensors \
   --precision float8_e4m3fn --device cuda
 ```
 
 转换为 MXFP8，或将已有量化权重反量化为 BF16：
 
 ```bash
-uv run unitunner weights convert models/model.safetensors models/model-mxfp8.safetensors \
+uv run unituner weights convert models/model.safetensors models/model-mxfp8.safetensors \
   --precision mxfp8 --device cuda
-uv run unitunner weights convert models/model-mxfp8.safetensors models/model-bf16.safetensors \
+uv run unituner weights convert models/model-mxfp8.safetensors models/model-bf16.safetensors \
   --precision bf16 --device cuda
 ```
 
 输入支持单文件、任意编号分片、safetensors 索引 JSON、Diffusers 的 `transformer/` 目录或包含该目录的模型根目录。输出为一个 safetensors 文件，放入 ComfyUI 的 `models/diffusion_models/` 后使用对应模型加载节点。量化文件使用对应 Kitchen 格式；普通 BF16 无需 Kitchen。输入与输出必须使用不同路径。
 
 ```bash
-uv run unitunner weights convert models/z_image_turbo_bf16.safetensors models/z_image_turbo_fp8.safetensors \
+uv run unituner weights convert models/z_image_turbo_bf16.safetensors models/z_image_turbo_fp8.safetensors \
   --family z-image --precision float8_e4m3fn --device cuda
 ```
 
@@ -81,7 +81,7 @@ W/A 描述部署时的权重与激活精度。文件转换保存权重和布局�
 默认 `--family auto` 优先读取原生拓扑元数据。没有元数据时，根据家族特有的键识别；键结构不明确时显式指定 `--family`。家族名称与训练一致：`z-image`、`flux`、`flux2`、`flux3`、`moss-image`、`qwen-image`、`qwen-image-2-1`、`krea2`、`wan`、`minimax-h3`。
 
 ```bash
-uv run unitunner weights convert models/qwen21.safetensors models/qwen21-int8.safetensors \
+uv run unituner weights convert models/qwen21.safetensors models/qwen21-int8.safetensors \
   --family qwen-image-2-1 --precision int8_convrot --device cuda --on-incompatible keep
 ```
 
@@ -105,7 +105,7 @@ uv run unitunner weights convert models/qwen21.safetensors models/qwen21-int8.sa
 显式选择 `--family qwen2-5-vl|qwen3|qwen3-vl|qwen3-5|mistral|t5|umt5|clip`。这些策略覆盖当前项目使用的 Qwen2.5-VL、Qwen3、Qwen3-VL、Qwen3.5、Mistral、T5／UMT5 和 CLIP。它们按实际数字层号保护每个编码器栈的首层和末层，同时保留 embedding、LM head、共享词表、relative attention bias、归一化、完整视觉／音频分支、multimodal projector 与 MTP。Qwen3.5 的 `in_proj_a`／`in_proj_b` 也保持浮点。
 
 ```bash
-uv run unitunner weights convert models/text_encoder/model.safetensors models/text_encoder-fp8.safetensors \
+uv run unituner weights convert models/text_encoder/model.safetensors models/text_encoder-fp8.safetensors \
   --family qwen3-vl --precision float8_e4m3fn --device cuda
 ```
 
@@ -116,7 +116,7 @@ uv run unitunner weights convert models/text_encoder/model.safetensors models/te
 在家族允许的范围内，量化处理非空二维 `*.weight`（以及根键 `weight`）；偏置和其他张量保持原样。这个规则不能判断矩阵来自线性层还是嵌入层，应按实际模型的加载器选择需要量化的层：
 
 ```bash
-uv run unitunner weights convert models/model.safetensors models/model-int8.safetensors \
+uv run unituner weights convert models/model.safetensors models/model-int8.safetensors \
   --precision int8_convrot --device cuda --rotation-size 256 \
   --include 'transformer_blocks.*.weight' --exclude '*norm*' '*embed*' \
   --on-incompatible keep
@@ -161,7 +161,7 @@ transformer_blocks.0.attn.to_q.weight_zeros
 ```
 
 ```bash
-uv run unitunner weights convert models/calibrated.safetensors models/model-awq.safetensors \
+uv run unituner weights convert models/calibrated.safetensors models/model-awq.safetensors \
   --precision keep --layout-spec calibrated-layout.json
 ```
 
@@ -181,9 +181,9 @@ MXFP8 的 E8M0 缩放以原始 uint8 字节保存，以兼容 safetensors；重�
 
 ## 运行时兼容性
 
-UniTunner 十个基模家族的原生加载器支持全部无需校准布局的适配器训练、预览和生成，也支持从浮点基模在 GPU 逐层量化后训练。所有格式只量化权重，计算时临时反量化并执行浮点乘法，不启用动态激活量化；见[量化基模训练](training/quantized-base.md)。全参数训练要求浮点权重。所有输入都需符合模型加载器的键与结构，必要时先用 `weights import` 导入浮点原生格式，再量化。
+UniTuner 十个基模家族的原生加载器支持全部无需校准布局的适配器训练、预览和生成，也支持从浮点基模在 GPU 逐层量化后训练。所有格式只量化权重，计算时临时反量化并执行浮点乘法，不启用动态激活量化；见[量化基模训练](training/quantized-base.md)。全参数训练要求浮点权重。所有输入都需符合模型加载器的键与结构，必要时先用 `weights import` 导入浮点原生格式，再量化。
 
-量化输出用于支持对应 Kitchen 布局的消费者。ComfyUI 可按布局执行激活量化，UniTunner 的权重量化计算则保留浮点激活；文件互读正确不代表两者输出逐位一致。核对时的 ComfyUI 加载器支持表中的直接量化格式，但尚无 AWQ/SVDQuant 加载分支；这两个布局能在 Kitchen 中重载，不代表当前 ComfyUI 可直接加载。E5M2 文件会记录 `full_precision_matrix_mult: true`，让 ComfyUI 反量化后做浮点乘法，避免 PyTorch 不支持 E5M2×E5M2 的内核报错。实际推理还取决于模型加载器、GPU、dtype 和内核；例如 MXFP8／NVFP4 的实际计算需要相应 GPU 路径，不能据此推断 CPU 支持。
+量化输出用于支持对应 Kitchen 布局的消费者。ComfyUI 可按布局执行激活量化，UniTuner 的权重量化计算则保留浮点激活；文件互读正确不代表两者输出逐位一致。核对时的 ComfyUI 加载器支持表中的直接量化格式，但尚无 AWQ/SVDQuant 加载分支；这两个布局能在 Kitchen 中重载，不代表当前 ComfyUI 可直接加载。E5M2 文件会记录 `full_precision_matrix_mult: true`，让 ComfyUI 反量化后做浮点乘法，避免 PyTorch 不支持 E5M2×E5M2 的内核报错。实际推理还取决于模型加载器、GPU、dtype 和内核；例如 MXFP8／NVFP4 的实际计算需要相应 GPU 路径，不能据此推断 CPU 支持。
 
 ---
 

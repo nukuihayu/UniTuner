@@ -1,5 +1,5 @@
 # 用途 / Task: krea2 · generate
-# 命令 / Command: uv run unitunner generate docs/examples/krea2-generate.toml --device cuda
+# 命令 / Command: uv run unituner generate docs/examples/krea2-generate.toml --device cuda
 # 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
 # Replace model, data and output paths first. Commented options can normally be omitted.
 # 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md

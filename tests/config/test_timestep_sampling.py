@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from unitunner.config.loading import load_training_config
-from unitunner.config.train import TrainConfig
+from unituner.config.loading import load_training_config
+from unituner.config.train import TrainConfig
 
 
 def test_model_shifted_sampling_is_default_and_uniform_is_selectable():

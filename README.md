@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/unitunner-logo.png" alt="UniTunner" width="720">
+  <img src="docs/assets/unituner-logo.png" alt="UniTuner" width="720">
 </p>
 <p align="center"><strong>Native training for image, video, and audio-video models</strong></p>
 <p align="center">English · <a href="README.zh-CN.md">简体中文</a></p>
@@ -13,7 +13,7 @@
 
 ---
 
-UniTunner connects data encoding, fine-tuning, previews, and weight publication in one configurable workflow. Train **LoRA, LoHa, LoKr, or full model parameters** for subjects, styles, and conditional tasks. Use paired images or synthetic degradation to train a one-step image restoration model.
+UniTuner connects data encoding, fine-tuning, previews, and weight publication in one configurable workflow. Train **LoRA, LoHa, LoKr, or full model parameters** for subjects, styles, and conditional tasks. Use paired images or synthetic degradation to train a one-step image restoration model.
 
 Keep complete recipes in TOML and override individual settings from the CLI. Model assets, datasets, objectives, and execution policies are configured separately, while each family retains its native conditioning and sampling semantics.
 
@@ -21,7 +21,7 @@ Keep complete recipes in TOML and override individual settings from the CLI. Mod
 
 ## About the project
 
-UniTunner is for fine-tuning with local model assets, covering the path from preparing a dataset to publishing weights for inference. Train subject or style adapters, learn relationships between reference and target images for editing, prepare temporal conditions for video and audio-video models, or build a dedicated one-step image restoration model.
+UniTuner is for fine-tuning with local model assets, covering the path from preparing a dataset to publishing weights for inference. Train subject or style adapters, learn relationships between reference and target images for editing, prepare temporal conditions for video and audio-video models, or build a dedicated one-step image restoration model.
 
 The project implements native model families and connects them to shared training workflows for parameter selection, optimizer updates, previews, and saving. Families share a configuration structure while retaining their own text encoding, VAE, time sampling, positional encoding, and conditioning rules. Moving to another family keeps the training workflow familiar, with assets and data specified by its recipe.
 
@@ -70,7 +70,7 @@ Encoded caches avoid rerunning VAE and text encoders on every ordinary flow-matc
 
 ## Memory, precision, and execution
 
-Model size, training dimensions, trainable parameters, and loss networks jointly determine resource use. UniTunner exposes separate policies for different resources:
+Model size, training dimensions, trainable parameters, and loss networks jointly determine resource use. UniTuner exposes separate policies for different resources:
 
 | Policy | Purpose | Requirements |
 | --- | --- | --- |
@@ -91,8 +91,8 @@ Start with default eager/resident execution, then select [execution policies](do
 Install Python **3.12+**, [uv](https://docs.astral.sh/uv/), and obtain local model assets. CUDA training requires an NVIDIA driver compatible with the project's Torch version. See [installation](docs/en/installation.md) for optional dependencies and environment checks.
 
 ```bash
-git clone https://github.com/nukuihayu/UniTunner.git
-cd UniTunner
+git clone https://github.com/nukuihayu/UniTuner.git
+cd UniTuner
 uv python install 3.13
 uv sync --locked --no-dev --extra media --extra text
 cp docs/examples/tutorial-lora.toml train.toml
@@ -101,9 +101,9 @@ cp docs/examples/tutorial-lora.toml train.toml
 Edit the model, VAE, text encoder, and dataset paths in `train.toml`, then run:
 
 ```bash
-uv run --no-dev unitunner validate train.toml
-uv run --no-dev unitunner cache train.toml --device cuda
-uv run --no-dev unitunner train train.toml --device cuda
+uv run --no-dev unituner validate train.toml
+uv run --no-dev unituner cache train.toml --device cuda
+uv run --no-dev unituner train train.toml --device cuda
 ```
 
 > [!TIP]
@@ -114,7 +114,7 @@ uv run --no-dev unitunner train train.toml --device cuda
 Edit fields in their existing tables. CLI settings override TOML:
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda \
+uv run --no-dev unituner train train.toml --device cuda \
   --train.learning-rate 5e-5 --train.max-updates 2000
 ```
 
@@ -142,7 +142,7 @@ runs/<run-name>/
 Use files in `weights/` for inference and states in `resume/` to continue training:
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda \
+uv run --no-dev unituner train train.toml --device cuda \
   --resume runs/garden/resume/garden.state-00000050.safetensors
 ```
 
@@ -153,7 +153,7 @@ uv run --no-dev unitunner train train.toml --device cuda \
 
 Previews run at configured update intervals with fixed prompts, seeds, and conditions. JSONL retains per-update metrics, and optional TensorBoard events expose losses, gradient norms, learning rates, and memory use. Saving and preview cadences are independent, so observation frequency can be adjusted without changing the objective.
 
-Published adapters use the selected family's consumer layout, including required projection mappings. Load them with the matching model and supported adapter loader in ComfyUI, or use UniTunner's `generate`, `generate-video`, and `restore` commands as appropriate. Base weights, VAE, text assets, conditions, and sampling conventions must agree when comparing outputs across tools.
+Published adapters use the selected family's consumer layout, including required projection mappings. Load them with the matching model and supported adapter loader in ComfyUI, or use UniTuner's `generate`, `generate-video`, and `restore` commands as appropriate. Base weights, VAE, text assets, conditions, and sampling conventions must agree when comparing outputs across tools.
 
 Weight tools also import supported external layouts, convert floating precision, and handle supported quantized formats. Sensitive-layer safeguards are model-specific. See [inference](docs/en/inference.md) and [weight conversion](docs/en/weight-conversion.md) for formats and command examples.
 

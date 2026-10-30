@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 
 from tests.support.assertions import invalid_input
-from unitunner.models.minimax_h3.data.media.inputs import (
+from unituner.models.minimax_h3.data.media.inputs import (
     adapt_reference_canvas,
     prepare_pixels,
     read_reference_image,

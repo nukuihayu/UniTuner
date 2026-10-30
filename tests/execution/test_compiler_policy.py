@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch._inductor import config as inductor_config
 
-from unitunner.execution import compiler
+from unituner.execution import compiler
 
 
 @pytest.mark.parametrize("require_training", [True, False])

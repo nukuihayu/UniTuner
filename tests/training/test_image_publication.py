@@ -10,9 +10,9 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.config.execution import ExecutionConfig
-from unitunner.config.sampling import SamplingConfig
-from unitunner.models.components.conditioning import Caption
+from unituner.config.execution import ExecutionConfig
+from unituner.config.sampling import SamplingConfig
+from unituner.models.components.conditioning import Caption
 
 
 @pytest.mark.parametrize(
@@ -37,12 +37,12 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
         events.append("text")
         return SimpleNamespace(encode_prompt=lambda *a, **k: caption, encode=lambda *a, **k: caption)
 
-    provider = ModuleType(f"unitunner.models.{family}.text.encoder")
+    provider = ModuleType(f"unituner.models.{family}.text.encoder")
     loader_name = "load_qwen_image_21_text" if family == "qwen_image_2_1" else f"load_{family}_text"
     setattr(provider, loader_name, load_text)
     monkeypatch.setitem(sys.modules, provider.__name__, provider)
     if family in ("krea2", "qwen_image_2_1"):
-        conditioning = ModuleType(f"unitunner.models.{family}.inference.conditioning")
+        conditioning = ModuleType(f"unituner.models.{family}.inference.conditioning")
         if family == "krea2":
             conditioning.encode_krea2_prompts = lambda *a, **k: (caption, None)
         else:
@@ -54,7 +54,7 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
             )
         monkeypatch.setitem(sys.modules, conditioning.__name__, conditioning)
     relative = "training/previews/flow.py" if cached else f"training/integrations/{family}/previews.py"
-    path = Path(__file__).parents[2] / "src/unitunner" / relative
+    path = Path(__file__).parents[2] / "src/unituner" / relative
     spec = importlib.util.spec_from_file_location(f"preview_contract_{family}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -62,7 +62,7 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
         stem = {"flux": "Flux", "flux2": "Flux2", "flux3": "Flux3", "moss_image": "MossImage", "z_image": "ZImage"}[
             family
         ]
-        cls = getattr(import_module(f"unitunner.models.{family}.transformer"), stem + "Transformer")
+        cls = getattr(import_module(f"unituner.models.{family}.transformer"), stem + "Transformer")
         model = cls.__new__(cls)
         nn.Module.__init__(model)
         model.register_parameter("device_marker", nn.Parameter(torch.zeros(1)))
@@ -162,9 +162,9 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
 def test_cached_preview_keeps_native_negative_prompt_policy(
     monkeypatch, family, stem, variant, negative, expected_negative
 ):
-    from unitunner.training.previews import flow
+    from unituner.training.previews import flow
 
-    cls = getattr(import_module(f"unitunner.models.{family}.transformer"), stem + "Transformer")
+    cls = getattr(import_module(f"unituner.models.{family}.transformer"), stem + "Transformer")
     model = cls.__new__(cls)
     nn.Module.__init__(model)
     model.config = SimpleNamespace(variant=variant, version="dev")

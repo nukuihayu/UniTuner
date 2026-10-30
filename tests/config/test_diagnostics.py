@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from tests.config.test_data_groups import document
-from unitunner.cli.configuration import add_config_arguments
-from unitunner.cli.main import main
-from unitunner.config.diagnostics import ConfigError
-from unitunner.config.loading import (
+from unituner.cli.configuration import add_config_arguments
+from unituner.cli.main import main
+from unituner.config.diagnostics import ConfigError
+from unituner.config.loading import (
     load_cache_config,
     load_calibration_config,
     load_generation_config,
@@ -18,7 +18,7 @@ from unitunner.config.loading import (
     load_training_config,
     load_video_generation_config,
 )
-from unitunner.config.train import TrainConfig
+from unituner.config.train import TrainConfig
 
 EXAMPLES = Path(__file__).parents[2] / "docs/examples"
 
@@ -151,7 +151,7 @@ def test_invalid_cli_configuration_stops_before_runtime_import(monkeypatch, caps
     def unexpected_import(name):
         pytest.fail(f"runtime imported for invalid config: {name}")
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", unexpected_import)
+    monkeypatch.setattr("unituner.cli.main.import_module", unexpected_import)
     assert main(["train", str(EXAMPLES / "flow.toml"), "--train.max-updates", "0"]) == 2
     stderr = capsys.readouterr().err
     assert "train.max_updates" in stderr

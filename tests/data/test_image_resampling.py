@@ -5,7 +5,7 @@ import pytest
 import torch
 from PIL import Image
 
-from unitunner.data.media.image import read_image, resize_pixels
+from unituner.data.media.image import read_image, resize_pixels
 
 
 @pytest.mark.parametrize("source_size", [(96, 48), (24, 12)])

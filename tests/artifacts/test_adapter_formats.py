@@ -5,7 +5,7 @@ import json
 import pytest
 import torch
 
-from unitunner.artifacts.formats.adapters import (
+from unituner.artifacts.formats.adapters import (
     AdapterTargetKeys,
     adapter_key_map,
     adapter_metadata,
@@ -45,8 +45,8 @@ def test_lora_is_not_mislabeled_lycoris():
 
 
 def test_published_lora_roundtrip_restores_scale_and_prediction(tmp_path):
-    from unitunner.adapters.lora import LoRA
-    from unitunner.artifacts.tensors import iter_tensors, save_tensors
+    from unituner.adapters.lora import LoRA
+    from unituner.artifacts.tensors import iter_tensors, save_tensors
 
     torch.manual_seed(84)
     branch = LoRA(3, 4, rank=2, alpha=7.0, dtype=torch.float64)
@@ -79,10 +79,10 @@ def test_native_consumer_namespace_preserves_paths_and_factor_values(tmp_path, a
 
     from torch import nn
 
-    from unitunner.adapters.config import AdapterConfig
-    from unitunner.adapters.loading import LoadedAdapter
-    from unitunner.artifacts.tensors import save_tensors
-    from unitunner.training.parameters import ParameterInstallation
+    from unituner.adapters.config import AdapterConfig
+    from unituner.adapters.loading import LoadedAdapter
+    from unituner.artifacts.tensors import save_tensors
+    from unituner.training.parameters import ParameterInstallation
 
     torch.manual_seed(47)
     model = nn.Linear(8, 8)

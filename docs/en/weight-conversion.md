@@ -2,7 +2,7 @@
 
 [简体中文](../weight-conversion.md) · English · [Documentation](README.md)
 
-`unitunner weights convert` converts safetensors weights to ordinary floating point or comfy-kitchen quantized layouts. It calls Kitchen's quantization and serialization APIs directly, retaining each layout's scales, rotations, codebooks, and corrections rather than maintaining a separate packing implementation.
+`unituner weights convert` converts safetensors weights to ordinary floating point or comfy-kitchen quantized layouts. It calls Kitchen's quantization and serialization APIs directly, retaining each layout's scales, rotations, codebooks, and corrections rather than maintaining a separate packing implementation.
 
 Conversion exports ComfyUI denoiser layouts by default. It recognizes published Diffusers/native keys, converts QKV projections and modulation ordering, then applies precision conversion. Processing is bounded by transformer blocks without allocating full model storage. Use `--output-format source` to retain the input layout.
 
@@ -30,23 +30,23 @@ uv sync --locked --extra kitchen
 Convert weights to FP8:
 
 ```bash
-uv run unitunner weights convert models/model.safetensors models/model-fp8.safetensors \
+uv run unituner weights convert models/model.safetensors models/model-fp8.safetensors \
   --precision float8_e4m3fn --device cuda
 ```
 
 Export MXFP8, or dequantize an existing quantized file to BF16:
 
 ```bash
-uv run unitunner weights convert models/model.safetensors models/model-mxfp8.safetensors \
+uv run unituner weights convert models/model.safetensors models/model-mxfp8.safetensors \
   --precision mxfp8 --device cuda
-uv run unitunner weights convert models/model-mxfp8.safetensors models/model-bf16.safetensors \
+uv run unituner weights convert models/model-mxfp8.safetensors models/model-bf16.safetensors \
   --precision bf16 --device cuda
 ```
 
 Inputs accept single files, numbered shards, safetensors index JSON files, Diffusers `transformer/` directories, and pipeline roots containing that directory. Place the output safetensors in ComfyUI `models/diffusion_models/` and use the corresponding model loader. Quantized files use Kitchen layouts; ordinary BF16 conversion needs no Kitchen dependency. Source and destination paths must differ.
 
 ```bash
-uv run unitunner weights convert models/z_image_turbo_bf16.safetensors models/z_image_turbo_fp8.safetensors \
+uv run unituner weights convert models/z_image_turbo_bf16.safetensors models/z_image_turbo_fp8.safetensors \
   --family z-image --precision float8_e4m3fn --device cuda
 ```
 
@@ -81,7 +81,7 @@ W/A describe deployment weight and activation precision. Conversion stores weigh
 The default `--family auto` prefers native topology metadata. Without metadata, family-specific key signatures drive detection. Set `--family` explicitly when the key structure is ambiguous. Names match training: `z-image`, `flux`, `flux2`, `flux3`, `moss-image`, `qwen-image`, `qwen-image-2-1`, `krea2`, `wan`, and `minimax-h3`.
 
 ```bash
-uv run unitunner weights convert models/qwen21.safetensors models/qwen21-int8.safetensors \
+uv run unituner weights convert models/qwen21.safetensors models/qwen21-int8.safetensors \
   --family qwen-image-2-1 --precision int8_convrot --device cuda --on-incompatible keep
 ```
 
@@ -105,7 +105,7 @@ These are conservative deployment policies, not quality-equivalence guarantees. 
 Select `--family qwen2-5-vl|qwen3|qwen3-vl|qwen3-5|mistral|t5|umt5|clip` explicitly. These cover the project's Qwen2.5-VL, Qwen3, Qwen3-VL, Qwen3.5, Mistral, T5/UMT5, and CLIP encoders. Policies preserve the first and last block of each encoder stack using numeric layer indices, plus embeddings, LM heads, shared vocabularies, relative attention bias, normalization, complete vision/audio branches, multimodal projectors, and MTP. Qwen3.5 `in_proj_a`/`in_proj_b` remain floating too.
 
 ```bash
-uv run unitunner weights convert models/text_encoder/model.safetensors models/text_encoder-fp8.safetensors \
+uv run unituner weights convert models/text_encoder/model.safetensors models/text_encoder-fp8.safetensors \
   --family qwen3-vl --precision float8_e4m3fn --device cuda
 ```
 
@@ -116,7 +116,7 @@ Protection affects quantization selection; it never deletes decoder, LM-head, or
 Within the family policy, quantization selects nonempty two-dimensional `*.weight` tensors and the root `weight` key. Biases and other tensors remain unchanged. This rule cannot distinguish linear weights from embeddings, so choose layers according to the actual model loader:
 
 ```bash
-uv run unitunner weights convert models/model.safetensors models/model-int8.safetensors \
+uv run unituner weights convert models/model.safetensors models/model-int8.safetensors \
   --precision int8_convrot --device cuda --rotation-size 256 \
   --include 'transformer_blocks.*.weight' --exclude '*norm*' '*embed*' \
   --on-incompatible keep
@@ -161,7 +161,7 @@ Save the following as `calibrated-layout.json`. Keys are module prefixes without
 ```
 
 ```bash
-uv run unitunner weights convert models/calibrated.safetensors models/model-awq.safetensors \
+uv run unituner weights convert models/calibrated.safetensors models/model-awq.safetensors \
   --precision keep --layout-spec calibrated-layout.json
 ```
 
@@ -183,7 +183,7 @@ Conversion reads tensors incrementally and spools output instead of holding the 
 
 Native loaders across all ten base families support every calibration-free layout for adapter training, previews, and generation. Floating bases can also be quantized one layer at a time on GPU before training. All formats quantize weights only, reconstructing temporary floating weights for matrix multiplication without dynamic activation quantization; see [quantized-base training](training/quantized-base.md). Full parameter training needs floating weights. All artifacts must satisfy native loader key/topology requirements; use `weights import` on floating files before quantizing when needed.
 
-Quantized outputs require consumers that support the corresponding Kitchen layouts. ComfyUI may quantize activations according to its layout, while UniTunner keeps activations floating; correct file interchange does not imply bit-identical outputs. The checked ComfyUI loader supports the directly quantizable formats above but has no AWQ/SVDQuant loading branches. Kitchen reload support for these two layouts does not imply current ComfyUI loading support. E5M2 files record `full_precision_matrix_mult: true`, selecting ComfyUI's dequantized floating matmul path because PyTorch does not support E5M2×E5M2 kernels. Actual inference also depends on the model loader, GPU, dtype, and kernels. MXFP8/NVFP4 execution needs an appropriate GPU path; this does not imply CPU execution support.
+Quantized outputs require consumers that support the corresponding Kitchen layouts. ComfyUI may quantize activations according to its layout, while UniTuner keeps activations floating; correct file interchange does not imply bit-identical outputs. The checked ComfyUI loader supports the directly quantizable formats above but has no AWQ/SVDQuant loading branches. Kitchen reload support for these two layouts does not imply current ComfyUI loading support. E5M2 files record `full_precision_matrix_mult: true`, selecting ComfyUI's dequantized floating matmul path because PyTorch does not support E5M2×E5M2 kernels. Actual inference also depends on the model loader, GPU, dtype, and kernels. MXFP8/NVFP4 execution needs an appropriate GPU path; this does not imply CPU execution support.
 
 ---
 

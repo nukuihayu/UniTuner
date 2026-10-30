@@ -3,11 +3,11 @@
 import pytest
 import torch
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.flux2.config.vae import Flux2VAEConfig
-from unitunner.models.flux2.loading import load_flux2_vae, save_flux2_vae
-from unitunner.models.flux2.vae import Flux2VAE
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.flux2.config.vae import Flux2VAEConfig
+from unituner.models.flux2.loading import load_flux2_vae, save_flux2_vae
+from unituner.models.flux2.vae import Flux2VAE
 
 
 @pytest.fixture(autouse=True)

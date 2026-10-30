@@ -10,10 +10,10 @@ import pytest
 from pydantic import ValidationError
 
 from tests.support.assertions import require_type
-from unitunner.cli.main import main
-from unitunner.models.minimax_h3.config.inputs import MiniMaxH3InputsConfig, validate_minimax_h3_inputs
-from unitunner.models.minimax_h3.config.media import MiniMaxH3VideoReferenceInput
-from unitunner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig
+from unituner.cli.main import main
+from unituner.models.minimax_h3.config.inputs import MiniMaxH3InputsConfig, validate_minimax_h3_inputs
+from unituner.models.minimax_h3.config.media import MiniMaxH3VideoReferenceInput
+from unituner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig
 
 
 def test_generation_inputs_task_contract_and_rcm_rejection():
@@ -41,8 +41,8 @@ def test_generation_inputs_task_contract_and_rcm_rejection():
 
 def test_video_configuration_dispatch_stays_compute_free():
     code = (
-        "import sys; from unitunner.config.loading import load_video_generation_config; "
-        "from unitunner.models.minimax_h3.config.media import MiniMaxH3RecordInput; "
+        "import sys; from unituner.config.loading import load_video_generation_config; "
+        "from unituner.models.minimax_h3.config.media import MiniMaxH3RecordInput; "
         "assert not {'torch','av','transformers'} & sys.modules.keys()"
     )
     subprocess.run([sys.executable, "-c", code], env=os.environ.copy(), check=True)
@@ -58,7 +58,7 @@ references=[{kind="video",path="video.mkv",audio_enabled=false}]
         [
             sys.executable,
             "-c",
-            "import sys; import unitunner.training.workflows.minimax_h3.run; assert 'transformers' not in sys.modules",
+            "import sys; import unituner.training.workflows.minimax_h3.run; assert 'transformers' not in sys.modules",
         ],
         env=os.environ.copy(),
         check=True,

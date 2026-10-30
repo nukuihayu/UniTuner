@@ -6,10 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from tests.support.assertions import invalid_input
-from unitunner.data.media.audio import AudioSource
-from unitunner.data.media.probe import MediaInfo
-from unitunner.models.minimax_h3.config.media import MiniMaxH3RecordInput
-from unitunner.models.minimax_h3.data.sources import (
+from unituner.data.media.audio import AudioSource
+from unituner.data.media.probe import MediaInfo
+from unituner.models.minimax_h3.config.media import MiniMaxH3RecordInput
+from unituner.models.minimax_h3.data.sources import (
     MiniMaxH3Reference,
     load_records,
     resolve_record,

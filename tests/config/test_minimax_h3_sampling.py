@@ -7,7 +7,7 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from unitunner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig
+from unituner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig
 
 
 def test_native_and_stretched_timeline_duration_validation():
@@ -32,7 +32,7 @@ def test_native_and_stretched_timeline_duration_validation():
 
 def test_sampling_schema_does_not_import_torch():
     script = (
-        "import sys; from unitunner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig; "
+        "import sys; from unituner.models.minimax_h3.config.sampling import MiniMaxH3SamplingConfig; "
         "MiniMaxH3SamplingConfig(); assert 'torch' not in sys.modules"
     )
     subprocess.run([sys.executable, "-c", script], env=os.environ.copy(), check=True)

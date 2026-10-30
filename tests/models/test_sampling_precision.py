@@ -10,29 +10,29 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from tests.models.test_minimax_h3_sampling import _model as h3_model
 from tests.models.test_moss_image import small_config
 from tests.models.test_z_image import build_model as z_model
-from unitunner.adapters.attachment import AdapterAttachment
-from unitunner.adapters.lora import LoRA
-from unitunner.models.components.conditioning import Caption
-from unitunner.models.flux.config.model import FluxConfig
-from unitunner.models.flux.transformer import FluxTransformer
-from unitunner.models.flux2.config.model import Flux2Config
-from unitunner.models.flux2.transformer import Flux2Transformer
-from unitunner.models.flux3.config.model import Flux3Config
-from unitunner.models.flux3.transformer import Flux3Transformer
-from unitunner.models.krea2.conditioning import Krea2TextFeatures
-from unitunner.models.krea2.config.model import Krea2Config
-from unitunner.models.krea2.transformer import Krea2Transformer
-from unitunner.models.minimax_h3.layout import build_layout
-from unitunner.models.moss_image.transformer import MossImageTransformer
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.transformer import WanTransformer
-from unitunner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype, sampling_precision
-from unitunner.training.previews.context import preview_context
+from unituner.adapters.attachment import AdapterAttachment
+from unituner.adapters.lora import LoRA
+from unituner.models.components.conditioning import Caption
+from unituner.models.flux.config.model import FluxConfig
+from unituner.models.flux.transformer import FluxTransformer
+from unituner.models.flux2.config.model import Flux2Config
+from unituner.models.flux2.transformer import Flux2Transformer
+from unituner.models.flux3.config.model import Flux3Config
+from unituner.models.flux3.transformer import Flux3Transformer
+from unituner.models.krea2.conditioning import Krea2TextFeatures
+from unituner.models.krea2.config.model import Krea2Config
+from unituner.models.krea2.transformer import Krea2Transformer
+from unituner.models.minimax_h3.layout import build_layout
+from unituner.models.moss_image.transformer import MossImageTransformer
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.transformer import WanTransformer
+from unituner.precision import FLOAT_DTYPES, sampling_context, sampling_dtype, sampling_precision
+from unituner.training.previews.context import preview_context
 
 
 @pytest.fixture(autouse=True)
@@ -174,7 +174,7 @@ def make_case(family, dtype):
 
 
 def test_krea2_turbo_native_defaults_do_not_require_cfg():
-    from unitunner.models.krea2.inference.sampling import sample_latents
+    from unituner.models.krea2.inference.sampling import sample_latents
 
     model, args, _ = make_case("krea2", torch.float32)
     model.config = model.config.model_copy(update={"variant": "turbo"})
@@ -187,8 +187,8 @@ def test_krea2_turbo_native_defaults_do_not_require_cfg():
     "variant,guidance,negative", [("raw", None, True), ("turbo", None, False), ("turbo", 2.0, True)]
 )
 def test_krea2_default_conditioning_follows_variant(variant, guidance, negative):
-    from unitunner.config.sampling import SamplingConfig
-    from unitunner.models.krea2.inference.conditioning import encode_krea2_prompts
+    from unituner.config.sampling import SamplingConfig
+    from unituner.models.krea2.inference.conditioning import encode_krea2_prompts
 
     calls = []
 
@@ -240,7 +240,7 @@ def test_preview_sampling_supports_training_precision_and_preserves_owners(famil
     observed = []
     handle = projection.register_forward_hook(lambda module, inputs, output: observed.append(output.dtype))
     try:
-        sampler = import_module(f"unitunner.models.{family}.inference.sampling").sample_latents
+        sampler = import_module(f"unituner.models.{family}.inference.sampling").sample_latents
         with (
             preview_context(model, additional_models=(branch,)),
             sampling_precision(precision),
@@ -278,7 +278,7 @@ def test_sampling_precision_scope_restores_on_failure():
 def test_explicit_low_precision_state_with_fp32_model_needs_no_preview_scope(family):
     model, args, kwargs = make_case(family, torch.bfloat16)
     model.eval()
-    sampler = import_module(f"unitunner.models.{family}.inference.sampling").sample_latents
+    sampler = import_module(f"unituner.models.{family}.inference.sampling").sample_latents
     with sdpa_kernel(SDPBackend.MATH):
         result = sampler(model, *args, **kwargs)
     outputs = (result.video, result.audio) if family == "minimax_h3" else (result,)
@@ -291,13 +291,13 @@ def test_explicit_low_precision_state_with_fp32_model_needs_no_preview_scope(fam
 )
 def test_quantized_storage_is_not_used_as_sampling_dtype(family):
     pytest.importorskip("comfy_kitchen")
-    from unitunner.models.components.weight_quantization import quantize_model
+    from unituner.models.components.weight_quantization import quantize_model
 
     model, args, kwargs = make_case(family, torch.bfloat16)
     model.eval().requires_grad_(False)
     assert quantize_model(model, "float8_e4m3fn", family=family.replace("_", "-")) > 0
     dtypes = [p.dtype for p in model.parameters()]
-    sampler = import_module(f"unitunner.models.{family}.inference.sampling").sample_latents
+    sampler = import_module(f"unituner.models.{family}.inference.sampling").sample_latents
     with sampling_precision("bf16"), sdpa_kernel(SDPBackend.MATH):
         result = sampler(model, *args, **kwargs)
     outputs = (result.video, result.audio) if family == "minimax_h3" else (result,)

@@ -4,10 +4,10 @@ import pytest
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.models.minimax_h3.config.model import MiniMaxH3Config
-from unitunner.models.minimax_h3.inference.sampling import build_schedule, sample_latents, sample_seeded_latents
-from unitunner.models.minimax_h3.layout import build_layout
-from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
+from unituner.models.minimax_h3.inference.sampling import build_schedule, sample_latents, sample_seeded_latents
+from unituner.models.minimax_h3.layout import build_layout
+from unituner.models.minimax_h3.transformer import MiniMaxH3Transformer
 
 
 def _model():

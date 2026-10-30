@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from unitunner.config.datasets import CacheDataConfig, DataConfig
-from unitunner.config.loading import ConfigError, load_cache_config, load_training_config
+from unituner.config.datasets import CacheDataConfig, DataConfig
+from unituner.config.loading import ConfigError, load_cache_config, load_training_config
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs/examples"
 

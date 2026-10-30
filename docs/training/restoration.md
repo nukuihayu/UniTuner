@@ -6,7 +6,7 @@
 
 公共训练设置见[训练指南](README.md)，全部配置入口见[示例索引](../examples/README.md)。
 
-Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间的模型，再做一步恢复；不向低清 latent 额外加噪。模型保留各自的时间单位和速度方向。八个图像家族均支持 LoRA 和 full，训练、预览、checkpoint 恢复和 `unitunner restore` 使用同一公式。
+Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间的模型，再做一步恢复；不向低清 latent 额外加噪。模型保留各自的时间单位和速度方向。八个图像家族均支持 LoRA 和 full，训练、预览、checkpoint 恢复和 `unituner restore` 使用同一公式。
 
 <details>
 <summary>本页导航</summary>
@@ -170,9 +170,9 @@ FLUX Kontext/Fill 和 Qwen edit 系列不在修复范围内；Qwen layered 需�
 示例：[FLUX](../examples/flux-restoration.toml)、[FLUX.2](../examples/flux2-restoration.toml)、[FLUX3](../examples/flux3-restoration.toml)、[MOSS](../examples/moss-image-restoration.toml)。示例只启用 LRR 和 L1，不需要下载感知损失权重。`dataset.groups.main.source` 和 `low_quality_source` 按图像文件主体匹配；两目录图像需要对齐。缓存命令提取原生文本，FLUX 同时保留 T5 和 CLIP pooled 特征。FLUX 的辅助 CLIP 资产放在本地 bundle 的 `text_encoder/`，`model.assets` 指定 bundle 根目录，省略时使用 `model.weights` 的父目录。
 
 ```bash
-unitunner cache docs/examples/flux3-restoration.toml --device cuda
-unitunner train docs/examples/flux3-restoration.toml --device cuda
-unitunner train docs/examples/flux3-restoration.toml --device cuda --resume runs/flux3-restoration/resume/model.state-00000050.safetensors
+unituner cache docs/examples/flux3-restoration.toml --device cuda
+unituner train docs/examples/flux3-restoration.toml --device cuda
+unituner train docs/examples/flux3-restoration.toml --device cuda --resume runs/flux3-restoration/resume/model.state-00000050.safetensors
 ```
 
 改为 full 时，设置 `[train] parameter_mode = "full"` 并删除整个 `[train.adapter]`；流匹配训练也使用同样的切换方式。可训练参数保持 FP32；Full 要求浮点基模。适配器可用[量化冻结基模](quantized-base.md)，修复与普通流匹配一样支持 `[execution] precision = "bf16"`，VAE、DINO、VGG 和判别器的卷积与线性层均使用 BF16 AMP；可训练主参数和优化器状态沿用普通流匹配的精度策略，FFT 与损失统计保留 FP32。Full 使用 resident，可组合 block 重算和 CUDA compile；冻结块 H2D 只适用于 adapter。TREAD、REPA、LayerSync 当前只接入流匹配，修复配置会拒绝这些组合。
@@ -189,7 +189,7 @@ midtimestep = 244
 ```
 
 ```bash
-unitunner train train.toml --device cuda --midtimestep 244
+unituner train train.toml --device cuda --midtimestep 244
 ```
 
 `midtimestep` 接受 1..998 的整数，仅适用于图像修复。省略 CLI 选项时保留 TOML 值；两者都省略才取244。
@@ -239,7 +239,7 @@ FDL 使用正交归一化 FFT（`norm="ortho"`）控制幅值尺度，保留相�
 ## 独立计算中间时间
 
 ```bash
-unitunner mid-timestep docs/examples/restoration-calibration.toml --device cuda
+unituner mid-timestep docs/examples/restoration-calibration.toml --device cuda
 ```
 
 可复制配置见[独立校准示例](../examples/restoration-calibration.toml)。Full 配方见[修复全参数示例](../examples/restoration-full.toml)。

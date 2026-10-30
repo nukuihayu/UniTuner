@@ -67,7 +67,7 @@ seed = 42
 Alternatively, copy the [configuration file](../examples/tutorial-generate.toml), then run:
 
 ```bash
-uv run unitunner generate generate.toml --device cuda
+uv run unituner generate generate.toml --device cuda
 ```
 
 `seed` fixes initial random noise for comparison under matching settings. `steps` controls sampling iterations; `width` and `height` set output size. Guidance is model-specific: it may mean CFG or learned guidance embedding, and distilled variants may fix or reject it. Start from the family's [generation example](examples/README.md#inference) when changing models.
@@ -85,7 +85,7 @@ Full mode publishes a complete model even when only selected denoiser layers wer
 Restoration uses `restore`; see the [restoration tutorial](restoration-tutorial.md) for the full workflow. Set input/output paths and the matching denoiser/encoder publications:
 
 ```bash
-uv run unitunner restore restore.toml --device cuda
+uv run unituner restore restore.toml --device cuda
 ```
 
 Inference reads sigma from trained artifacts by default. Denoiser and encoder must belong to matching results rather than different restoration times. Inference uses posterior means; results trained with encoder adaptation need the corresponding encoder file.
@@ -95,21 +95,21 @@ Inference reads sigma from trained artifacts by default. Denoiser and encoder mu
 Wan and MiniMaxH3 use `generate-video`:
 
 ```bash
-uv run unitunner generate-video docs/examples/wan-generate-video.toml --device cuda
-uv run unitunner generate-video docs/examples/minimax-h3-generate.toml --device cuda
+uv run unituner generate-video docs/examples/wan-generate-video.toml --device cuda
+uv run unituner generate-video docs/examples/minimax-h3-generate.toml --device cuda
 ```
 
 Replace local asset/output paths before running. Dimensions, frame counts, audio, and reference conditions follow family-specific rules. Do not copy an image sampling section into these configurations. See [video and audio-video](training/models.md#video-and-audio-video).
 
 ## Load in ComfyUI
 
-Current adapter training publishes ComfyUI keys for the matching model by default. Load these as the base model's LoRA/LoHa/LoKr. ComfyUI must support that model and its fused projection mappings. Restoration encoder files belong to UniTunner's restoration pipeline and are not ordinary denoiser LoRAs.
+Current adapter training publishes ComfyUI keys for the matching model by default. Load these as the base model's LoRA/LoHa/LoKr. ComfyUI must support that model and its fused projection mappings. Restoration encoder files belong to UniTuner's restoration pipeline and are not ordinary denoiser LoRAs.
 
 `adapters export-comfyui` converts existing native Wan/H3 adapters. Current training publications generally need no further conversion. See [publication formats](training/README.md#inference-and-publication).
 
 ## Check a failing inference run
 
-Do not pass inference TOML to `unitunner validate`, which checks training only. Each inference command loads its own schema. Check family/variant, base path, adapter algorithm/rank, and condition assets before checking dimensions and sampling options.
+Do not pass inference TOML to `unituner validate`, which checks training only. Each inference command loads its own schema. Check family/variant, base path, adapter algorithm/rank, and condition assets before checking dimensions and sampling options.
 
 Torch attention is the default. Optional Kitchen INT8 changes output numerics; see [INT8 inference attention](training/execution.md#int8-inference-attention) before comparing it.
 

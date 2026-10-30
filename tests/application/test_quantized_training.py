@@ -5,7 +5,7 @@ import torch
 
 from tests.application.test_image_flow import image_assets as image_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
+from unituner.artifacts.tensors import TensorReader
 
 
 @pytest.mark.parametrize("algorithm", ("lora", "loha", "lokr"))

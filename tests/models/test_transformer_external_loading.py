@@ -7,22 +7,22 @@ import pytest
 import torch
 
 from tests.models.test_z_image import build_model, request
-from unitunner.artifacts.conversion import convert_weights
-from unitunner.artifacts.formats.transformer import convert_transformer
-from unitunner.artifacts.quantization import tensor_json
-from unitunner.artifacts.tensors import TensorReader, resolve_shards, save_tensors
-from unitunner.cli.main import main
-from unitunner.models.components.transformer_artifacts import published_config
-from unitunner.models.flux2.config.model import Flux2Config
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.loading import load_qwen_image
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.loading import load_wan, save_wan
-from unitunner.models.wan.transformer import WanTransformer
-from unitunner.models.z_image.config.model import ZImageConfig
-from unitunner.models.z_image.loading import load_z_image, save_z_image
-from unitunner.training.integrations.z_image.binding import ZImageBinding
+from unituner.artifacts.conversion import convert_weights
+from unituner.artifacts.formats.transformer import convert_transformer
+from unituner.artifacts.quantization import tensor_json
+from unituner.artifacts.tensors import TensorReader, resolve_shards, save_tensors
+from unituner.cli.main import main
+from unituner.models.components.transformer_artifacts import published_config
+from unituner.models.flux2.config.model import Flux2Config
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.loading import load_qwen_image
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.loading import load_wan, save_wan
+from unituner.models.wan.transformer import WanTransformer
+from unituner.models.z_image.config.model import ZImageConfig
+from unituner.models.z_image.loading import load_z_image, save_z_image
+from unituner.training.integrations.z_image.binding import ZImageBinding
 
 _CASES = [
     (
@@ -173,8 +173,8 @@ _CASES = [
 
 @pytest.mark.parametrize("module,stem,options", _CASES)
 def test_all_families_accept_metadata_free_prefixed_weights_and_local_config(tmp_path, module, stem, options):
-    config = getattr(import_module(f"unitunner.models.{module}.config.model"), stem + "Config")(**options)
-    model = getattr(import_module(f"unitunner.models.{module}.transformer"), stem + "Transformer")(config)
+    config = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
+    model = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(config)
     state = model.state_dict()
     # H3 owns checkpoint rotary values rather than initializing them on construction.
     if "rope.inv_freq" in state:
@@ -185,7 +185,7 @@ def test_all_families_accept_metadata_free_prefixed_weights_and_local_config(tmp
     save_tensors({"model.diffusion_model." + k: v for k, v in state.items()}, path)
     (component / "config.json").write_text(config.model_dump_json(), encoding="utf-8")
     suffix = "qwen_image_21" if module == "qwen_image_2_1" else module
-    loader = getattr(import_module(f"unitunner.models.{module}.loading"), "load_" + suffix)
+    loader = getattr(import_module(f"unituner.models.{module}.loading"), "load_" + suffix)
     before = torch.get_rng_state().clone()
     loaded = loader(tmp_path)
     assert torch.equal(torch.get_rng_state(), before)
@@ -195,7 +195,7 @@ def test_all_families_accept_metadata_free_prefixed_weights_and_local_config(tmp
         torch.testing.assert_close(value, state[key], rtol=0, atol=0)
     # Native metadata is authoritative even beside an invalid external sidecar.
     native_path = tmp_path / "native.safetensors"
-    saver = getattr(import_module(f"unitunner.models.{module}.loading"), "save_" + suffix)
+    saver = getattr(import_module(f"unituner.models.{module}.loading"), "save_" + suffix)
     saver(model, native_path)
     native_path.with_suffix(".json").write_text("invalid sidecar", encoding="utf-8")
     assert loader(native_path).config == config

@@ -6,20 +6,20 @@ from dataclasses import asdict
 import pytest
 import torch
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.execution.compiler import CompilerInstallation
-from unitunner.execution.recompute import RecomputeInstallation
-from unitunner.models.qwen_image.conditioning import pack_latents, unpack_latents
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.training.contracts import RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.qwen_image.binding import QwenImageBinding, QwenImageFlowRequest
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.session import TrainingSession
+from unituner.adapters.config import AdapterConfig
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.execution.compiler import CompilerInstallation
+from unituner.execution.recompute import RecomputeInstallation
+from unituner.models.qwen_image.conditioning import pack_latents, unpack_latents
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.training.contracts import RunState
+from unituner.training.engine import update_phase
+from unituner.training.integrations.qwen_image.binding import QwenImageBinding, QwenImageFlowRequest
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.session import TrainingSession
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 
@@ -43,7 +43,7 @@ def build(session, algorithm, variant):
         joint_attention_dim=12,
         axes_dims_rope=(4, 6, 6),
     )
-    binding = QwenImageBinding(QwenImageTransformer(config).to(os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")))
+    binding = QwenImageBinding(QwenImageTransformer(config).to(os.environ.get("UNITUNER_TEST_DEVICE", "cpu")))
     adapter = None if algorithm == "full" else AdapterConfig(algorithm=algorithm, rank=2, alpha=2.0)
     installation = session.own(
         ParameterInstallation(
@@ -59,7 +59,7 @@ def build(session, algorithm, variant):
 
 def request(variant, remove_base):
     layers = 3 if variant == "layered" else 1
-    device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+    device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
     return QwenImageFlowRequest(
         torch.randn(2, 2, layers, 4, 6, device=device),
         torch.randn(2, 2, layers, 4, 6, device=device),
@@ -73,7 +73,7 @@ def request(variant, remove_base):
 def cuda_devices():
     return (
         (torch.cuda.current_device(),)
-        if torch.device(os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")).type == "cuda"
+        if torch.device(os.environ.get("UNITUNER_TEST_DEVICE", "cpu")).type == "cuda"
         else ()
     )
 
@@ -152,7 +152,7 @@ def test_qwen_image_explicit_single_channel_layer_packing_and_gradients():
 
 
 def test_qwen_cached_samples_match_batched_loss_and_gradients():
-    from unitunner.data.cache.storage import ImageCacheRecord
+    from unituner.data.cache.storage import ImageCacheRecord
 
     previous = torch.get_num_threads()
     torch.set_num_threads(1)

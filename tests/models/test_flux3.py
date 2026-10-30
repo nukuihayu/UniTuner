@@ -5,12 +5,12 @@ from dataclasses import replace
 import pytest
 import torch
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, reference_tokens, text_tokens
-from unitunner.models.flux3.config.model import Flux3Config
-from unitunner.models.flux3.loading import load_flux3, save_flux3
-from unitunner.models.flux3.transformer import Flux3Transformer
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, reference_tokens, text_tokens
+from unituner.models.flux3.config.model import Flux3Config
+from unituner.models.flux3.loading import load_flux3, save_flux3
+from unituner.models.flux3.transformer import Flux3Transformer
 
 
 @pytest.fixture(autouse=True)

@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.wan.single_frame import build_single_frame_layout, encode_single_frame_conditions
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.models.wan.single_frame import build_single_frame_layout, encode_single_frame_conditions
 
 
 def test_single_frame_binding_gradients_and_vae_local_neutral_condition():

@@ -4,9 +4,9 @@ import pytest
 import torch
 from torch import Tensor
 
-from unitunner.inference.decoding import decode_on_device
-from unitunner.models.z_image.config.vae import ZImageVAEConfig
-from unitunner.models.z_image.vae import ZImageVAE
+from unituner.inference.decoding import decode_on_device
+from unituner.models.z_image.config.vae import ZImageVAEConfig
+from unituner.models.z_image.vae import ZImageVAE
 
 
 def small_vae() -> ZImageVAE:

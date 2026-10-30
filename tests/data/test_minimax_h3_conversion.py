@@ -10,10 +10,10 @@ import torch
 from PIL import Image
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.hashing import file_sha256
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.models.minimax_h3.data.cache import conversion
-from unitunner.models.minimax_h3.data.cache.storage import MiniMaxH3CacheFormat, read_minimax_h3_record
+from unituner.artifacts.hashing import file_sha256
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.models.minimax_h3.data.cache import conversion
+from unituner.models.minimax_h3.data.cache.storage import MiniMaxH3CacheFormat, read_minimax_h3_record
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_exact_promotion_metadata_identity_and_public_command(inputs, tmp_path):
     assert torch.equal(record.text, text["varlen_mmh3_hidden_states_bfloat16"].float())
     assert record.audio.count_nonzero() and not record.item.audio_present
     with TensorReader(directory / manifest.entries[0].file) as reader:
-        assert set(reader.metadata()) == {"unitunner.cache.identity", "unitunner.cache.item", "unitunner.cache.format"}
+        assert set(reader.metadata()) == {"unituner.cache.identity", "unituner.cache.item", "unituner.cache.format"}
         assert not any("ss_" in key or "rcm" in key for key in reader.keys())
     assert original == {name: (tmp_path / name).read_bytes() for name in original}
     assert torch.equal(rng, torch.get_rng_state())

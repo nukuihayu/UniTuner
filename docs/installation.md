@@ -34,11 +34,11 @@
 ## 基础安装
 
 ```bash
-git clone https://github.com/nukuihayu/UniTunner.git
-cd UniTunner
+git clone https://github.com/nukuihayu/UniTuner.git
+cd UniTuner
 uv python install 3.13
 uv sync --locked --no-dev --extra media --extra text
-uv run --no-dev unitunner --help
+uv run --no-dev unituner --help
 ```
 
 所有示例命令默认从仓库根目录执行。模型不会随着依赖安装自动下载。
@@ -68,7 +68,7 @@ uv run --no-sync --no-dev python -c "import torch; print('Torch:', torch.__versi
 
 `CUDA available: False` 时先检查驱动、当前 Python 环境和 Torch 构建。`--device cuda` 选择执行设备，不会安装驱动或自动换装 Torch。CPU 流程显式使用 `--device cpu --execution.precision fp32`；`auto` 根据权重精度判断，不保证适用于 CPU。
 
-VBAR 从 `unitunner train` 入口在 Torch 导入前初始化。在已导入 Torch 的 Notebook 进程中切换 VBAR，应启动新的 CLI 进程。
+VBAR 从 `unituner train` 入口在 Torch 导入前初始化。在已导入 Torch 的 Notebook 进程中切换 VBAR，应启动新的 CLI 进程。
 
 ## 分词器与离线运行
 
@@ -90,7 +90,7 @@ offline = true
 UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev --extra media --extra text
 ```
 
-镜像只改变 Python 包来源，不是模型或 Python 解释器下载源。依赖准备完毕后可以使用 `uv run --no-sync --no-dev unitunner …`，避免启动时再次同步。
+镜像只改变 Python 包来源，不是模型或 Python 解释器下载源。依赖准备完毕后可以使用 `uv run --no-sync --no-dev unituner …`，避免启动时再次同步。
 
 ## 开发环境
 

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from unitunner.config.runtime import RuntimeConfig
-from unitunner.execution.runtime import runtime_scope
+from unituner.config.runtime import RuntimeConfig
+from unituner.execution.runtime import runtime_scope
 
 
 @pytest.mark.parametrize("fail", [False, True])

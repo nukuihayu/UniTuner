@@ -91,5 +91,5 @@ def write_text_features(directory: Path, layers: tuple[int, ...]) -> None:
     """Declare explicit synthetic feature geometry alongside the actual encoder topology."""
     path = directory / "config.json"
     values = json.loads(path.read_text())
-    values["text_config"]["unitunner_features"] = {"select_layers": list(layers)}
+    values["text_config"]["unituner_features"] = {"select_layers": list(layers)}
     path.write_text(json.dumps(values))

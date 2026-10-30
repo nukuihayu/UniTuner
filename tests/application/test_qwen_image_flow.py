@@ -10,16 +10,16 @@ from PIL import Image
 
 from tests.support.qwen_image import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.data.cache.storage import load_latent_manifest, read_latent_record
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.models.qwen_image.vae import QwenImageVAE
+from unituner.data.cache.storage import load_latent_manifest, read_latent_record
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.qwen_image.vae import QwenImageVAE
 
 
 def command(arguments):
-    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")])
+    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNER_TEST_DEVICE", "cpu")])
 
 
 @pytest.mark.parametrize(

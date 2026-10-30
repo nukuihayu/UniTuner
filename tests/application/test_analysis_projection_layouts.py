@@ -7,10 +7,10 @@ import pytest
 import torch
 
 from tests.models.test_transformer_external_loading import _CASES
-from unitunner.analysis.references import inspect_reference
-from unitunner.analysis.run import analyze, baseline_key
-from unitunner.artifacts.formats.transformer import convert_transformer, official_projection_sources
-from unitunner.artifacts.tensors import save_tensors
+from unituner.analysis.references import inspect_reference
+from unituner.analysis.run import analyze, baseline_key
+from unituner.artifacts.formats.transformer import convert_transformer, official_projection_sources
+from unituner.artifacts.tensors import save_tensors
 
 
 @pytest.fixture(autouse=True)
@@ -44,9 +44,9 @@ def official_state(family, native):
 @pytest.mark.parametrize("layout", ["native", "official"])
 @pytest.mark.parametrize("embedded", [False, True])
 def test_all_model_projection_references(tmp_path, module, stem, options, layout, embedded):
-    config = getattr(import_module(f"unitunner.models.{module}.config.model"), stem + "Config")(**options)
-    model = getattr(import_module(f"unitunner.models.{module}.transformer"), stem + "Transformer")(config)
-    targets = import_module(f"unitunner.models.{module}.projections").adapter_projections(model)
+    config = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
+    model = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(config)
+    targets = import_module(f"unituner.models.{module}.projections").adapter_projections(model)
     family = module.replace("_", "-")
     native = model.state_dict()
     published = official_state(family, native) if layout == "official" else native
@@ -58,7 +58,7 @@ def test_all_model_projection_references(tmp_path, module, stem, options, layout
     save_tensors(
         {"model.diffusion_model." + k: v for k, v in published.items()},
         path,
-        metadata={f"unitunner.{module}.config": config.model_dump_json()} if embedded else None,
+        metadata={f"unituner.{module}.config": config.model_dump_json()} if embedded else None,
     )
     with inspect_reference(path) as reference:
         for name in targets:

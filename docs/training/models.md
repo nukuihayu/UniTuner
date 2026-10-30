@@ -177,7 +177,7 @@ max_frames 至少5，原生音频32kHz立体声。JSONL 是其 AV 记录格式�
 
 - [训练示例](../examples/moss-edit-flow.toml)：`source` 放编辑后的目标图及同名指令 `.txt`，
   `reference_sources` 放按文件名 stem 匹配的原图，可按顺序提供多个目录。训练参考图按自身尺寸分桶，相同原始尺寸自然得到对齐的输出。
-- 先执行 `unitunner cache <配置> --device cuda`，再执行 `unitunner train <配置> --device cuda`。
+- 先执行 `unituner cache <配置> --device cuda`，再执行 `unituner train <配置> --device cuda`。
   编辑缓存保存有序参考 latent，不能混用原版 MOSS 缓存；缓存身份包含参考图内容。
 - [生成示例](../examples/moss-edit-generate.toml)：使用 `sampling.reference_images`；参考图保留各自尺寸，
   按 16 像素对齐，不采用 FLUX.2 的参考图缩放策略。预览使用同样字段。

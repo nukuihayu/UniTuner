@@ -4,10 +4,10 @@ import pytest
 import torch
 
 from tests.training.test_restoration_bf16 import FAMILIES, _vae
-from unitunner.adapters.encoder import EncoderAdapters
-from unitunner.inference.restoration.vae import decode_restoration_latents, encode_restoration_image
-from unitunner.training.methods.vae_execution import checkpoint_vae_blocks
-from unitunner.training.session import TrainingSession
+from unituner.adapters.encoder import EncoderAdapters
+from unituner.inference.restoration.vae import decode_restoration_latents, encode_restoration_image
+from unituner.training.methods.vae_execution import checkpoint_vae_blocks
+from unituner.training.session import TrainingSession
 
 
 @pytest.mark.parametrize("family", FAMILIES)

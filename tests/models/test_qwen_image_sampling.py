@@ -3,11 +3,11 @@
 import pytest
 import torch
 
-from unitunner.models.components.conditioning import Caption
-from unitunner.models.qwen_image.conditioning import pack_latents, unpack_latents
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.inference.sampling import build_schedule, normalized_guidance, sample_latents
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.components.conditioning import Caption
+from unituner.models.qwen_image.conditioning import pack_latents, unpack_latents
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.inference.sampling import build_schedule, normalized_guidance, sample_latents
+from unituner.models.qwen_image.transformer import QwenImageTransformer
 
 
 def test_qwen_cfg_norm_and_terminal_schedule():

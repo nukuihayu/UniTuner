@@ -7,20 +7,20 @@ import torch
 from torch.nn import functional as F
 
 from tests.support.assertions import require_type
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loha import LoHa
-from unitunner.adapters.lokr import LoKr
-from unitunner.adapters.lora import LoRA
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.execution.recompute import RecomputeInstallation
-from unitunner.execution.regions import ModelRegion
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.layers import segmented_attention
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21, save_qwen_image_21
-from unitunner.models.qwen_image_2_1.projections import adapter_projections
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loha import LoHa
+from unituner.adapters.lokr import LoKr
+from unituner.adapters.lora import LoRA
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.execution.recompute import RecomputeInstallation
+from unituner.execution.regions import ModelRegion
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.layers import segmented_attention
+from unituner.models.qwen_image_2_1.loading import load_qwen_image_21, save_qwen_image_21
+from unituner.models.qwen_image_2_1.projections import adapter_projections
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture(autouse=True)

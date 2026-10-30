@@ -3,10 +3,10 @@
 import pytest
 import torch
 
-from unitunner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures, pack_latents, unpack_latents
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.inference.sampling import sample_latents
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures, pack_latents, unpack_latents
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.inference.sampling import sample_latents
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
 
 
 def test_single_step_plain_cfg_mask_and_autocast_invariance():

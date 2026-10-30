@@ -6,18 +6,18 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.formats.adapters import (
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.formats.adapters import (
     AdapterTargetKeys,
     adapter_key_map,
     adapter_metadata,
     adapter_prefixes,
     convert_adapter_keys,
 )
-from unitunner.artifacts.tensors import TensorReader, iter_tensors
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.previews.publication import CaptionCache, publish_images
-from unitunner.training.publishing import publish_adapter
+from unituner.artifacts.tensors import TensorReader, iter_tensors
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.previews.publication import CaptionCache, publish_images
+from unituner.training.publishing import publish_adapter
 
 
 def test_caption_cache_retries_failure_and_is_per_instance():
@@ -113,6 +113,6 @@ def test_adapter_publication_matches_explicit_assembly(tmp_path, algorithm, layo
             alpha=7.0,
             lora_module_identifier="networks.test",
         )
-        info.update({"layout": layout, "modelspec.title": "override", "unitunner.adapter.format": "comfyui"})
+        info.update({"layout": layout, "modelspec.title": "override", "unituner.adapter.format": "comfyui"})
         with TensorReader(path) as reader:
             assert reader.metadata() == info

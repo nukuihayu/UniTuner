@@ -13,7 +13,7 @@ from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import Qwen2_5_VLTe
 from tests.support.assertions import invalid_input
 from tests.support.qwen_image import write_text_assets
 from tests.support.text_assets import local_text_config
-from unitunner.models.qwen_image.text.encoder import load_qwen_image_text
+from unituner.models.qwen_image.text.encoder import load_qwen_image_text
 
 
 @pytest.fixture
@@ -66,8 +66,8 @@ def test_qwen_comfy_visual_prefix_matches_legacy_and_rejects_duplicates(text_ass
 def test_qwen_hub_tokenizer_and_processor_are_separate_from_native_weights(text_assets, monkeypatch):
     import shutil
 
-    from unitunner.config.text import TextEncodingConfig, TokenizerSourceConfig
-    from unitunner.models import text_assets as resolver
+    from unituner.config.text import TextEncodingConfig, TokenizerSourceConfig
+    from unituner.models import text_assets as resolver
 
     snapshot = text_assets / "hub"
     for folder in ("tokenizer", "processor"):

@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from unitunner.adapters.ops.loha import scaled_product
+from unituner.adapters.ops.loha import scaled_product
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")

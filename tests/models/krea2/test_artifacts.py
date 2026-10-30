@@ -7,25 +7,25 @@ import torch
 from torch import nn
 
 from tests.support.assertions import require_type
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.artifacts.formats.adapters import (
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loading import LoadedAdapter
+from unituner.artifacts.formats.adapters import (
     AdapterTargetKeys,
     adapter_key_map,
     adapter_metadata,
     convert_adapter_keys,
 )
-from unitunner.artifacts.formats.krea2_adapters import krea2_adapter_prefixes
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.cli.main import main
-from unitunner.models.krea2.config.model import Krea2Config
-from unitunner.models.krea2.loading import load_krea2, save_krea2
-from unitunner.models.krea2.projections import adapter_projections
-from unitunner.models.krea2.transformer import Krea2Transformer
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import load_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.training.parameters import ParameterInstallation
+from unituner.artifacts.formats.krea2_adapters import krea2_adapter_prefixes
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.cli.main import main
+from unituner.models.krea2.config.model import Krea2Config
+from unituner.models.krea2.loading import load_krea2, save_krea2
+from unituner.models.krea2.projections import adapter_projections
+from unituner.models.krea2.transformer import Krea2Transformer
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import load_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture

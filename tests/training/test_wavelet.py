@@ -5,9 +5,9 @@ import torch
 from torch.autograd import gradcheck
 
 from tests.execution.test_native_strategies import FAMILIES, _case
-from unitunner.config.wavelet import WaveletLossConfig
-from unitunner.training.losses.wavelet import WaveletLoss
-from unitunner.training.session import TrainingSession
+from unituner.config.wavelet import WaveletLossConfig
+from unituner.training.losses.wavelet import WaveletLoss
+from unituner.training.session import TrainingSession
 
 
 def test_haar_band_orientation_and_zero_boundary():

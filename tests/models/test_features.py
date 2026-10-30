@@ -4,15 +4,15 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.features.convnext import ChannelLayerNorm, DinoConvNeXt, l2_pool
-from unitunner.models.features.loading import load_dino_convnext, load_dino_vit, load_vgg19_features
-from unitunner.models.features.normalization import normalize_image
-from unitunner.models.features.vgg import Vgg19Features
-from unitunner.models.features.vit import DinoViT, DinoViTConfig
-from unitunner.training.losses.adversarial import frozen_discriminator, gan_loss
-from unitunner.training.losses.perceptual import DinoPerceptualLoss
-from unitunner.training.methods.discriminator import MultilevelDiscriminator
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.features.convnext import ChannelLayerNorm, DinoConvNeXt, l2_pool
+from unituner.models.features.loading import load_dino_convnext, load_dino_vit, load_vgg19_features
+from unituner.models.features.normalization import normalize_image
+from unituner.models.features.vgg import Vgg19Features
+from unituner.models.features.vit import DinoViT, DinoViTConfig
+from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
+from unituner.training.losses.perceptual import DinoPerceptualLoss
+from unituner.training.methods.discriminator import MultilevelDiscriminator
 
 
 @pytest.fixture(autouse=True, scope="module")

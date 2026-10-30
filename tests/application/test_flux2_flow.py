@@ -19,19 +19,19 @@ from transformers import (
 )
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.config.loading import load_training_config
-from unitunner.data.cache.storage import load_latent_manifest, read_latent_record
-from unitunner.data.media.image import read_image
-from unitunner.models.flux2.config.model import Flux2Config
-from unitunner.models.flux2.config.vae import Flux2VAEConfig
-from unitunner.models.flux2.loading import load_flux2_vae, save_flux2_vae
-from unitunner.models.flux2.transformer import Flux2Transformer
-from unitunner.models.flux2.vae import Flux2VAE
+from unituner.artifacts.tensors import save_tensors
+from unituner.config.loading import load_training_config
+from unituner.data.cache.storage import load_latent_manifest, read_latent_record
+from unituner.data.media.image import read_image
+from unituner.models.flux2.config.model import Flux2Config
+from unituner.models.flux2.config.vae import Flux2VAEConfig
+from unituner.models.flux2.loading import load_flux2_vae, save_flux2_vae
+from unituner.models.flux2.transformer import Flux2Transformer
+from unituner.models.flux2.vae import Flux2VAE
 
 
 def command(arguments):
-    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")])
+    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNER_TEST_DEVICE", "cpu")])
 
 
 @pytest.fixture
@@ -245,7 +245,7 @@ def test_flux2_cache_train_generate_preview_and_resume(assets, algorithm, versio
     records = [read_latent_record(root / "cache", entry, device=torch.device("cpu")) for entry in manifest.entries]
     assert all(len(record.references) == count for record in records)
     assert all(record.caption.shape == (512, 48) for record in records)
-    selected = torch.device(os.environ.get("UNITUNNER_TEST_DEVICE", "cpu"))
+    selected = torch.device(os.environ.get("UNITUNER_TEST_DEVICE", "cpu"))
     vae = load_flux2_vae(root / "vae.safetensors", device=selected).eval()
     with torch.no_grad():
         expected = vae.encode(read_image(root / "images/a.png", (32, 16))[None].to(selected))[0].cpu()

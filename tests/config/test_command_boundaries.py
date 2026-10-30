@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from unitunner.cli.main import main
-from unitunner.config.loading import ConfigError, load_cache_config, load_calibration_config
+from unituner.cli.main import main
+from unituner.config.loading import ConfigError, load_cache_config, load_calibration_config
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs/examples"
 

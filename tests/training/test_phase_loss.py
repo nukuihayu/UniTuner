@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from unitunner.config.restoration import RestorationConfig, RestorationLossWeights
-from unitunner.training.losses.phase import phase_loss
-from unitunner.training.losses.restoration import generator_loss
+from unituner.config.restoration import RestorationConfig, RestorationLossWeights
+from unituner.training.losses.phase import phase_loss
+from unituner.training.losses.restoration import generator_loss
 
 
 def dense_reference(error, target, period, cycles, epsilon):

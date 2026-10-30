@@ -8,13 +8,13 @@ import pytest
 import torch
 
 from tests.support.text_assets import local_text_config, main_with_local_tokenizers
-from unitunner.models.flux2.config.vae import Flux2VAEConfig
-from unitunner.models.flux2.loading import save_flux2_vae
-from unitunner.models.flux2.vae import Flux2VAE
-from unitunner.models.moss_image.config.model import MossImageConfig
-from unitunner.models.moss_image.loading import save_moss_image
-from unitunner.models.moss_image.text.encoder import load_moss_image_text
-from unitunner.models.moss_image.transformer import MossImageTransformer
+from unituner.models.flux2.config.vae import Flux2VAEConfig
+from unituner.models.flux2.loading import save_flux2_vae
+from unituner.models.flux2.vae import Flux2VAE
+from unituner.models.moss_image.config.model import MossImageConfig
+from unituner.models.moss_image.loading import save_moss_image
+from unituner.models.moss_image.text.encoder import load_moss_image_text
+from unituner.models.moss_image.transformer import MossImageTransformer
 
 Image = pytest.importorskip("PIL.Image")
 transformers = pytest.importorskip("transformers")
@@ -23,7 +23,7 @@ pytest.importorskip("cv2")
 
 def run_command(arguments):
     """Run the real CLI on the explicitly selected application test device."""
-    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")])
+    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNER_TEST_DEVICE", "cpu")])
 
 
 @pytest.fixture
@@ -179,7 +179,7 @@ slg_stop = 0.75
 @pytest.mark.parametrize("variant", ["base", "edit"])
 @pytest.mark.parametrize("algorithm", ["full", "lora", "loha", "lokr"])
 def test_moss_real_cache_train_resume_generate_and_preview_isolation(moss_assets, algorithm, variant):
-    from unitunner.data.cache.storage import load_latent_manifest, read_latent_record
+    from unituner.data.cache.storage import load_latent_manifest, read_latent_record
 
     root = moss_assets
     training, generation = write_configs(root, algorithm, variant)
@@ -257,7 +257,7 @@ uncond_skip_layers = []
 
 
 def test_moss_multimodal_language_only_loader_and_strict_preflight(moss_assets):
-    from unitunner.artifacts.tensors import iter_tensors, save_tensors
+    from unituner.artifacts.tensors import iter_tensors, save_tensors
 
     root = moss_assets
     text = load_moss_image_text(

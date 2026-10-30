@@ -44,9 +44,9 @@ A restoration LoRA is restoration + adapter. See [model support](models.md) befo
 4. Validate, cache and train in order.
 
 ```bash
-uv run --no-dev unitunner validate train.toml
-uv run --no-dev unitunner cache train.toml --device cuda
-uv run --no-dev unitunner train train.toml --device cuda
+uv run --no-dev unituner validate train.toml
+uv run --no-dev unituner cache train.toml --device cuda
+uv run --no-dev unituner train train.toml --device cuda
 ```
 
 cache validates only encoding inputs; it does not require optimizer, adapter or training-loss settings. Copy image-cache, wan-cache or minimax-h3-cache for standalone caching. Cached image flow training without previews need not load the VAE/text encoder. Restoration still reads source images and runs the VAE during training.
@@ -160,7 +160,7 @@ Omitting directory creates runs/portrait-lora_<timestamp>/. Explicit directories
 Weights and independent resume state save at the interval and final update. Defaults keep one resume snapshot and all weight versions. Positive max_* values keep the newest N snapshots/sets; 0 is unlimited. Encoders follow their weight set. Old files are removed only after a complete successful save.
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --resume runs/portrait-lora/resume/portrait-lora.state-00001000.safetensors
+uv run --no-dev unituner train train.toml --device cuda --resume runs/portrait-lora/resume/portrait-lora.state-00001000.safetensors
 ```
 
 Resume continues to total max_updates. Preserve the base and data; numerical settings undergo identity checks. save_precision affects inference exports only. checkpoint_storage=frozen-reference can reduce duplicated frozen data but requires the identical frozen base on restore.
@@ -189,7 +189,7 @@ Inspect loss/main or loss/generator, restoration components, discriminator loss,
 
 ## Inference and publication
 
-Adapters export ComfyUI keys for their matching model. Load them with that base model's LoRA loader. Full exports become the new base. Restoration encoders are separate VAE deltas and must be paired with the same update's adapter in UniTunner restore. See [inference](../inference.md).
+Adapters export ComfyUI keys for their matching model. Load them with that base model's LoRA loader. Full exports become the new base. Restoration encoders are separate VAE deltas and must be paired with the same update's adapter in UniTuner restore. See [inference](../inference.md).
 
 ## Common configuration problems
 

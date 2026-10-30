@@ -6,10 +6,10 @@ import pytest
 import torch
 
 from tests.data.test_cache_production import CASES, fake_module, model_config
-from unitunner.inference.restoration.text import encode_caption
-from unitunner.models.components.conditioning import Caption
-from unitunner.models.flux.conditioning import FluxTextFeatures
-from unitunner.models.krea2.conditioning import Krea2TextFeatures
+from unituner.inference.restoration.text import encode_caption
+from unituner.models.components.conditioning import Caption
+from unituner.models.flux.conditioning import FluxTextFeatures
+from unituner.models.krea2.conditioning import Krea2TextFeatures
 
 
 @pytest.mark.parametrize("module,family,variant,version", CASES)
@@ -47,7 +47,7 @@ def test_restoration_caption_keeps_native_layout_and_loader_policy(
         return Encoder()
 
     name = "load_qwen_image_21_text" if module == "qwen_image_2_1" else f"load_{module}_text"
-    fake_module(monkeypatch, f"unitunner.models.{module}.text.encoder", **{name: load})
+    fake_module(monkeypatch, f"unituner.models.{module}.text.encoder", **{name: load})
     with torch.autocast("cpu", dtype=torch.bfloat16):
         caption = encode_caption(config, device=torch.device("cpu"))
     assert len(calls) == 1

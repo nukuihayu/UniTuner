@@ -10,13 +10,13 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.models.krea2.config.model import Krea2Config
-from unitunner.models.krea2.loading import save_krea2
-from unitunner.models.krea2.transformer import Krea2Transformer
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
+from unituner.artifacts.tensors import TensorReader
+from unituner.models.krea2.config.model import Krea2Config
+from unituner.models.krea2.loading import save_krea2
+from unituner.models.krea2.transformer import Krea2Transformer
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -40,7 +40,7 @@ def test_krea2_restoration_shared_runner_resume_preview_and_export(tmp_path, alg
         torch.manual_seed(809)
         root = tmp_path
         width, height = 32, 16
-        device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+        device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         write_text_assets(root / "text", language_layers=3, feature_layers=(0, 2))
         save_qwen_image_vae(
             QwenImageVAE(QwenImageVAEConfig(base_channels=2, layers_per_block=1)),
@@ -126,7 +126,7 @@ histogram = 0.1
 [execution]
 precision = "fp32"
 recompute = "block"
-compile = {str(os.environ.get("UNITUNNER_TEST_COMPILE") == "1").lower()}
+compile = {str(os.environ.get("UNITUNER_TEST_COMPILE") == "1").lower()}
 [output]
 max_resume_checkpoints = 0
 directory = "{root}/run"
@@ -224,7 +224,7 @@ encoder_weights = "{root}/run/weights/model.encoder.safetensors"
             assert image.size == (19, 13) and image.mode == "RGB"
         with TensorReader(root / "run/weights/model.safetensors") as reader:
             metadata = reader.metadata()
-            sigma = metadata["unitunner.restoration.sigma"]
+            sigma = metadata["unituner.restoration.sigma"]
             if algorithm != "full":
                 assert metadata["network_alpha"] == "3.0"
             if algorithm != "full":

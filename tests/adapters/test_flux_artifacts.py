@@ -6,16 +6,16 @@ import pytest
 import torch
 
 from tests.support.assertions import require_type
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.adapters.lokr import LoKr
-from unitunner.artifacts.formats.flux_adapters import flux_adapter_layout
-from unitunner.artifacts.formats.projection_slices import publish_sliced_adapter
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.flux.config.model import FluxConfig
-from unitunner.models.flux.projections import adapter_projections
-from unitunner.models.flux.transformer import FluxTransformer
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loading import LoadedAdapter
+from unituner.adapters.lokr import LoKr
+from unituner.artifacts.formats.flux_adapters import flux_adapter_layout
+from unituner.artifacts.formats.projection_slices import publish_sliced_adapter
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.flux.config.model import FluxConfig
+from unituner.models.flux.projections import adapter_projections
+from unituner.models.flux.transformer import FluxTransformer
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.mark.parametrize("algorithm,hidden_size", [("lora", 32), ("loha", 32), ("lokr", 48), ("lokr", 32)])

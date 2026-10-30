@@ -4,8 +4,8 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from unitunner.config.audio import AudioDecodeConfig
-from unitunner.data.media.audio_timeline import (
+from unituner.config.audio import AudioDecodeConfig
+from unituner.data.media.audio_timeline import (
     AudioRepair,
     assemble_audio_chunks,
     audio_window_start,

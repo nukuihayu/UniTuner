@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.components.text_loading import language_weight_prefix, qwen_vl_source_format
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.components.text_loading import language_weight_prefix, qwen_vl_source_format
 
 
 @pytest.mark.parametrize(
@@ -28,11 +28,11 @@ def test_detection_reads_all_shards_and_rejects_mixed_namespaces(tmp_path, prefi
 def test_h3_auto_layout_validates_full_or_truncated_inventory(tmp_path, monkeypatch, layout, full, head):
     from transformers import AutoProcessor, Qwen3VLConfig
 
-    import unitunner.models.minimax_h3.text.encoder as encoder_module
-    import unitunner.models.minimax_h3.text.loading as loading
+    import unituner.models.minimax_h3.text.encoder as encoder_module
+    import unituner.models.minimax_h3.text.loading as loading
     from tests.support.qwen_image_21 import write_text_assets
     from tests.support.text_assets import local_text_config
-    from unitunner.artifacts.tensors import iter_tensors
+    from unituner.artifacts.tensors import iter_tensors
 
     write_text_assets(tmp_path, language_layers=3)
     config = Qwen3VLConfig.from_pretrained(tmp_path)

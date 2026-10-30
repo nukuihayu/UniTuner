@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from unitunner.config.training import TrainConfig
-from unitunner.training.optimizers.schedules import learning_rate
+from unituner.config.training import TrainConfig
+from unituner.training.optimizers.schedules import learning_rate
 
 
 def test_schedule_math_stays_compute_free():
-    code = "import sys; import unitunner.training.optimizers.schedules; assert 'torch' not in sys.modules"
+    code = "import sys; import unituner.training.optimizers.schedules; assert 'torch' not in sys.modules"
     environment = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[2] / "src")}
     result = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

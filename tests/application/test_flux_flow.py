@@ -12,18 +12,18 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5Config,
 
 from tests.support.assertions import require_value
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.data.cache.storage import load_latent_manifest, read_latent_record
-from unitunner.models.flux.config.model import FluxConfig
-from unitunner.models.flux.config.vae import FluxVAEConfig
-from unitunner.models.flux.loading import save_flux, save_flux_vae
-from unitunner.models.flux.transformer import FluxTransformer
-from unitunner.models.flux.vae import FluxVAE
+from unituner.artifacts.tensors import TensorReader
+from unituner.data.cache.storage import load_latent_manifest, read_latent_record
+from unituner.models.flux.config.model import FluxConfig
+from unituner.models.flux.config.vae import FluxVAEConfig
+from unituner.models.flux.loading import save_flux, save_flux_vae
+from unituner.models.flux.transformer import FluxTransformer
+from unituner.models.flux.vae import FluxVAE
 
 
 def run(arguments):
     """Execute the real CLI on the caller-selected application device."""
-    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")])
+    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNER_TEST_DEVICE", "cpu")])
 
 
 @pytest.fixture

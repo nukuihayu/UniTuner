@@ -5,8 +5,8 @@ import pytest
 import torch
 from PIL import Image, ImageOps
 
-from unitunner.data.degradation.config import DegradationConfig
-from unitunner.data.media import restoration
+from unituner.data.degradation.config import DegradationConfig
+from unituner.data.media import restoration
 
 
 @pytest.mark.parametrize("mode", ("RGB", "RGBA", "L"))

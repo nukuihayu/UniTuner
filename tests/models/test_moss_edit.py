@@ -7,12 +7,12 @@ import torch
 from torch.nn import functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.models.moss_image.config.model import MossImageConfig
-from unitunner.models.moss_image.editing import reference_rope
-from unitunner.models.moss_image.inference.sampling import sample_latents
-from unitunner.models.moss_image.layers import MossImageBlock, apply_rope
-from unitunner.models.moss_image.loading import load_moss_image, save_moss_image
-from unitunner.models.moss_image.transformer import MossImageTransformer
+from unituner.models.moss_image.config.model import MossImageConfig
+from unituner.models.moss_image.editing import reference_rope
+from unituner.models.moss_image.inference.sampling import sample_latents
+from unituner.models.moss_image.layers import MossImageBlock, apply_rope
+from unituner.models.moss_image.loading import load_moss_image, save_moss_image
+from unituner.models.moss_image.transformer import MossImageTransformer
 
 
 @pytest.fixture(autouse=True)

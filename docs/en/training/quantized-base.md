@@ -2,7 +2,7 @@
 
 [简体中文](../../training/quantized-base.md) · English · [Training guide](README.md)
 
-UniTunner trains LoRA, LoHa, or LoKr on frozen quantized bases. Every precision uses the same `QuantizedLinear`: reconstruct the current layer's floating weight for forward, reconstruct the same weight again for backward, and compute the input gradient. Activations remain floating point. There is no dynamic activation quantization or integer matrix multiplication.
+UniTuner trains LoRA, LoHa, or LoKr on frozen quantized bases. Every precision uses the same `QuantizedLinear`: reconstruct the current layer's floating weight for forward, reconstruct the same weight again for backward, and compute the input gradient. Activations remain floating point. There is no dynamic activation quantization or integer matrix multiplication.
 
 This reduces resident base storage and block transfers. Each layer still needs a temporary floating weight, and both forward and backward incur reconstruction costs. It does not promise acceleration or equivalence to training the original floating base. Gradients correspond to the floating linear operation actually executed with reconstructed weights.
 
@@ -43,8 +43,8 @@ recompute = "block"
 This is an amendment, not a complete configuration. Keep the original model, data, optimizer, update count, and output settings. Source weights may be BF16, FP16, or FP32. Native training loaders materialize an FP32 base, then quantize it before installing adapters, optimizers, or execution owners.
 
 ```bash
-uv run unitunner cache train.toml --device cuda
-uv run unitunner train train.toml --device cuda
+uv run unituner cache train.toml --device cuda
+uv run unituner train train.toml --device cuda
 ```
 
 For CUDA training, floating weights initially stay on CPU. Transfer one projection to GPU, quantize it there, and return its packed representation to CPU. Once preparation finishes, resident execution moves the quantized model to GPU; frozen-blocks and VBAR apply their own placement policies. The complete floating base never needs to reside on GPU, but sufficient host memory is still required. CPU training quantizes on CPU.
@@ -63,7 +63,7 @@ All calibration-free layouts are supported:
 | `convrot_w4a4`, `convrot_w4a8` | ConvRot 4-bit weight layouts |
 | `asym_w4a8_int8`, `w6a8_int8` | Grouped 4/6-bit weight layouts |
 
-A4/A8 are upstream layout names; UniTunner still uses floating activations. `fp8` aliases `float8_e4m3fn`, and `convrot-int8` aliases `int8_convrot`. These names select weight storage only. AWQ/SVDQuant require offline calibration and are excluded from automatic preparation; native training can load existing calibrated canonical artifacts.
+A4/A8 are upstream layout names; UniTuner still uses floating activations. `fp8` aliases `float8_e4m3fn`, and `convrot-int8` aliases `int8_convrot`. These names select weight storage only. AWQ/SVDQuant require offline calibration and are excluded from automatic preparation; native training can load existing calibrated canonical artifacts.
 
 The default rotation group is 256; change it with `quantization_rotation_size`. INT8 ConvRot requires a power of four of at least 4 dividing the projection's input width. Grouped formats use `quantization_group_size`, default 16. Incompatible dimensions fail explicitly. To preserve incompatible projections selectively, convert separately with `--on-incompatible keep`.
 
@@ -72,7 +72,7 @@ The default rotation group is 256; change it with `quantization_rotation_size`. 
 You can prepare a reusable artifact separately:
 
 ```bash
-uv run unitunner weights convert models/qwen21.safetensors models/qwen21-fp8.safetensors \
+uv run unituner weights convert models/qwen21.safetensors models/qwen21-fp8.safetensors \
   --family qwen-image-2-1 --precision float8_e4m3fn --device cuda
 ```
 

@@ -9,12 +9,12 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phases
-from unitunner.training.losses.adversarial import frozen_discriminator, gan_loss
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phases
+from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

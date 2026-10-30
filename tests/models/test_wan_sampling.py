@@ -4,9 +4,9 @@ import pytest
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.inference.sampling import sample_latents
-from unitunner.models.wan.transformer import WanTransformer
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.inference.sampling import sample_latents
+from unituner.models.wan.transformer import WanTransformer
 
 
 def test_sampling_preserves_model_rng_inputs_and_disables_ambient_autocast():

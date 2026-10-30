@@ -7,8 +7,8 @@ import pytest
 from huggingface_hub.errors import LocalEntryNotFoundError
 from pydantic import ValidationError
 
-from unitunner.config.text import TextEncodingConfig, TokenizerSourceConfig
-from unitunner.models import text_assets
+from unituner.config.text import TextEncodingConfig, TokenizerSourceConfig
+from unituner.models import text_assets
 
 
 @pytest.mark.parametrize(
@@ -110,7 +110,7 @@ def test_native_weights_load_with_separate_hub_tokenizer(monkeypatch, tmp_path, 
     from tokenizers.pre_tokenizers import ByteLevel
     from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
-    from unitunner.models.z_image.text.encoder import load_z_image_text
+    from unituner.models.z_image.text.encoder import load_z_image_text
 
     weights = tmp_path / "native"
     assets = tmp_path / "snapshot" / "tokenizer"
@@ -142,7 +142,7 @@ def test_native_weights_load_with_separate_hub_tokenizer(monkeypatch, tmp_path, 
     )
     expected = encoder.encode(["test caption"]).features
     assert expected.shape[-1] == 16
-    from unitunner.artifacts.tensors import save_tensors
+    from unituner.artifacts.tensors import save_tensors
 
     # Deliberately retain the base-model config while loading a causal namespace.
     save_tensors({"model." + k: v for k, v in encoder.model.state_dict().items()}, weights / "model.safetensors")

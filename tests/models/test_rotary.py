@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch import Tensor
 
-from unitunner.models.components.rotary import apply_rotary
+from unituner.models.components.rotary import apply_rotary
 
 
 def reference(values: Tensor, positions: Tensor) -> Tensor:

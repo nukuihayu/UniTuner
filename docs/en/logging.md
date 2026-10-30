@@ -33,10 +33,10 @@ Direct calls in Python cells use a widget bar when `ipywidgets` is available, fa
 If your notebook environment does not pass that variable, add this before the training command in your existing `%%bash` cell:
 
 ```bash
-export UNITUNNER_PROGRESS=always
+export UNITUNER_PROGRESS=always
 ```
 
-`UNITUNNER_PROGRESS` defaults to `auto`; `always` forces a bar, while `never` disables it for redirected logs or JSON stdout consumers. Bars use stderr. When enabled, they replace duplicate training INFO/JSON summaries; JSONL and TensorBoard still retain every update. The notebook frontend controls text carriage-return rendering. Subprocess text bars do not require `ipywidgets`.
+`UNITUNER_PROGRESS` defaults to `auto`; `always` forces a bar, while `never` disables it for redirected logs or JSON stdout consumers. Bars use stderr. When enabled, they replace duplicate training INFO/JSON summaries; JSONL and TensorBoard still retain every update. The notebook frontend controls text carriage-return rendering. Subprocess text bars do not require `ipywidgets`.
 
 ## Full metrics in JSONL
 
@@ -70,7 +70,7 @@ tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 ## Diagnose failures
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --log-level DEBUG
+uv run --no-dev unituner train train.toml --device cuda --log-level DEBUG
 ```
 
 Console levels are DEBUG/INFO/WARNING/ERROR. JSONL retains DEBUG details independently. Errors identify configuration fields or the active device, source file, update and phase when available. Start with the first exception and the announced JSONL path.

@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from unitunner.checkpoints.schema import build_resume_identity
-from unitunner.config.loading import ConfigError, load_cache_config, load_training_config, merge_config_overrides
+from unituner.checkpoints.schema import build_resume_identity
+from unituner.config.loading import ConfigError, load_cache_config, load_training_config, merge_config_overrides
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "docs/examples/minimax-h3-cache.toml"
 

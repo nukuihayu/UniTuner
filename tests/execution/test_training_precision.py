@@ -9,20 +9,20 @@ import torch
 from torch import nn
 
 from tests.execution.test_native_strategies import FAMILIES, _case
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.formats.quantization import FORMATS
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.config.execution import ExecutionConfig
-from unitunner.config.loading import load_training_config
-from unitunner.execution.installation import training_base_dtype
-from unitunner.execution.precision import artifact_precision, resolve_training_precision
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phase
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.session import TrainingSession
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.formats.quantization import FORMATS
+from unituner.artifacts.tensors import save_tensors
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.config.execution import ExecutionConfig
+from unituner.config.loading import load_training_config
+from unituner.execution.installation import training_base_dtype
+from unituner.execution.precision import artifact_precision, resolve_training_precision
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phase
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.session import TrainingSession
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ def cpu_threads():
 def test_auto_reads_matrix_dtype_without_materializing_payload(tmp_path, monkeypatch, dtype, name):
     path = tmp_path / "weights.safetensors"
     save_tensors({"weight": torch.ones(8, 8, dtype=dtype), "norm": torch.ones(8)}, path)
-    monkeypatch.setattr("unitunner.artifacts.tensors.TensorReader.read", lambda *a, **k: pytest.fail("payload read"))
+    monkeypatch.setattr("unituner.artifacts.tensors.TensorReader.read", lambda *a, **k: pytest.fail("payload read"))
     assert artifact_precision(path) == name
     config = ExecutionConfig(precision=name)
     assert training_base_dtype(config, adapter=True) == dtype
@@ -59,7 +59,7 @@ def test_auto_resolves_shards_and_explicit_precision_skips_detection(tmp_path, m
     assert resolve_training_precision(config).execution.precision == "bf16"
     explicit = config.model_copy(update={"execution": ExecutionConfig(precision="fp16")})
     monkeypatch.setattr(
-        "unitunner.execution.precision.artifact_precision", lambda *a: pytest.fail("explicit precision must win")
+        "unituner.execution.precision.artifact_precision", lambda *a: pytest.fail("explicit precision must win")
     )
     assert resolve_training_precision(explicit) is explicit
 
@@ -92,7 +92,7 @@ def test_native_low_precision_storage_with_fp32_adapter_update(tmp_path, family,
     torch.manual_seed(931)
     module_name = family.replace("-", "_")
     stem = "qwen_image_21" if family == "qwen-image-2-1" else module_name
-    loading = import_module(f"unitunner.models.{module_name}.loading")
+    loading = import_module(f"unituner.models.{module_name}.loading")
     with TrainingSession() as session:
         binding, _, request = _case(family, session, "full")
         path = tmp_path / "model.safetensors"

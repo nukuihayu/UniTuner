@@ -1,4 +1,4 @@
-# unitunner generate docs/examples/moss-edit-generate.toml --device cuda
+# unituner generate docs/examples/moss-edit-generate.toml --device cuda
 output = "/output/moss-edit/example.png"
 
 [model]

@@ -8,16 +8,16 @@ import pytest
 import torch
 from PIL import Image
 
-from unitunner.config.loading import load_calibration_config, load_training_config
-from unitunner.data.cache.storage import CacheEntry
-from unitunner.data.datasets.restoration import AlignedImagePair, RestorationDataset
-from unitunner.data.media.restoration import read_restoration_pair
-from unitunner.models.components.image_encoders import load_image_vae
-from unitunner.models.z_image.config.vae import ZImageVAEConfig
-from unitunner.models.z_image.loading import save_z_image_vae
-from unitunner.models.z_image.vae import ZImageVAE
-from unitunner.training.calibration import run
-from unitunner.training.methods.restoration import RestorationMethod
+from unituner.config.loading import load_calibration_config, load_training_config
+from unituner.data.cache.storage import CacheEntry
+from unituner.data.datasets.restoration import AlignedImagePair, RestorationDataset
+from unituner.data.media.restoration import read_restoration_pair
+from unituner.models.components.image_encoders import load_image_vae
+from unituner.models.z_image.config.vae import ZImageVAEConfig
+from unituner.models.z_image.loading import save_z_image_vae
+from unituner.models.z_image.vae import ZImageVAE
+from unituner.training.calibration import run
+from unituner.training.methods.restoration import RestorationMethod
 
 
 @pytest.mark.parametrize("sampling", ["random", "tiles"])

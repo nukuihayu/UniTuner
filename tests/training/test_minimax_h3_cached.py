@@ -10,16 +10,16 @@ import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.models.minimax_h3.config.model import MiniMaxH3Config
-from unitunner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
-from unitunner.models.minimax_h3.data.batching import build_minimax_h3_batches
-from unitunner.models.minimax_h3.data.cache.storage import (
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.tensors import TensorReader
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.data.cache.schema import CacheIdentity
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
+from unituner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
+from unituner.models.minimax_h3.data.batching import build_minimax_h3_batches
+from unituner.models.minimax_h3.data.cache.storage import (
     MiniMaxH3CacheFormat,
     MiniMaxH3CacheItem,
     MiniMaxH3CacheManifest,
@@ -30,17 +30,17 @@ from unitunner.models.minimax_h3.data.cache.storage import (
     save_minimax_h3_manifest,
     save_minimax_h3_record,
 )
-from unitunner.models.minimax_h3.loading import load_minimax_h3, save_minimax_h3
-from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
-from unitunner.training.contracts import RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.minimax_h3.binding import MiniMaxH3Binding, build_cached_request
-from unitunner.training.parameters import ParameterInstallation
+from unituner.models.minimax_h3.loading import load_minimax_h3, save_minimax_h3
+from unituner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unituner.training.contracts import RunState
+from unituner.training.engine import update_phase
+from unituner.training.integrations.minimax_h3.binding import MiniMaxH3Binding, build_cached_request
+from unituner.training.parameters import ParameterInstallation
 
 
 def test_named_image_video_groups_train_and_resume(tmp_path):
-    from unitunner.config.loading import load_training_config
-    from unitunner.training.workflows.minimax_h3.run import train_minimax_h3
+    from unituner.config.loading import load_training_config
+    from unituner.training.workflows.minimax_h3.run import train_minimax_h3
 
     previous = torch.get_num_threads()
     torch.set_num_threads(1)
@@ -421,7 +421,7 @@ temporal_fine_bands={1 if fps != 24 else 0}
         assert all(reader.read(key).dtype == torch.bfloat16 for key in reader.keys())
         assert any(key.endswith(".alpha") for key in reader.keys())
         assert reader.metadata()["network_alpha"] == "7.0"
-        assert reader.metadata()["unitunner.adapter.layout"] == "minimax-h3-comfyui"
+        assert reader.metadata()["unituner.adapter.layout"] == "minimax-h3-comfyui"
         assert not any(key.startswith("ss_") for key in reader.metadata())
     previous = (tmp_path / "resumed/weights/h3.safetensors").read_bytes()
     changed = tmp_path / "changed.toml"

@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from unitunner.execution.allocator_bootstrap import initialize_vbar
+from unituner.execution.allocator_bootstrap import initialize_vbar
 
 initialize_vbar()
 

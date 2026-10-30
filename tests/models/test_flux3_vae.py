@@ -5,9 +5,9 @@ from dataclasses import replace
 import pytest
 import torch
 
-from unitunner.models.flux2.config.vae import Flux2VAEConfig
-from unitunner.models.flux2.vae import Flux2VAE
-from unitunner.models.flux3.vae import decode_image, encode_image
+from unituner.models.flux2.config.vae import Flux2VAEConfig
+from unituner.models.flux2.vae import Flux2VAE
+from unituner.models.flux3.vae import decode_image, encode_image
 
 
 def test_flux3_dense_image_vae_preserves_gradients_modes_rng_and_statistics():

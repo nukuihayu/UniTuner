@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from unitunner.data.media.buckets import ImageBuckets
-from unitunner.data.media.image import resize_pixels
-from unitunner.models.qwen_image.data.media import reference_resolution
+from unituner.data.media.buckets import ImageBuckets
+from unituner.data.media.image import resize_pixels
+from unituner.models.qwen_image.data.media import reference_resolution
 
 SIZES = [(600, 1200), (1200, 600), (900, 1200), (720, 1280), (1280, 720), (257, 513), (2049, 1537)]
 

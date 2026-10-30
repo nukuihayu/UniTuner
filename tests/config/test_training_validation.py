@@ -3,16 +3,16 @@
 import pytest
 
 from tests.config.test_data_groups import document
-from unitunner.config.execution import ExecutionConfig
-from unitunner.config.loading import load_training_config
-from unitunner.config.output import OutputConfig
-from unitunner.config.train import TrainConfig
-from unitunner.config.training import OutputConfig as PublishedOutputConfig
-from unitunner.config.training import TrainConfig as PublishedTrainConfig
+from unituner.config.execution import ExecutionConfig
+from unituner.config.loading import load_training_config
+from unituner.config.output import OutputConfig
+from unituner.config.train import TrainConfig
+from unituner.config.training import OutputConfig as PublishedOutputConfig
+from unituner.config.training import TrainConfig as PublishedTrainConfig
 
 
 def test_global_validation_runs_once_and_group_checks_retain_each_group(monkeypatch):
-    from unitunner.config import training
+    from unituner.config import training
 
     counts = []
     for name in ("validate_training_policy", "validate_training_preview", "validate_training_dataset"):

@@ -25,11 +25,11 @@ This tutorial trains Z-Image Base through data preparation, configuration, cachi
 Run in an environment with a compatible CUDA driver:
 
 ```bash
-git clone https://github.com/nukuihayu/UniTunner.git
-cd UniTunner
+git clone https://github.com/nukuihayu/UniTuner.git
+cd UniTuner
 uv python install 3.13
 uv sync --locked --no-dev --extra media --extra text
-uv run --no-dev unitunner --help
+uv run --no-dev unituner --help
 ```
 
 `media` installs image/video/audio I/O dependencies; `text` installs text encoding and tokenizer dependencies. Run subsequent commands from the repository root.
@@ -165,16 +165,16 @@ Defaults retain one resume snapshot and all inference weight versions. No extra 
 ## 6. Validate, cache and train
 
 ```bash
-uv run --no-dev unitunner validate train.toml
-uv run --no-dev unitunner cache train.toml --device cuda
-uv run --no-dev unitunner train train.toml --device cuda
+uv run --no-dev unituner validate train.toml
+uv run --no-dev unituner cache train.toml --device cuda
+uv run --no-dev unituner train train.toml --device cuda
 ```
 
 validate checks fields and combinations without loading weights. cache loads the VAE/text encoder and writes latent/text features. Rebuild after editing images, captions, encoders or preprocessing.
 
 Each cache invocation re-encodes all inputs and replaces the previous cache after success; failures preserve it. Do not train against a cache while rebuilding it.
 
-Z-Image can batch VAE and text encoding with `uv run --no-dev unitunner cache train.toml --device cuda --cache.batch-size 16`, or `[cache] batch_size = 16` in TOML. This does not change the training batch size. The default is 1; reduce it if device memory is insufficient. Other families currently require 1.
+Z-Image can batch VAE and text encoding with `uv run --no-dev unituner cache train.toml --device cuda --cache.batch-size 16`, or `[cache] batch_size = 16` in TOML. This does not change the training batch size. The default is 1; reduce it if device memory is insufficient. Other families currently require 1.
 
 Terminals refresh progress and metrics in place. Background/redirected runs summarize every 60 seconds, including the first/final updates. Usually omit log_every_seconds. JSONL and enabled TensorBoard retain every component loss, gradient norm, learning rate, timing and memory metric.
 
@@ -197,7 +197,7 @@ runs/garden/
 garden.safetensors tracks every export. Numbered files retain training versions. Only resume/ state files provide exact continuation; ordinary LoRA files have no optimizer or RNG state.
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --resume runs/garden/resume/garden.state-00000100.safetensors
+uv run --no-dev unituner train train.toml --device cuda --resume runs/garden/resume/garden.state-00000100.safetensors
 tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 ```
 
@@ -207,7 +207,7 @@ Resume continues toward the configured total max_updates; it does not add that m
 
 ```bash
 cp docs/examples/tutorial-generate.toml generate.toml
-uv run --no-dev unitunner generate generate.toml --device cuda
+uv run --no-dev unituner generate generate.toml --device cuda
 ```
 
 Fill the same base/VAE/text paths. Set adapter.weights to runs/garden/weights/garden.safetensors and match algorithm/rank/alpha to training. Edit sampling prompts, dimensions and seed. Check the output path to avoid overwriting input images.

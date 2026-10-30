@@ -5,14 +5,14 @@ import pytest
 import torch
 from PIL import Image
 
-from unitunner.config.sampling import SamplingConfig
-from unitunner.data.media.image import save_image
-from unitunner.inference.sampling import generate_latents
-from unitunner.models.components.conditioning import Caption
-from unitunner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, reference_tokens, text_tokens
-from unitunner.models.flux3.config.model import Flux3Config
-from unitunner.models.flux3.inference.sampling import build_schedule, sample_latents
-from unitunner.models.flux3.transformer import Flux3Transformer
+from unituner.config.sampling import SamplingConfig
+from unituner.data.media.image import save_image
+from unituner.inference.sampling import generate_latents
+from unituner.models.components.conditioning import Caption
+from unituner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, reference_tokens, text_tokens
+from unituner.models.flux3.config.model import Flux3Config
+from unituner.models.flux3.inference.sampling import build_schedule, sample_latents
+from unituner.models.flux3.transformer import Flux3Transformer
 
 
 @pytest.fixture(autouse=True)

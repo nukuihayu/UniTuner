@@ -5,18 +5,18 @@ from dataclasses import asdict
 import pytest
 import torch
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.execution.recompute import RecomputeInstallation
-from unitunner.models.moss_image.config.model import MossImageConfig
-from unitunner.models.moss_image.transformer import MossImageTransformer
-from unitunner.training.contracts import ImageFlowRequest, RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.moss_image.binding import MossImageBinding
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.session import TrainingSession
+from unituner.adapters.config import AdapterConfig
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.execution.recompute import RecomputeInstallation
+from unituner.models.moss_image.config.model import MossImageConfig
+from unituner.models.moss_image.transformer import MossImageTransformer
+from unituner.training.contracts import ImageFlowRequest, RunState
+from unituner.training.engine import update_phase
+from unituner.training.integrations.moss_image.binding import MossImageBinding
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.session import TrainingSession
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

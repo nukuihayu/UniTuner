@@ -8,13 +8,13 @@ import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.execution.test_native_strategies import FAMILIES, _case, _move
-from unitunner.config.execution import ExecutionConfig
-from unitunner.execution.activations import AttentionActivations
-from unitunner.execution.allocator_bootstrap import vbar_initialized
-from unitunner.execution.installation import ExecutionInstallation
-from unitunner.training.contracts import RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.session import TrainingSession
+from unituner.config.execution import ExecutionConfig
+from unituner.execution.activations import AttentionActivations
+from unituner.execution.allocator_bootstrap import vbar_initialized
+from unituner.execution.installation import ExecutionInstallation
+from unituner.training.contracts import RunState
+from unituner.training.engine import update_phase
+from unituner.training.session import TrainingSession
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -161,7 +161,7 @@ def test_full_training_activation_strategies(family):
 
 
 def test_fp32_time_and_output_islands_under_amp():
-    from unitunner.models.minimax_h3.layers import TimeEmbedder
+    from unituner.models.minimax_h3.layers import TimeEmbedder
 
     module = TimeEmbedder(16, 32, 24).cuda()
     times = torch.tensor([0.23, 0.72], device="cuda", requires_grad=True)
@@ -206,7 +206,7 @@ def test_public_activation_strategies_resume(tmp_path, monkeypatch, residency, r
         pytest.skip("VBAR bootstrap required")
     from tests.application.test_qwen_image_21_flow import test_public_training_three_updates_and_exact_resume
 
-    monkeypatch.setenv("UNITUNNER_TEST_DEVICE", "cuda")
+    monkeypatch.setenv("UNITUNER_TEST_DEVICE", "cuda")
     deterministic = torch.are_deterministic_algorithms_enabled()
     try:
         torch.use_deterministic_algorithms(True)
@@ -219,8 +219,8 @@ def test_public_activation_strategies_resume(tmp_path, monkeypatch, residency, r
 
 
 def test_attention_replay_releases_completed_cuda_graphs():
-    from unitunner.execution.attention import scaled_dot_product_attention
-    from unitunner.execution.regions import ModelRegion, ModelRegions
+    from unituner.execution.attention import scaled_dot_product_attention
+    from unituner.execution.regions import ModelRegion, ModelRegions
 
     class Attention(torch.nn.Module):
         def __init__(self):

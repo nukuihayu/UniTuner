@@ -25,20 +25,20 @@ from transformers.models.qwen3_vl.configuration_qwen3_vl import Qwen3VLTextConfi
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextModel
 
 from tests.support.text_assets import local_text_config
-from unitunner.artifacts.conversion import convert_weights
-from unitunner.artifacts.formats.quantization import FORMATS
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.config.text import TextEncodingConfig
-from unitunner.models.components.quantized import QuantizedLinear
-from unitunner.models.components.text_loading import (
+from unituner.artifacts.conversion import convert_weights
+from unituner.artifacts.formats.quantization import FORMATS
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.config.text import TextEncodingConfig
+from unituner.models.components.quantized import QuantizedLinear
+from unituner.models.components.text_loading import (
     load_text_state,
     prepare_text_model,
     text_execution,
     validate_cache_text,
 )
-from unitunner.models.wan.config.t5 import WanT5Config
-from unitunner.models.wan.text.model import WanT5Encoder
-from unitunner.models.z_image.text.encoder import load_z_image_text
+from unituner.models.wan.config.t5 import WanT5Config
+from unituner.models.wan.text.model import WanT5Encoder
+from unituner.models.z_image.text.encoder import load_z_image_text
 
 FORMATS_TO_TEST = tuple(name for name, spec in FORMATS.items() if not spec.calibrated)
 DEVICES = ("cpu", "cuda") if torch.cuda.is_available() else ("cpu",)
@@ -263,7 +263,7 @@ def test_t5_feed_forward_uses_logical_dtype_for_packed_output_projection(gated):
 @pytest.mark.parametrize("precision", ("float8_e4m3fn", "int8_convrot"))
 @torch.no_grad()
 def test_prepacked_boundary_text_layer_preserves_storage_and_outputs(index, precision):
-    from unitunner.artifacts.quantization import quantize_weight, serialize_weight
+    from unituner.artifacts.quantization import quantize_weight, serialize_weight
 
     kitchen = pytest.importorskip("comfy_kitchen")
     model = text_model("qwen3").eval().requires_grad_(False)

@@ -5,11 +5,11 @@ import hashlib
 import pytest
 import torch
 
-from unitunner.artifacts.hashing import canonical_sha256, file_sha256
-from unitunner.data.cache import storage
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.data.datasets.restoration import index_restoration_pairs
-from unitunner.data.degradation.config import DegradationConfig
+from unituner.artifacts.hashing import canonical_sha256, file_sha256
+from unituner.data.cache import storage
+from unituner.data.cache.schema import CacheIdentity
+from unituner.data.datasets.restoration import index_restoration_pairs
+from unituner.data.degradation.config import DegradationConfig
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def test_streaming_index_validates_each_header_once(dataset, monkeypatch, synthe
     monkeypatch.setattr(storage, "TensorReader", open_header)
     monkeypatch.setattr(reader, "read", no_payload)
     monkeypatch.setattr(storage, "file_sha256", scan)
-    monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
+    monkeypatch.setattr("unituner.data.datasets.restoration.file_sha256", scan)
     pairs, _ = index_restoration_pairs(
         high, None if synthetic else low, cache, family="z-image", degradation=degradation, validation_workers=workers
     )
@@ -92,7 +92,7 @@ def test_index_still_rejects_invalid_sources_and_caches(dataset, changed):
         manifest = storage.read_latent_manifest(cache)
         entry = manifest.entries[0]
         with storage.TensorReader(cache / entry.file) as reader:
-            identity = CacheIdentity.model_validate_json(reader.metadata()["unitunner.cache.identity"])
+            identity = CacheIdentity.model_validate_json(reader.metadata()["unituner.cache.identity"])
         wrong = storage.save_cache_record(
             cache, identity.model_copy(update={"transform_sha256": "c" * 64}), {"unknown": torch.zeros(1)}
         )
@@ -121,8 +121,8 @@ def test_trusted_index_skips_full_scans(dataset, monkeypatch, synthetic):
     # identities. The caller promises those contents still match their caches.
     high[0].write_bytes(b"changed")
     high[0].with_suffix(".txt").write_text("changed")
-    monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
-    monkeypatch.setattr("unitunner.data.datasets.restoration.validate_latent_entry", no_validation)
+    monkeypatch.setattr("unituner.data.datasets.restoration.file_sha256", scan)
+    monkeypatch.setattr("unituner.data.datasets.restoration.validate_latent_entry", no_validation)
     monkeypatch.setattr(storage.TensorReader, "read", no_validation)
     actual, _ = index_restoration_pairs(high, None if synthetic else low, cache, skip_validation=True, **kwargs)
     assert actual == expected
@@ -144,8 +144,8 @@ def test_trusted_index_keeps_structural_checks(dataset, changed):
 
 
 def test_trusted_cached_image_index_skips_hashes_but_preserves_batches(dataset, monkeypatch):
-    from unitunner.config.datasets import DataConfig, DatasetConfig
-    from unitunner.data.datasets import cached_images
+    from unituner.config.datasets import DataConfig, DatasetConfig
+    from unituner.data.datasets import cached_images
 
     _, _, cache = dataset
     config = DataConfig(groups={"main": DatasetConfig(source="unused", cache_directory=str(cache))})

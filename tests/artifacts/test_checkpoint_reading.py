@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from unitunner.artifacts.checkpoint_reading import checkpoint_tensors, is_pytorch_checkpoint
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.components.vae_loading import vae_tensors
+from unituner.artifacts.checkpoint_reading import checkpoint_tensors, is_pytorch_checkpoint
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.components.vae_loading import vae_tensors
 
 
 @pytest.mark.parametrize("extension", [".pt", ".pth", ".bin", ".safetensors", ".renamed"])

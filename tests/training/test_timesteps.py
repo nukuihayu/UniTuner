@@ -5,7 +5,7 @@ import math
 import pytest
 import torch
 
-from unitunner.training.timesteps import sample_sigmas, training_sigma_grid
+from unituner.training.timesteps import sample_sigmas, training_sigma_grid
 
 CPU = torch.device("cpu")
 FAMILIES = ("flux", "flux2", "flux3", "wan", "z-image", "qwen-image", "qwen-image-2-1", "moss-image", "krea2")

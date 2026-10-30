@@ -7,15 +7,15 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.formats.quantization import FORMATS
-from unitunner.artifacts.quantization import quantize_weight
-from unitunner.artifacts.quantized_loading import load_quantized_model
-from unitunner.config.text import TextEncodingConfig
-from unitunner.models.components.quantized import QuantizedLinear
-from unitunner.models.components.text_loading import load_text_state, prepare_text_model
-from unitunner.models.components.weight_quantization import quantize_model
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.formats.quantization import FORMATS
+from unituner.artifacts.quantization import quantize_weight
+from unituner.artifacts.quantized_loading import load_quantized_model
+from unituner.config.text import TextEncodingConfig
+from unituner.models.components.quantized import QuantizedLinear
+from unituner.models.components.text_loading import load_text_state, prepare_text_model
+from unituner.models.components.weight_quantization import quantize_model
+from unituner.training.parameters import ParameterInstallation
 
 FORMATS_TO_TEST = tuple(name for name, spec in FORMATS.items() if not spec.calibrated)
 DEVICES = ("cpu", "cuda") if torch.cuda.is_available() else ("cpu",)
@@ -97,8 +97,8 @@ def test_existing_base_reuse_preserves_storage_without_reparsing_metadata(precis
     def unexpected(*args, **kwargs):
         pytest.fail("Reusing a validated base must not read JSON or requantize weights")
 
-    monkeypatch.setattr("unitunner.artifacts.quantization.tensor_json", unexpected)
-    monkeypatch.setattr("unitunner.models.components.weight_quantization.quantize_weight", unexpected)
+    monkeypatch.setattr("unituner.artifacts.quantization.tensor_json", unexpected)
+    monkeypatch.setattr("unituner.models.components.weight_quantization.quantize_weight", unexpected)
     assert quantize_model(model, precision, family="z-image") == 1
     assert model.layers[0] is layer
     assert all(left is right for left, right in zip(parameters, layer.parameters(), strict=True))
@@ -134,7 +134,7 @@ def test_text_base_online_and_offline_preparation_are_equivalent(precision, dtyp
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_cpu_base_quantizes_one_layer_at_a_time_on_gpu(monkeypatch):
-    from unitunner.models.components import weight_quantization as implementation
+    from unituner.models.components import weight_quantization as implementation
 
     kitchen = pytest.importorskip("comfy_kitchen")
     model = nn.Module()

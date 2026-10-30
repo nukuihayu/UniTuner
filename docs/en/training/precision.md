@@ -20,9 +20,9 @@ Every quantized format uses temporary weight reconstruction and floating linear 
 The default `execution.precision = "auto"` selects FP32, FP16 or BF16 from the dominant floating matrix dtype by element count across all base-model shard headers. Quantized bases default to BF16 compute. Explicit TOML values override detection; CLI values override TOML, with the last CLI assignment winning.
 
 ```bash
-unitunner train train.toml --device cuda --precision bf16
-unitunner train train.toml --device cuda --precision fp16
-unitunner train train.toml --device cuda --precision int8_rowwise
+unituner train train.toml --device cuda --precision bf16
+unituner train train.toml --device cuda --precision fp16
+unituner train train.toml --device cuda --precision int8_rowwise
 ```
 
 `--precision` aliases `--execution.precision`, also available as `precision` under `[execution]`. Choices include `auto` (`keep`), `fp32`, `fp16`, `bf16`, and Kitchen formats: `float8_e4m3fn`, `float8_e5m2`, `mxfp8`, `nvfp4`, `int8_tensorwise`, `int8_rowwise`, `int8_convrot`, `convrot_w4a4`, `convrot_w4a8`, `asym_w4a8_int8`, `w6a8_int8`. Kitchen choices select quantized storage with compute inferred from the source. Set `execution.quantization` and `execution.precision` separately for independent choices. Training precision and quantization inputs exclude AWQ/SVDQuant because they require offline calibration. Standalone weight conversion still supports importing calibrated files. Quantized training requires adapters over a frozen base.

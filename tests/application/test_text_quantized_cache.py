@@ -6,14 +6,14 @@ from PIL import Image
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import local_text_config, main_with_local_tokenizers
-from unitunner.artifacts.conversion import convert_weights
-from unitunner.config.text import TextEncodingConfig
-from unitunner.data.cache.storage import load_latent_manifest
-from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
-from unitunner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record
-from unitunner.models.qwen_image_2_1.loading import save_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
-from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
+from unituner.artifacts.conversion import convert_weights
+from unituner.config.text import TextEncodingConfig
+from unituner.data.cache.storage import load_latent_manifest
+from unituner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
+from unituner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record
+from unituner.models.qwen_image_2_1.loading import save_qwen_image_21_vae
+from unituner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
+from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
 @pytest.mark.parametrize("format", ("none", "float8_e4m3fn", "int8_convrot"))
@@ -79,7 +79,7 @@ parameter_mode = "full"
             convert_weights(source, floating, precision=precision)
             with kitchen.use_backend("eager"):
                 convert_weights(floating, packed, precision=format, family="qwen3-vl", rotation_size=4)
-            from unitunner.artifacts.tensors import TensorReader
+            from unituner.artifacts.tensors import TensorReader
 
             with TensorReader(packed) as reader:
                 stored = {

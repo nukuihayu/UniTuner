@@ -11,28 +11,28 @@ from PIL import Image
 
 from tests.support.qwen_image import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.artifacts.formats.adapters import (
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loading import LoadedAdapter
+from unituner.artifacts.formats.adapters import (
     AdapterTargetKeys,
     adapter_key_map,
     adapter_prefixes,
     convert_adapter_keys,
 )
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.config.datasets import DataConfig, DatasetConfig
-from unitunner.config.previews import PreviewConfig
-from unitunner.config.sampling import SamplingConfig
-from unitunner.config.training import ModelConfig, OutputConfig, TrainConfig, TrainingConfig
-from unitunner.models.catalog import ModelFamily
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
-from unitunner.models.qwen_image.projections import adapter_projections
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.previews.images import PreviewImages
+from unituner.artifacts.tensors import save_tensors
+from unituner.config.datasets import DataConfig, DatasetConfig
+from unituner.config.previews import PreviewConfig
+from unituner.config.sampling import SamplingConfig
+from unituner.config.training import ModelConfig, OutputConfig, TrainConfig, TrainingConfig
+from unituner.models.catalog import ModelFamily
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
+from unituner.models.qwen_image.projections import adapter_projections
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.previews.images import PreviewImages
 
 
 @pytest.mark.parametrize("variant,algorithm", [("original", "lora"), ("edit-2511", "loha"), ("layered", "lokr")])
@@ -128,7 +128,7 @@ def test_qwen_public_generation_is_repeatable_and_publishes_each_layer(tmp_path,
         lines.extend(f"{key} = {json.dumps(value)}" for key, value in adapter.model_dump().items())
         path.write_text("\n".join(lines) + "\n")
         rng = torch.get_rng_state().clone()
-        command = ["generate", str(path), "--device", os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")]
+        command = ["generate", str(path), "--device", os.environ.get("UNITUNER_TEST_DEVICE", "cpu")]
         assert main_with_local_tokenizers(command) == 0
         outputs = sorted(tmp_path.glob("generated*.png"))
         assert len(outputs) == (3 if variant == "layered" else 1)
@@ -140,7 +140,7 @@ def test_qwen_public_generation_is_repeatable_and_publishes_each_layer(tmp_path,
         assert main_with_local_tokenizers(command) == 0
         assert all(output.read_bytes() == saved[output.name] for output in outputs)
         assert torch.equal(rng, torch.get_rng_state())
-        model.to(os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")).train()
+        model.to(os.environ.get("UNITUNER_TEST_DEVICE", "cpu")).train()
         model.transformer_blocks[0].eval()
         configuration = TrainingConfig(
             model=ModelConfig(**{**generation["model"], "family": ModelFamily.QWEN_IMAGE}),

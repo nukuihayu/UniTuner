@@ -36,7 +36,7 @@ Set `model.vae` directly for standard VAE weights; no `weights import` or topolo
 | FLUX | Standard 16-channel VAE; detects native/Diffusers keys |
 | FLUX.2, FLUX3, MOSS | Shared standard 32-channel packed VAE; detects native/Diffusers keys |
 | Qwen Image, Krea2 | Standard 16-channel causal VAE; detects official/ComfyUI keys; Qwen layered selects RGBA by variant |
-| Qwen Image 2.1 | Separate 64-channel RGBA VAE; UniTunner's published topology defaults and native keys |
+| Qwen Image 2.1 | Separate 64-channel RGBA VAE; UniTuner's published topology defaults and native keys |
 | Wan 2.1/2.2 | Shared 16-channel causal VAE; official `.pth`/`.pt` state dicts and safetensors, with ComfyUI key detection |
 | MiniMax-H3 | Built-in video/audio topology; removes video `first_stage_model.`/`video_vae.`/`vae.` and audio `audio_vae.`/`vae.` prefixes |
 
@@ -148,7 +148,7 @@ Training adds noise and computes flow loss only on the target, retaining gradien
 
 - [Training example](../../examples/moss-edit-flow.toml): `source` holds edited targets and matching instruction `.txt` files.
   Ordered `reference_sources` directories hold source images matched by filename stem. Training references use their own aspect buckets; equal-sized source pairs share target geometry.
-- Run `unitunner cache <config> --device cuda`, then `unitunner train <config> --device cuda`.
+- Run `unituner cache <config> --device cuda`, then `unituner train <config> --device cuda`.
   Edit caches store ordered reference latents and include reference content in their identity. Original MOSS caches are incompatible.
 - [Generation example](../../examples/moss-edit-generate.toml): set `sampling.reference_images`.
   References retain independent sizes aligned to 16 pixels, without FLUX.2 reference resizing. Previews use the same fields.

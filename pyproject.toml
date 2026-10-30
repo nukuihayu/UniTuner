@@ -1,5 +1,5 @@
 [project]
-name = "unitunner"
+name = "unituner"
 version = "0.1.0.dev0"
 description = "Typed native model training and artifact tools"
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = [
     "pypdf>=6,<7",
 ]
 [project.scripts]
-unitunner = "unitunner.cli.main:main"
+unituner = "unituner.cli.main:main"
 
 [project.optional-dependencies]
 kitchen = ["comfy-kitchen==0.2.39"]
@@ -44,9 +44,9 @@ dev = [
 requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 [tool.hatch.build]
-include = ["src/unitunner/**", "README.md", "pyproject.toml", "uv.lock"]
+include = ["src/unituner/**", "README.md", "pyproject.toml", "uv.lock"]
 [tool.hatch.build.targets.wheel]
-packages = ["src/unitunner"]
+packages = ["src/unituner"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from unitunner.models.minimax_h3.text.presentation import (
+from unituner.models.minimax_h3.text.presentation import (
     IMAGE_PLACEHOLDER,
     VIDEO_PLACEHOLDER,
     MiniMaxH3TextReference,

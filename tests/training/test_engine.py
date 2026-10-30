@@ -6,12 +6,12 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.adapters.attachment import AdapterAttachment
-from unitunner.adapters.lora import LoRA
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phase
-from unitunner.training.losses.flow_matching import flow_matching_loss
-from unitunner.training.session import TrainingSession
+from unituner.adapters.attachment import AdapterAttachment
+from unituner.adapters.lora import LoRA
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phase
+from unituner.training.losses.flow_matching import flow_matching_loss
+from unituner.training.session import TrainingSession
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])

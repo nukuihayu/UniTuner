@@ -8,12 +8,12 @@ import torch
 from torch import nn
 
 from tests.support.assertions import require_type
-from unitunner.adapters.config import AdapterConfig
-from unitunner.config.execution import ExecutionConfig
-from unitunner.execution.frozen_blocks import FrozenBlockInstallation
-from unitunner.execution.installation import validate_training_execution
-from unitunner.execution.regions import ModelRegion
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.config.execution import ExecutionConfig
+from unituner.execution.frozen_blocks import FrozenBlockInstallation
+from unituner.execution.installation import validate_training_execution
+from unituner.execution.regions import ModelRegion
+from unituner.training.parameters import ParameterInstallation
 
 pytestmark = pytest.mark.filterwarnings("error:Full backward hook is firing:UserWarning")
 

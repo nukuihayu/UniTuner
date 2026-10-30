@@ -8,11 +8,11 @@ import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from torch import nn
 
-from unitunner.config.training import OutputConfig
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phases
-from unitunner.training.session import TrainingSession
-from unitunner.training.telemetry import TrainingTelemetry
+from unituner.config.training import OutputConfig
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phases
+from unituner.training.session import TrainingSession
+from unituner.training.telemetry import TrainingTelemetry
 
 
 def test_phase_metrics_events_and_exception_flush(tmp_path):
@@ -65,7 +65,7 @@ def test_disabled_telemetry_does_not_create_writer():
 
 def test_repeated_runs_have_named_separate_directories(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "unitunner.training.output.datetime", SimpleNamespace(now=lambda: datetime(2026, 10, 21, 15, 30))
+        "unituner.training.output.datetime", SimpleNamespace(now=lambda: datetime(2026, 10, 21, 15, 30))
     )
     first = TrainingTelemetry(str(tmp_path), RunState(), name="../oil/skin:lora")
     second = TrainingTelemetry(str(tmp_path), RunState(updates=10), name="../oil/skin:lora")

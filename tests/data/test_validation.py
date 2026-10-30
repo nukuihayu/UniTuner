@@ -4,7 +4,7 @@ from threading import Barrier, Lock
 
 import pytest
 
-from unitunner.data.validation import ordered_validation_map
+from unituner.data.validation import ordered_validation_map
 
 
 def test_validation_overlaps_work_and_retains_input_order():

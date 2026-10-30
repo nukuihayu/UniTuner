@@ -15,7 +15,7 @@ def _minimax_h3_render_assets(tmp_path_factory):
 @pytest.fixture
 def minimax_h3_preview_assets(_minimax_h3_render_assets, monkeypatch):
     from tests.support.minimax_h3 import FixedTextEncoder
-    from unitunner.models.minimax_h3.inference import loading
+    from unituner.models.minimax_h3.inference import loading
 
     def load_fixed_text(weights, **kwargs):
         assert weights == Path(_minimax_h3_render_assets["text_weights"])

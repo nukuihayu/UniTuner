@@ -1,9 +1,9 @@
 # 最终权重统计分析
 
 ```bash
-uv run unitunner analyze runs/oil-skin-lora
-uv run unitunner analyze runs/oil-skin-lora --base /models/base.safetensors
-uv run unitunner analyze --list
+uv run unituner analyze runs/oil-skin-lora
+uv run unituner analyze runs/oil-skin-lora --base /models/base.safetensors
+uv run unituner analyze --list
 ```
 
 默认读取项目 `weights/` 下不带步数后缀的主权重和 `.encoder.safetensors`，分别分析；也可直接指定权重文件。排除 `*-00000001.safetensors`、对应的 encoder 定期导出和 `resume/`，没有最终导出时明确报错，不自动回退。也可直接选择最终 safetensors 文件或分片索引。
@@ -24,7 +24,7 @@ uv run unitunner analyze --list
 ## Notebook 与终端
 
 ```python
-from unitunner.analysis import analyze_run
+from unituner.analysis import analyze_run
 report = analyze_run("runs/oil-skin-lora", show="auto")
 ```
 
@@ -73,7 +73,7 @@ PNG 与多页 PDF 自动保存；PDF 中曲线、文字和坐标轴保留矢量�
 ## 比较和计算预算
 
 ```bash
-uv run unitunner analyze runs/oil-skin-lora --base /models/base.safetensors \
+uv run unituner analyze runs/oil-skin-lora --base /models/base.safetensors \
   --layer '*attn*' --top-k 64 --top-layers 6
 ```
 

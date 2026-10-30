@@ -7,9 +7,9 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.adapters.encoder import EncoderAdapters, EncoderWeightLoRA, load_encoder_adapters
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.qwen_image.vae import CausalConv3d
+from unituner.adapters.encoder import EncoderAdapters, EncoderWeightLoRA, load_encoder_adapters
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.qwen_image.vae import CausalConv3d
 
 
 @pytest.mark.parametrize(
@@ -87,7 +87,7 @@ def test_encoder_artifact_reload_matches_nonzero_merged_weights_and_rejects_inva
         with torch.no_grad():
             layer.weight.add_(up @ down)
     path = tmp_path / "encoder.safetensors"
-    metadata = {"unitunner.encoder.targets": '["0", "1"]', "unitunner.encoder.rank": "2"}
+    metadata = {"unituner.encoder.targets": '["0", "1"]', "unituner.encoder.rank": "2"}
     save_tensors(state, path, metadata=metadata)
     ids = [id(p) for p in model.parameters()]
     owner = load_encoder_adapters(model, path)
@@ -103,8 +103,8 @@ def test_encoder_artifact_reload_matches_nonzero_merged_weights_and_rejects_inva
         ({**state, "unexpected": torch.ones(1)}, metadata),
         ({**state, "layers.0.up": torch.ones(1, 2)}, metadata),
         ({**state, "layers.0.up": torch.full((6, 2), float("nan"))}, metadata),
-        (state, {**metadata, "unitunner.encoder.targets": '["1", "0"]'}),
-        (state, {**metadata, "unitunner.encoder.rank": "0"}),
+        (state, {**metadata, "unituner.encoder.targets": '["1", "0"]'}),
+        (state, {**metadata, "unituner.encoder.rank": "0"}),
     ]
     for tensors, info in variants:
         save_tensors(tensors, path, metadata=info)

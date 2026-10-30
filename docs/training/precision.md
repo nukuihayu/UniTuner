@@ -20,9 +20,9 @@
 默认 `execution.precision = "auto"`，按基模各分片中占元素数最多的浮点矩阵精度选择 FP32、FP16 或 BF16；量化基模默认 BF16 计算。只读取文件头，不把整份权重载入显存后再判断。显式 TOML 设置优先于自动判断，CLI 参数覆盖 TOML，多个 CLI 精度参数按最后一次赋值生效。
 
 ```bash
-unitunner train train.toml --device cuda --precision bf16
-unitunner train train.toml --device cuda --precision fp16
-unitunner train train.toml --device cuda --precision int8_rowwise
+unituner train train.toml --device cuda --precision bf16
+unituner train train.toml --device cuda --precision fp16
+unituner train train.toml --device cuda --precision int8_rowwise
 ```
 
 `--precision` 是 `--execution.precision` 的别名，也可在 TOML 的 `[execution]` 写 `precision`。可选 `auto`（`keep` 同义）、`fp32`、`fp16`、`bf16`，以及 Kitchen 的 `float8_e4m3fn`、`float8_e5m2`、`mxfp8`、`nvfp4`、`int8_tensorwise`、`int8_rowwise`、`int8_convrot`、`convrot_w4a4`、`convrot_w4a8`、`asym_w4a8_int8`、`w6a8_int8`。Kitchen 名称映射为权重量化选择，浮点计算仍由源文件自动判断；若需独立指定计算精度，分别设置 `execution.quantization` 和 `execution.precision`。训练精度和量化入口不接受需要离线校准的 AWQ／SVDQuant；独立权重转换工具仍支持导入已校准文件。量化训练只支持冻结基模的 adapter 模式。

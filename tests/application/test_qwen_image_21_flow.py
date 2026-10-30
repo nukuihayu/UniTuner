@@ -10,12 +10,12 @@ from PIL import Image
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21, save_qwen_image_21, save_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
+from unituner.artifacts.tensors import TensorReader
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
+from unituner.models.qwen_image_2_1.loading import load_qwen_image_21, save_qwen_image_21, save_qwen_image_21_vae
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
 def test_public_training_independent_reference_geometry(tmp_path):
@@ -112,7 +112,7 @@ save_every_updates = 1
 '''
         config = tmp_path / "train.toml"
         config.write_text(body)
-        device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+        device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         assert main_with_local_tokenizers(["cache", str(config), "--device", device]) == 0
         assert main_with_local_tokenizers(["train", str(config), "--device", device]) == 0
         checkpoint = tmp_path / "run/resume/model.state-00000003.safetensors"

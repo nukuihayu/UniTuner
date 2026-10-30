@@ -4,10 +4,10 @@ import pytest
 import torch
 
 from tests.support.assertions import invalid_input
-from unitunner.models.qwen_image_2_1.conditioning import pack_latents, unpack_latents
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding, QwenImage21FlowRequest
+from unituner.models.qwen_image_2_1.conditioning import pack_latents, unpack_latents
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding, QwenImage21FlowRequest
 
 
 def test_native_flow_layout_interpolation_reference_slots_and_gradients():

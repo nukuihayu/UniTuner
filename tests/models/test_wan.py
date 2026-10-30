@@ -3,16 +3,16 @@
 import pytest
 import torch
 
-from unitunner.artifacts.formats.qwen_image import convert_vae_tensors, vae_key_map
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.cli.main import main
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import load_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.wan.conditioning import encode_latent_conditions
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.loading import load_wan, save_wan
-from unitunner.models.wan.transformer import WanTransformer
+from unituner.artifacts.formats.qwen_image import convert_vae_tensors, vae_key_map
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.cli.main import main
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import load_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.models.wan.conditioning import encode_latent_conditions
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.loading import load_wan, save_wan
+from unituner.models.wan.transformer import WanTransformer
 
 
 @pytest.fixture

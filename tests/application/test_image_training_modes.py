@@ -12,14 +12,14 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from tests.application import test_flux2_flow, test_flux3_flow, test_flux_flow, test_moss_flow
 from tests.support.assertions import require_value
 from tests.support.text_assets import local_text_config, main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.config.generation import GenerationAdapterConfig
-from unitunner.config.loading import load_training_config
-from unitunner.config.restoration_inference import RestorationInferenceConfig
-from unitunner.config.training import TrainingConfig
-from unitunner.inference.restoration.run import run as restore
-from unitunner.training.methods.mid_timestep import restoration_sigma
-from unitunner.training.run import run as train
+from unituner.artifacts.tensors import TensorReader
+from unituner.config.generation import GenerationAdapterConfig
+from unituner.config.loading import load_training_config
+from unituner.config.restoration_inference import RestorationInferenceConfig
+from unituner.config.training import TrainingConfig
+from unituner.inference.restoration.run import run as restore
+from unituner.training.methods.mid_timestep import restoration_sigma
+from unituner.training.run import run as train
 
 flux_assets = test_flux_flow.assets
 flux2_assets = test_flux2_flow.assets
@@ -55,7 +55,7 @@ def test_mid_timestep_update_preview_resume_and_restore(request, family, variant
     root = request.getfixturevalue(
         {"flux": "flux_assets", "flux2": "flux2_assets", "flux3": "flux3_assets", "moss-image": "moss_assets"}[family]
     )
-    device = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+    device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
     if family == "flux":
         path = test_flux_flow.write_training(root, variant, "lora")
     elif family == "flux2":
@@ -103,7 +103,7 @@ def test_mid_timestep_update_preview_resume_and_restore(request, family, variant
         assert (root / "continuous" / name).read_bytes() == (root / "resumed" / name).read_bytes()
     assert Path(config.model.weights).read_bytes() == original
     with TensorReader(artifact) as reader:
-        assert float(reader.metadata()["unitunner.restoration.sigma"]) == restoration_sigma(
+        assert float(reader.metadata()["unituner.restoration.sigma"]) == restoration_sigma(
             321, family=family, resolution=config.dataset.groups["main"].resolution
         )
         assert not any(key.startswith("ss_") for key in reader.metadata())

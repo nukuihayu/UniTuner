@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/unitunner-logo.png" alt="UniTunner" width="720">
+  <img src="docs/assets/unituner-logo.png" alt="UniTuner" width="720">
 </p>
 <p align="center"><strong>图像、视频与音视频模型的原生训练工具</strong></p>
 <p align="center"><a href="README.md">English</a> · 简体中文</p>
@@ -13,7 +13,7 @@
 
 ---
 
-UniTunner 将数据编码、模型微调、训练预览和权重导出连接为一个可配置的工作流。使用 **LoRA、LoHa、LoKr 或全参数训练**学习主体、风格和条件任务；也可以使用配对图像或合成退化，训练一步图像修复模型。
+UniTuner 将数据编码、模型微调、训练预览和权重导出连接为一个可配置的工作流。使用 **LoRA、LoHa、LoKr 或全参数训练**学习主体、风格和条件任务；也可以使用配对图像或合成退化，训练一步图像修复模型。
 
 用 TOML 保存完整配方，用 CLI 覆盖单次运行参数。模型、数据、训练目标和执行策略分别配置，各模型保留自己的条件输入和采样语义。
 
@@ -21,7 +21,7 @@ UniTunner 将数据编码、模型微调、训练预览和权重导出连接为�
 
 ## 项目定位
 
-UniTunner 面向使用本地模型资产进行微调的用户，覆盖从数据准备到可用于推理的模型文件这一完整过程。你可以为图像模型训练主体或风格适配器，为编辑模型学习参考图与目标图之间的关系，为视频和音视频模型准备时序条件，也可以训练专门的一步图像修复模型。
+UniTuner 面向使用本地模型资产进行微调的用户，覆盖从数据准备到可用于推理的模型文件这一完整过程。你可以为图像模型训练主体或风格适配器，为编辑模型学习参考图与目标图之间的关系，为视频和音视频模型准备时序条件，也可以训练专门的一步图像修复模型。
 
 项目直接实现各家族的模型与训练接入，通过公共训练流程管理参数选择、优化器更新、预览和保存。模型之间共用配置组织方式，但各自保留文本编码、VAE、时间采样、位置编码和条件输入的规则。选择新的模型家族时，可以沿用熟悉的训练操作，再按对应示例配置资产和数据。
 
@@ -70,7 +70,7 @@ UniTunner 面向使用本地模型资产进行微调的用户，覆盖从数据�
 
 ## 显存、精度与执行策略
 
-模型大小、训练尺寸、可训练参数和损失网络共同决定资源需求。UniTunner 将不同资源的管理方式分别配置：
+模型大小、训练尺寸、可训练参数和损失网络共同决定资源需求。UniTuner 将不同资源的管理方式分别配置：
 
 | 策略 | 解决的问题 | 使用条件 |
 | --- | --- | --- |
@@ -91,8 +91,8 @@ UniTunner 面向使用本地模型资产进行微调的用户，覆盖从数据�
 需要 Python **3.12+**、[uv](https://docs.astral.sh/uv/) 和本地模型资产。CUDA 训练还需要兼容项目 Torch 版本的 NVIDIA 驱动；[安装指南](docs/installation.md)说明可选依赖与环境检查。
 
 ```bash
-git clone https://github.com/nukuihayu/UniTunner.git
-cd UniTunner
+git clone https://github.com/nukuihayu/UniTuner.git
+cd UniTuner
 uv python install 3.13
 uv sync --locked --no-dev --extra media --extra text
 cp docs/examples/tutorial-lora.toml train.toml
@@ -101,9 +101,9 @@ cp docs/examples/tutorial-lora.toml train.toml
 编辑 `train.toml` 中的模型、VAE、文本编码器和数据路径，再执行：
 
 ```bash
-uv run --no-dev unitunner validate train.toml
-uv run --no-dev unitunner cache train.toml --device cuda
-uv run --no-dev unitunner train train.toml --device cuda
+uv run --no-dev unituner validate train.toml
+uv run --no-dev unituner cache train.toml --device cuda
+uv run --no-dev unituner train train.toml --device cuda
 ```
 
 > [!TIP]
@@ -114,7 +114,7 @@ uv run --no-dev unitunner train train.toml --device cuda
 在已有配置表中修改字段，CLI 参数覆盖 TOML：
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda \
+uv run --no-dev unituner train train.toml --device cuda \
   --train.learning-rate 5e-5 --train.max-updates 2000
 ```
 
@@ -144,7 +144,7 @@ runs/<运行名>/
 使用 `weights/` 中的文件进行推理；使用 `resume/` 中的状态继续训练：
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda \
+uv run --no-dev unituner train train.toml --device cuda \
   --resume runs/garden/resume/garden.state-00000050.safetensors
 ```
 
@@ -155,7 +155,7 @@ uv run --no-dev unitunner train train.toml --device cuda \
 
 训练预览按配置周期生成，使用固定提示词、种子和条件。JSONL 保存每次更新的指标；可选 TensorBoard 展示损失、梯度范数、学习率和显存使用。保存与预览周期独立设置，可以调整观察频率而不改变训练目标。
 
-适配器按对应模型的消费者布局发布，包含必要的投影键映射。可以在 ComfyUI 中使用匹配模型和支持该算法的加载器，也可以按任务使用 UniTunner 的 `generate`、`generate-video` 或 `restore`。跨工具比较效果时，应对齐底模、VAE、文本资产、条件输入与采样约定。
+适配器按对应模型的消费者布局发布，包含必要的投影键映射。可以在 ComfyUI 中使用匹配模型和支持该算法的加载器，也可以按任务使用 UniTuner 的 `generate`、`generate-video` 或 `restore`。跨工具比较效果时，应对齐底模、VAE、文本资产、条件输入与采样约定。
 
 权重工具还支持导入适用的外部布局、转换浮点精度及处理支持的量化格式，并按模型保护敏感层。格式与命令示例见[推理指南](docs/inference.md)和[权重转换](docs/weight-conversion.md)。
 

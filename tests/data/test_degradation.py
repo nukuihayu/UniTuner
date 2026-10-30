@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from torch.nn import functional as F
 
 pytest.importorskip("cv2")
-from unitunner.data.degradation.config import (
+from unituner.data.degradation.config import (
     BlurConfig,
     CompressionConfig,
     DegradationConfig,
@@ -22,7 +22,7 @@ from unitunner.data.degradation.config import (
     SecondStageConfig,
     StageConfig,
 )
-from unitunner.data.degradation.pipeline import (
+from unituner.data.degradation.pipeline import (
     _bounded_resize_size,
     _grid_spatial_scale,
     _resize,
@@ -507,7 +507,7 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
     """Check every tile against an independent pixel slice and degradation call."""
     from PIL import Image
 
-    from unitunner.data.media.restoration import iter_aligned_images
+    from unituner.data.media.restoration import iter_aligned_images
 
     array = np.random.default_rng(7).integers(0, 256, (*shape, 3), dtype=np.uint8)
     path = tmp_path / "high.png"

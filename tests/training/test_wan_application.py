@@ -7,19 +7,19 @@ import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.data.batching import build_wan_batches
-from unitunner.models.wan.data.cache.storage import (
+from unituner.artifacts.tensors import TensorReader
+from unituner.data.cache.schema import CacheIdentity
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.data.batching import build_wan_batches
+from unituner.models.wan.data.cache.storage import (
     WanCacheFormat,
     WanCacheManifest,
     WanCacheRecord,
     save_wan_manifest,
     save_wan_record,
 )
-from unitunner.models.wan.loading import save_wan
-from unitunner.models.wan.transformer import WanTransformer
+from unituner.models.wan.loading import save_wan
+from unituner.models.wan.transformer import WanTransformer
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
@@ -160,6 +160,6 @@ repeats=2
             assert any(key.endswith(".alpha") for key in reader.keys())
             assert reader.metadata()["network_alpha"] == "7.0"
             assert not any(key.startswith("ss_") for key in reader.metadata())
-            assert reader.metadata()["unitunner.adapter.layout"] == "wan-comfyui"
+            assert reader.metadata()["unituner.adapter.layout"] == "wan-comfyui"
     finally:
         torch.set_num_threads(previous)

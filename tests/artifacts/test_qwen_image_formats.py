@@ -3,14 +3,14 @@
 import pytest
 import torch
 
-from unitunner.artifacts.formats.qwen_image import convert_vae_tensors, vae_key_map
-from unitunner.artifacts.importing import import_weights
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.qwen_image.config.model import QwenImageConfig
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import load_qwen_image, load_qwen_image_vae
-from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.models.qwen_image.vae import QwenImageVAE
+from unituner.artifacts.formats.qwen_image import convert_vae_tensors, vae_key_map
+from unituner.artifacts.importing import import_weights
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.qwen_image.config.model import QwenImageConfig
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import load_qwen_image, load_qwen_image_vae
+from unituner.models.qwen_image.transformer import QwenImageTransformer
+from unituner.models.qwen_image.vae import QwenImageVAE
 
 
 @pytest.fixture(autouse=True)

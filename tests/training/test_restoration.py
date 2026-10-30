@@ -5,20 +5,20 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from unitunner.adapters.encoder import EncoderWeightLoRA
-from unitunner.config.restoration import RestorationLossWeights
-from unitunner.models.flux.vae import FluxVAE
-from unitunner.models.z_image.config.model import ZImageConfig
-from unitunner.models.z_image.config.vae import ZImageVAEConfig
-from unitunner.models.z_image.transformer import ZImageTransformer
-from unitunner.models.z_image.vae import ZImageVAE
-from unitunner.training.contracts import RunState, StepResult
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.z_image.binding import ZImageBinding
-from unitunner.training.losses.adversarial import frozen_discriminator, gan_loss
-from unitunner.training.losses.histogram import _normalized_lab, histogram_loss
-from unitunner.training.losses.restoration import generator_loss
-from unitunner.training.methods.mid_timestep import flow_target, one_step
+from unituner.adapters.encoder import EncoderWeightLoRA
+from unituner.config.restoration import RestorationLossWeights
+from unituner.models.flux.vae import FluxVAE
+from unituner.models.z_image.config.model import ZImageConfig
+from unituner.models.z_image.config.vae import ZImageVAEConfig
+from unituner.models.z_image.transformer import ZImageTransformer
+from unituner.models.z_image.vae import ZImageVAE
+from unituner.training.contracts import RunState, StepResult
+from unituner.training.engine import update_phase
+from unituner.training.integrations.z_image.binding import ZImageBinding
+from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
+from unituner.training.losses.histogram import _normalized_lab, histogram_loss
+from unituner.training.losses.restoration import generator_loss
+from unituner.training.methods.mid_timestep import flow_target, one_step
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -145,7 +145,7 @@ def test_generator_temporaries_are_released_before_discriminator_forward():
     import weakref
     from types import SimpleNamespace
 
-    from unitunner.training.methods.restoration import RestorationMethod
+    from unituner.training.methods.restoration import RestorationMethod
 
     method = object.__new__(RestorationMethod)
     method._first_step = False
@@ -201,14 +201,14 @@ def test_generator_temporaries_are_released_before_discriminator_forward():
 def test_sampled_restoration_matches_trainer_draw_order_and_gradients(tmp_path, family, channels_last):
     """Match sampled HQ -> LRR noise -> sampled LQ, including noncontiguous moments."""
     from tests.training.test_flux import build as build_flux
-    from unitunner.config.loading import load_training_config
-    from unitunner.models.components.conditioning import Caption
-    from unitunner.models.flux.conditioning import FluxTextFeatures
-    from unitunner.models.flux.config.vae import FluxVAEConfig
-    from unitunner.models.flux.loading import save_flux_vae
-    from unitunner.models.z_image.loading import save_z_image_vae
-    from unitunner.training.methods.restoration import RestorationMethod
-    from unitunner.training.session import TrainingSession
+    from unituner.config.loading import load_training_config
+    from unituner.models.components.conditioning import Caption
+    from unituner.models.flux.conditioning import FluxTextFeatures
+    from unituner.models.flux.config.vae import FluxVAEConfig
+    from unituner.models.flux.loading import save_flux_vae
+    from unituner.models.z_image.loading import save_z_image_vae
+    from unituner.training.methods.restoration import RestorationMethod
+    from unituner.training.session import TrainingSession
 
     torch.manual_seed(71)
     vae_path = tmp_path / "vae.safetensors"

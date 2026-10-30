@@ -7,8 +7,8 @@ import torch
 from safetensors import SafetensorError, safe_open
 from safetensors.torch import save_file
 
-from unitunner.artifacts.atomic import atomic_output
-from unitunner.artifacts.tensors import TensorReader, iter_tensors, resolve_shards, save_tensors
+from unituner.artifacts.atomic import atomic_output
+from unituner.artifacts.tensors import TensorReader, iter_tensors, resolve_shards, save_tensors
 
 
 def test_streamed_external_roundtrip(tmp_path):
@@ -21,11 +21,11 @@ def test_streamed_external_roundtrip(tmp_path):
         "negative": torch._neg_view(torch.arange(4, dtype=torch.float32)),  # pyright: ignore[reportPrivateImportUsage] -- Test Torch negative-view serialization.
         "浮点": torch.tensor([1.0, -2.0], dtype=torch.float16),
     }
-    save_tensors(tensors, path, metadata={"unitunner.provenance": "{}"})
+    save_tensors(tensors, path, metadata={"unituner.provenance": "{}"})
     with safe_open(path, framework="pt") as reader:
         for key, tensor in tensors.items():
             torch.testing.assert_close(reader.get_tensor(key), tensor, rtol=0, atol=0)
-        assert reader.metadata() == {"unitunner.provenance": "{}"}
+        assert reader.metadata() == {"unituner.provenance": "{}"}
     with TensorReader(path) as reader:
         kept = reader.read("view")
     reader.close()
@@ -50,7 +50,7 @@ def test_failed_write_preserves_destination(tmp_path):
 
 
 def test_single_pass_writer_matches_external_reader_and_rolls_back_generator_failures(tmp_path):
-    from unitunner.artifacts.tensors import save_tensor_stream
+    from unituner.artifacts.tensors import save_tensor_stream
 
     path = tmp_path / "stream.safetensors"
     values = {"scalar": torch.tensor(2.0), "empty": torch.empty(0, 2), "view": torch.arange(12).view(3, 4).T}

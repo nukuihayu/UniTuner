@@ -12,29 +12,29 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import T5Tokenizer
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.formats.adapters import (
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.formats.adapters import (
     AdapterTargetKeys,
     adapter_key_map,
     adapter_prefixes,
     convert_adapter_keys,
 )
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.data.media.video_output import save_video
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.wan.config.clip import WanClipConfig
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.config.t5 import WanT5Config
-from unitunner.models.wan.loading import save_wan
-from unitunner.models.wan.projections import adapter_projections
-from unitunner.models.wan.text.loading import save_wan_t5
-from unitunner.models.wan.text.model import WanT5Encoder
-from unitunner.models.wan.transformer import WanTransformer
-from unitunner.models.wan.vision.loading import save_wan_clip
-from unitunner.models.wan.vision.model import WanClipVision
-from unitunner.training.parameters import ParameterInstallation
+from unituner.artifacts.tensors import save_tensors
+from unituner.data.media.video_output import save_video
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.models.wan.config.clip import WanClipConfig
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.config.t5 import WanT5Config
+from unituner.models.wan.loading import save_wan
+from unituner.models.wan.projections import adapter_projections
+from unituner.models.wan.text.loading import save_wan_t5
+from unituner.models.wan.text.model import WanT5Encoder
+from unituner.models.wan.transformer import WanTransformer
+from unituner.models.wan.vision.loading import save_wan_clip
+from unituner.models.wan.vision.model import WanClipVision
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture

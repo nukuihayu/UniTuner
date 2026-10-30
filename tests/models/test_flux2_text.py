@@ -15,7 +15,7 @@ from transformers import (
 )
 
 from tests.support.text_assets import local_text_config
-from unitunner.models.flux2.text.encoder import load_flux2_text
+from unituner.models.flux2.text.encoder import load_flux2_text
 
 
 @pytest.mark.parametrize("version", ["dev", "klein-4b"])

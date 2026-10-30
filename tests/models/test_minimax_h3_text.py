@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from tests.support.assertions import invalid_input
-from unitunner.models.minimax_h3.text.loading import load_text_encoder
+from unituner.models.minimax_h3.text.loading import load_text_encoder
 
 
 def test_invalid_text_execution_choices_fail_before_file_io(tmp_path):

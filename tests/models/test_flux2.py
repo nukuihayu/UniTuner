@@ -6,13 +6,13 @@ import pytest
 import torch
 
 from tests.support.assertions import require_value
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.flux2.config.model import Flux2Config, flux2_config
-from unitunner.models.flux2.loading import load_flux2, save_flux2
-from unitunner.models.flux2.projections import adapter_projections
-from unitunner.models.flux2.transformer import Flux2Transformer
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.flux2.config.model import Flux2Config, flux2_config
+from unituner.models.flux2.loading import load_flux2, save_flux2
+from unituner.models.flux2.projections import adapter_projections
+from unituner.models.flux2.transformer import Flux2Transformer
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture(autouse=True)

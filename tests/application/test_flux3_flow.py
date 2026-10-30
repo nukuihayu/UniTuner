@@ -13,19 +13,19 @@ from transformers.models.qwen3_vl.processing_qwen3_vl import Qwen3VLProcessor
 from transformers.models.qwen3_vl.video_processing_qwen3_vl import Qwen3VLVideoProcessor
 
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.config.loading import load_training_config
-from unitunner.data.cache.storage import load_latent_manifest, read_latent_record
-from unitunner.data.media.image import read_image
-from unitunner.models.flux2.config.vae import Flux2VAEConfig
-from unitunner.models.flux2.loading import load_flux2_vae, save_flux2_vae
-from unitunner.models.flux2.vae import Flux2VAE
-from unitunner.models.flux3.config.model import Flux3Config
-from unitunner.models.flux3.loading import save_flux3
-from unitunner.models.flux3.transformer import Flux3Transformer
+from unituner.config.loading import load_training_config
+from unituner.data.cache.storage import load_latent_manifest, read_latent_record
+from unituner.data.media.image import read_image
+from unituner.models.flux2.config.vae import Flux2VAEConfig
+from unituner.models.flux2.loading import load_flux2_vae, save_flux2_vae
+from unituner.models.flux2.vae import Flux2VAE
+from unituner.models.flux3.config.model import Flux3Config
+from unituner.models.flux3.loading import save_flux3
+from unituner.models.flux3.transformer import Flux3Transformer
 
 
 def command(arguments):
-    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")])
+    return main_with_local_tokenizers([*arguments, "--device", os.environ.get("UNITUNER_TEST_DEVICE", "cpu")])
 
 
 @pytest.fixture
@@ -211,7 +211,7 @@ def test_flux3_cache_train_generate_preview_and_resume(assets, algorithm, varian
     records = [read_latent_record(root / "cache", entry, device=torch.device("cpu")) for entry in manifest.entries]
     assert all(len(record.references) == count for record in records)
     assert records[0].caption.shape[0] == 80 and records[1].caption.shape[0] > 80
-    selected = torch.device(os.environ.get("UNITUNNER_TEST_DEVICE", "cpu"))
+    selected = torch.device(os.environ.get("UNITUNER_TEST_DEVICE", "cpu"))
     vae = load_flux2_vae(root / "vae.safetensors", device=selected).eval()
     with torch.no_grad():
         expected = vae.encode(read_image(root / "images/a.png", (32, 16))[None].to(selected))[0].cpu()

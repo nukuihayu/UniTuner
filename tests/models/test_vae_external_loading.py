@@ -6,24 +6,24 @@ import torch
 from tests.models.test_flux2_vae import small_vae
 from tests.models.test_minimax_h3_audio_vae import _vae as audio_vae
 from tests.models.test_minimax_h3_video_vae import _vae as video_vae
-from unitunner.artifacts.formats.qwen_image import convert_vae_tensors as convert_qwen
-from unitunner.artifacts.formats.qwen_image import vae_key_map as qwen_key_map
-from unitunner.artifacts.formats.z_image import convert_vae_tensors as convert_zimage
-from unitunner.artifacts.formats.z_image import vae_key_map as zimage_key_map
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.components.vae_loading import vae_tensors
-from unitunner.models.flux.config.vae import FluxVAEConfig
-from unitunner.models.flux.loading import load_flux_vae
-from unitunner.models.flux.vae import FluxVAE
-from unitunner.models.flux2.loading import load_flux2_vae
-from unitunner.models.minimax_h3.vae import load_audio_vae, load_video_vae
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import load_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21_vae
-from unitunner.models.z_image.config.vae import ZImageVAEConfig
-from unitunner.models.z_image.loading import load_z_image_vae
-from unitunner.models.z_image.vae import ZImageVAE
+from unituner.artifacts.formats.qwen_image import convert_vae_tensors as convert_qwen
+from unituner.artifacts.formats.qwen_image import vae_key_map as qwen_key_map
+from unituner.artifacts.formats.z_image import convert_vae_tensors as convert_zimage
+from unituner.artifacts.formats.z_image import vae_key_map as zimage_key_map
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.components.vae_loading import vae_tensors
+from unituner.models.flux.config.vae import FluxVAEConfig
+from unituner.models.flux.loading import load_flux_vae
+from unituner.models.flux.vae import FluxVAE
+from unituner.models.flux2.loading import load_flux2_vae
+from unituner.models.minimax_h3.vae import load_audio_vae, load_video_vae
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import load_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
+from unituner.models.qwen_image_2_1.loading import load_qwen_image_21_vae
+from unituner.models.z_image.config.vae import ZImageVAEConfig
+from unituner.models.z_image.loading import load_z_image_vae
+from unituner.models.z_image.vae import ZImageVAE
 
 
 @pytest.fixture(autouse=True)

@@ -21,8 +21,8 @@ Organize configuration, override fields, and choose the right command. See [para
 **Defaults → TOML → CLI overrides**. TOML is optional if the CLI supplies every required field.
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --train.learning-rate 5e-5
-uv run --no-dev unitunner train --config train.toml --device cuda --train.learning-rate 5e-5
+uv run --no-dev unituner train train.toml --device cuda --train.learning-rate 5e-5
+uv run --no-dev unituner train --config train.toml --device cuda --train.learning-rate 5e-5
 ```
 
 Both forms select the same file. Relative paths resolve from the working directory, not the TOML directory. Use absolute asset/data paths when launching from different directories.
@@ -70,13 +70,13 @@ Merge this fragment into existing tables; do not declare the same table twice. Q
 Use dot-separated field paths and hyphenated field names. `--set` handles dynamic dataset groups:
 
 ```bash
-uv run --no-dev unitunner validate train.toml \
+uv run --no-dev unituner validate train.toml \
   --train.learning-rate 5e-5 \
   --set 'dataset.groups.main.batch_size=1' \
   --set 'train.include_layers=["layers.*"]'
 ```
 
-Quote the complete assignment when it contains spaces, arrays, JSON objects, or shell metacharacters. See `unitunner train --help` for common fields. The `--parameter-mode full` shortcut also clears adapter configuration.
+Quote the complete assignment when it contains spaces, arrays, JSON objects, or shell metacharacters. See `unituner train --help` for common fields. The `--parameter-mode full` shortcut also clears adapter configuration.
 
 ## Command reference
 
@@ -95,11 +95,11 @@ Quote the complete assignment when it contains spaces, arrays, JSON objects, or 
 Validate the appropriate schema:
 
 ```bash
-uv run --no-dev unitunner validate image-cache.toml --for cache
-uv run --no-dev unitunner validate generate.toml --for generate
-uv run --no-dev unitunner validate restore.toml --for restore
-uv run --no-dev unitunner validate video.toml --for generate-video
-uv run --no-dev unitunner validate calibration.toml --for mid-timestep
+uv run --no-dev unituner validate image-cache.toml --for cache
+uv run --no-dev unituner validate generate.toml --for generate
+uv run --no-dev unituner validate restore.toml --for restore
+uv run --no-dev unituner validate video.toml --for generate-video
+uv run --no-dev unituner validate calibration.toml --for mid-timestep
 ```
 
 Successful validation establishes legal fields and combinations. Actual loading also checks asset availability, format, keys, and shapes.

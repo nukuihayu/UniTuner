@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/unitunner-logo.png" alt="UniTunner" width="560"></p>
+<p align="center"><img src="assets/unituner-logo.png" alt="UniTuner" width="560"></p>
 
 # 使用文档
 

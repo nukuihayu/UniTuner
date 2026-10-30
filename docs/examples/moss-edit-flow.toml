@@ -1,7 +1,7 @@
 # Moss-Image-Edit / ComfyUI PR #17296: index_timestep_zero_text_start
 # 先缓存再训练 / Cache first, then train:
-# unitunner cache docs/examples/moss-edit-flow.toml --device cuda
-# unitunner train docs/examples/moss-edit-flow.toml --device cuda
+# unituner cache docs/examples/moss-edit-flow.toml --device cuda
+# unituner train docs/examples/moss-edit-flow.toml --device cuda
 [model]
 family = "moss-image"
 variant = "edit"

@@ -5,10 +5,10 @@ from typing import Literal, cast
 import pytest
 import torch
 
-from unitunner.execution.prefetch import WeightPrefetch
-from unitunner.execution.weight_cache import H2dCache, H2dWeights
-from unitunner.execution.weight_lease import PrefetchUnavailable
-from unitunner.execution.weight_source import WeightSource
+from unituner.execution.prefetch import WeightPrefetch
+from unituner.execution.weight_cache import H2dCache, H2dWeights
+from unituner.execution.weight_lease import PrefetchUnavailable
+from unituner.execution.weight_source import WeightSource
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 
@@ -201,9 +201,9 @@ def test_branching_outstanding_graphs_and_repeated_eager_backward(compiled):
 
     from torch import nn
 
-    from unitunner.config.execution import ExecutionConfig
-    from unitunner.execution.installation import ExecutionInstallation
-    from unitunner.execution.regions import ModelRegion, ModelRegions
+    from unituner.config.execution import ExecutionConfig
+    from unituner.execution.installation import ExecutionInstallation
+    from unituner.execution.regions import ModelRegion, ModelRegions
 
     device = torch.device("cuda", torch.cuda.current_device())
 

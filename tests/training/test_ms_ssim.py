@@ -7,11 +7,11 @@ import torch
 from pydantic import JsonValue
 from torch.nn import functional as F
 
-from unitunner.checkpoints.schema import build_resume_identity
-from unitunner.config.loading import ConfigError, load_training_config
-from unitunner.config.restoration import RestorationLossWeights
-from unitunner.training.losses.ms_ssim import ms_ssim_loss
-from unitunner.training.losses.restoration import generator_loss
+from unituner.checkpoints.schema import build_resume_identity
+from unituner.config.loading import ConfigError, load_training_config
+from unituner.config.restoration import RestorationLossWeights
+from unituner.training.losses.ms_ssim import ms_ssim_loss
+from unituner.training.losses.restoration import generator_loss
 
 
 @pytest.fixture(autouse=True)

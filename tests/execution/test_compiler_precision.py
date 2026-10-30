@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.execution.compiler import CompilerInstallation
+from unituner.execution.compiler import CompilerInstallation
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 

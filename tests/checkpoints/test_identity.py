@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from unitunner.checkpoints.metadata import Provenance
-from unitunner.checkpoints.schema import build_resume_identity
-from unitunner.config.loading import load_training_config
+from unituner.checkpoints.metadata import Provenance
+from unituner.checkpoints.schema import build_resume_identity
+from unituner.config.loading import load_training_config
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "docs/examples/flow.toml"
 
@@ -51,7 +51,7 @@ def test_dataset_validation_policy_does_not_change_resume_identity():
 )
 @pytest.mark.parametrize("precision", ["bf16", "fp16", "fp32"])
 def test_timestep_rounding_policy_is_pinned_only_for_low_precision(monkeypatch, example, policy, precision):
-    from unitunner.checkpoints import schema
+    from unituner.checkpoints import schema
 
     config = load_training_config(EXAMPLE.with_name(example), overrides={"execution": {"precision": precision}})
     captured = {}
@@ -80,14 +80,14 @@ def test_provenance_serializes_training_metadata():
     )
     metadata = provenance.metadata()
     assert all(isinstance(value, str) for value in metadata.values())
-    assert json.loads(metadata["unitunner.provenance"])["completed_updates"] == 3
+    assert json.loads(metadata["unituner.provenance"])["completed_updates"] == 3
 
 
 def test_ffn_recompute_configuration_is_rejected():
     """Removed execution policies must not silently select a different memory strategy."""
     from pydantic import ValidationError
 
-    from unitunner.config.execution import ExecutionConfig
+    from unituner.config.execution import ExecutionConfig
 
     with pytest.raises(ValidationError, match="recompute"):
         ExecutionConfig.model_validate({"recompute": "ffn"})

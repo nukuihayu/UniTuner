@@ -9,26 +9,26 @@ from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.assertions import require_value
-from unitunner.models.minimax_h3.conditioning import encode_audio, encode_condition_video
-from unitunner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
-from unitunner.models.minimax_h3.config.video_vae import MiniMaxH3VideoVAEConfig
-from unitunner.models.minimax_h3.data.cache.encoding import (
+from unituner.models.minimax_h3.conditioning import encode_audio, encode_condition_video
+from unituner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
+from unituner.models.minimax_h3.config.video_vae import MiniMaxH3VideoVAEConfig
+from unituner.models.minimax_h3.data.cache.encoding import (
     MiniMaxH3CacheEncoders,
     cache_minimax_h3,
     encode_cache_record,
 )
-from unitunner.models.minimax_h3.data.cache.inputs import MiniMaxH3CachePolicy, MiniMaxH3DecodedItem
-from unitunner.models.minimax_h3.data.cache.storage import (
+from unituner.models.minimax_h3.data.cache.inputs import MiniMaxH3CachePolicy, MiniMaxH3DecodedItem
+from unituner.models.minimax_h3.data.cache.storage import (
     MiniMaxH3CacheFormat,
     build_record_layout,
     read_minimax_h3_record,
 )
-from unitunner.models.minimax_h3.data.cache.traversal import MiniMaxH3TraversalPolicy, traverse_minimax_h3
-from unitunner.models.minimax_h3.data.cache.video import encode_target_video
-from unitunner.models.minimax_h3.data.media.inputs import prepare_pixels
-from unitunner.models.minimax_h3.data.sources import MiniMaxH3Control, MiniMaxH3Record
-from unitunner.models.minimax_h3.text.encoder import MiniMaxH3TextFeatures
-from unitunner.models.minimax_h3.vae import MiniMaxH3AudioVAE, MiniMaxH3VideoVAE
+from unituner.models.minimax_h3.data.cache.traversal import MiniMaxH3TraversalPolicy, traverse_minimax_h3
+from unituner.models.minimax_h3.data.cache.video import encode_target_video
+from unituner.models.minimax_h3.data.media.inputs import prepare_pixels
+from unituner.models.minimax_h3.data.sources import MiniMaxH3Control, MiniMaxH3Record
+from unituner.models.minimax_h3.text.encoder import MiniMaxH3TextFeatures
+from unituner.models.minimax_h3.vae import MiniMaxH3AudioVAE, MiniMaxH3VideoVAE
 
 
 @pytest.fixture

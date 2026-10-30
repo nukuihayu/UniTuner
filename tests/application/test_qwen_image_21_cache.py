@@ -12,17 +12,17 @@ from PIL import Image
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import local_text_config, main_with_local_tokenizers
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.data.cache.storage import load_latent_manifest
-from unitunner.data.media.buckets import ImageBuckets
-from unitunner.data.media.image import resize_pixels
-from unitunner.models.qwen_image.data.media import reference_resolution
-from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
-from unitunner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record, save_qwen_image_21_record
-from unitunner.models.qwen_image_2_1.data.encoding import encode_images
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21_vae, save_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
-from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
+from unituner.data.cache.schema import CacheIdentity
+from unituner.data.cache.storage import load_latent_manifest
+from unituner.data.media.buckets import ImageBuckets
+from unituner.data.media.image import resize_pixels
+from unituner.models.qwen_image.data.media import reference_resolution
+from unituner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
+from unituner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record, save_qwen_image_21_record
+from unituner.models.qwen_image_2_1.data.encoding import encode_images
+from unituner.models.qwen_image_2_1.loading import load_qwen_image_21_vae, save_qwen_image_21_vae
+from unituner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
+from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
 def test_public_cache_default_mismatched_references(tmp_path):
@@ -91,7 +91,7 @@ reference_sources = {json.dumps([str(tmp_path / f"ref{i}") for i in range(count)
 [train]
 parameter_mode = "full"
 ''')
-        device = torch.device(os.environ.get("UNITUNNER_TEST_DEVICE", "cpu"))
+        device = torch.device(os.environ.get("UNITUNER_TEST_DEVICE", "cpu"))
         rng = torch.get_rng_state().clone()
         cuda_rng = torch.cuda.get_rng_state() if device.type == "cuda" else None
         assert main_with_local_tokenizers(["cache", str(config), "--device", str(device)]) == 0

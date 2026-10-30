@@ -4,11 +4,11 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.artifacts.formats.adapters import AdapterTargetKeys, adapter_key_map, convert_adapter_keys
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loading import LoadedAdapter
+from unituner.artifacts.formats.adapters import AdapterTargetKeys, adapter_key_map, convert_adapter_keys
+from unituner.artifacts.tensors import save_tensors
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.mark.parametrize("algorithm", ["lora", "loha", "lokr"])

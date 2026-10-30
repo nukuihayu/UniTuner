@@ -8,14 +8,14 @@ from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.assertions import require_type
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.execution.recompute import RecomputeInstallation
-from unitunner.execution.regions import ModelRegion
-from unitunner.models.wan.config.model import WanConfig
-from unitunner.models.wan.layers import Attention
-from unitunner.models.wan.loading import load_wan
-from unitunner.models.wan.transformer import WanTransformer
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.execution.recompute import RecomputeInstallation
+from unituner.execution.regions import ModelRegion
+from unituner.models.wan.config.model import WanConfig
+from unituner.models.wan.layers import Attention
+from unituner.models.wan.loading import load_wan
+from unituner.models.wan.transformer import WanTransformer
 
 
 def test_flf2v_artifact_and_native_recompute(tmp_path):

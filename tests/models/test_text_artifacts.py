@@ -7,8 +7,8 @@ import torch
 from safetensors.torch import save_file
 from transformers import AutoConfig
 
-from unitunner.models.components.text_artifacts import text_config_path
-from unitunner.models.components.text_loading import text_weight_path
+from unituner.models.components.text_artifacts import text_config_path
+from unituner.models.components.text_loading import text_weight_path
 
 
 @pytest.mark.parametrize(

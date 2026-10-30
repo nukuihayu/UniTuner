@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from unitunner.artifacts.conversion import convert_weights
-from unitunner.artifacts.formats.precision_policy import POLICIES, protection_reason, resolve_family
-from unitunner.artifacts.tensors import TensorReader, save_tensors
+from unituner.artifacts.conversion import convert_weights
+from unituner.artifacts.formats.precision_policy import POLICIES, protection_reason, resolve_family
+from unituner.artifacts.tensors import TensorReader, save_tensors
 
 
 @pytest.mark.parametrize(
@@ -33,11 +33,11 @@ def test_all_model_policies_keep_conditioning_and_allow_core_projections(family,
 
 
 def test_metadata_detection_is_explicit_for_ambiguous_layouts():
-    assert resolve_family("auto", {"unitunner.qwen_image_2_1.config": "{}"}, ()) == "qwen-image-2-1"
+    assert resolve_family("auto", {"unituner.qwen_image_2_1.config": "{}"}, ()) == "qwen-image-2-1"
     with pytest.raises(ValueError, match="Ambiguous"):
         resolve_family("auto", {}, ("transformer_blocks.0.attn.to_q.weight",))
     with pytest.raises(ValueError, match="differs"):
-        resolve_family("wan", {"unitunner.flux.config": "{}"}, ())
+        resolve_family("wan", {"unituner.flux.config": "{}"}, ())
 
 
 def test_sensitive_layers_cannot_be_forced_by_include(tmp_path):
@@ -75,7 +75,7 @@ def test_sensitive_layers_cannot_be_forced_by_include(tmp_path):
     ),
 )
 def test_text_encoder_policies_preserve_first_last_and_special_branches(tmp_path, family, stack):
-    from unitunner.artifacts.formats.precision_policy import language_boundaries
+    from unituner.artifacts.formats.precision_policy import language_boundaries
 
     keys = tuple(f"{stack}{i}.self_attn.q_proj.weight" for i in (0, 1, 2, 10))
     boundaries = language_boundaries(keys)
@@ -121,7 +121,7 @@ def test_z_image_refiners_and_qwen_modulation_remain_dense():
     assert protection_reason("qwen-image", "transformer_blocks.0.img_mod.1.weight")
 
 
-# Keys come from convert_to_quant 5d2f539, independently of UniTunner's glob
+# Keys come from convert_to_quant 5d2f539, independently of UniTuner's glob
 # definitions. Exercise them inside eligible blocks, where an allowlist alone
 # would accidentally quantize auxiliary projections.
 @pytest.mark.parametrize(
@@ -248,8 +248,8 @@ def test_reference_family_exclusions_cannot_be_quantized_inside_core_blocks(fami
 def test_conversion_and_training_preparation_share_nested_protections(tmp_path):
     from torch import nn
 
-    from unitunner.models.components.quantized import QuantizedLinear
-    from unitunner.models.components.weight_quantization import quantize_model
+    from unituner.models.components.quantized import QuantizedLinear
+    from unituner.models.components.weight_quantization import quantize_model
 
     kitchen = pytest.importorskip("comfy_kitchen")
     model = nn.Module()

@@ -11,7 +11,7 @@ from transformers.models.qwen3_vl.processing_qwen3_vl import Qwen3VLProcessor
 from transformers.models.qwen3_vl.video_processing_qwen3_vl import Qwen3VLVideoProcessor
 
 from tests.support.text_assets import local_text_config
-from unitunner.models.flux3.text.encoder import load_flux3_text
+from unituner.models.flux3.text.encoder import load_flux3_text
 
 
 @pytest.mark.parametrize("single_file", [False, True])

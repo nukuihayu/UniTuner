@@ -67,7 +67,7 @@ seed = 42
 也可直接复制[配置文件](examples/tutorial-generate.toml)，然后运行：
 
 ```bash
-uv run unitunner generate generate.toml --device cuda
+uv run unituner generate generate.toml --device cuda
 ```
 
 `seed` 固定初始随机噪声，便于在相同配置下比较模型；`steps` 控制采样迭代次数；`width`、`height` 控制输出尺寸。`guidance` 的语义取决于模型：有的采用 CFG，有的采用 learned guidance embedding，蒸馏变体还可能固定或不接受该字段。更换模型时应从对应[生成示例](examples/README.md#推理)开始。
@@ -85,7 +85,7 @@ Full 训练即使只选择部分 denoiser 层，仍发布完整模型。不要�
 修复使用 `restore`，完整流程见[修复教程](restoration-tutorial.md)。配置中指定输入图片、输出路径，以及对应的 denoiser／encoder 产物：
 
 ```bash
-uv run unitunner restore restore.toml --device cuda
+uv run unituner restore restore.toml --device cuda
 ```
 
 默认从训练产物读取 sigma。Denoiser 和 encoder 需要来自匹配的训练结果，避免混用不同恢复时间。修复推理使用后验均值；启用 encoder 训练的结果需配套加载 encoder 文件。
@@ -95,21 +95,21 @@ uv run unitunner restore restore.toml --device cuda
 Wan 和 MiniMaxH3 使用 `generate-video`：
 
 ```bash
-uv run unitunner generate-video docs/examples/wan-generate-video.toml --device cuda
-uv run unitunner generate-video docs/examples/minimax-h3-generate.toml --device cuda
+uv run unituner generate-video docs/examples/wan-generate-video.toml --device cuda
+uv run unituner generate-video docs/examples/minimax-h3-generate.toml --device cuda
 ```
 
 运行前替换示例中的本地资产与输出路径。分辨率、帧数、音频和参考条件遵循各家族的约束，不能直接复用图像配置中的 sampling 段。见[模型指南](training/models.md#视频与音视频)。
 
 ## 在 ComfyUI 中加载
 
-当前 adapter 训练默认发布对应模型的 ComfyUI 权重键，可作为该基模的 LoRA／LoHa／LoKr 使用。ComfyUI 本身需要支持相应模型以及融合投影映射。修复 encoder 文件属于 UniTunner 的修复流程，不能作为普通 denoiser LoRA 加载。
+当前 adapter 训练默认发布对应模型的 ComfyUI 权重键，可作为该基模的 LoRA／LoHa／LoKr 使用。ComfyUI 本身需要支持相应模型以及融合投影映射。修复 encoder 文件属于 UniTuner 的修复流程，不能作为普通 denoiser LoRA 加载。
 
 `adapters export-comfyui` 用于转换已有 Wan／H3 原生格式适配器；当前训练发布的适配器通常不需要再转换。具体格式说明见[训练指南](training/README.md#推理与发布)。
 
 ## 常见检查
 
-生成与修复配置不交给 `unitunner validate`；该命令只验证训练配置。对应推理命令会加载自己的配置。若无法运行，依次检查模型家族与变体、底模路径、适配器算法和 rank、条件资产，再检查尺寸及采样参数。
+生成与修复配置不交给 `unituner validate`；该命令只验证训练配置。对应推理命令会加载自己的配置。若无法运行，依次检查模型家族与变体、底模路径、适配器算法和 rank、条件资产，再检查尺寸及采样参数。
 
 推理默认使用 Torch 注意力。可选 Kitchen INT8 会改变数值输出，若需测试，见[INT8 推理注意力](training/execution.md#推理时使用-int8-注意力)。
 

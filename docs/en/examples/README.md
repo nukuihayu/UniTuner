@@ -38,7 +38,7 @@ Use each training and inference pair together, with matching asset paths, output
 
 ## Training and caching
 
-Training examples use the training schema; cache-only examples use the encoding schema. Usually run `unitunner cache CONFIG --device cuda`, then `unitunner train CONFIG --device cuda`. Training-only examples with just a denoiser require caches built using the corresponding complete cache configuration.
+Training examples use the training schema; cache-only examples use the encoding schema. Usually run `unituner cache CONFIG --device cuda`, then `unituner train CONFIG --device cuda`. Training-only examples with just a denoiser require caches built using the corresponding complete cache configuration.
 
 | Task | Example | Notes |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ Training examples use the training schema; cache-only examples use the encoding 
 For external split H3 caches, use [minimax-h3-cache-import.json](../../examples/minimax-h3-cache-import.json):
 
 ```bash
-uv run unitunner caches import SPECIFICATION DESTINATION
+uv run unituner caches import SPECIFICATION DESTINATION
 ```
 
 This is an explicit conversion specification, not a training TOML.
@@ -92,22 +92,22 @@ This is an explicit conversion specification, not a training TOML.
 After replacing paths:
 
 ```bash
-uv run unitunner mid-timestep docs/examples/restoration-calibration.toml --device cuda
-uv run unitunner cache docs/examples/restoration-calibration.toml --device cuda
-uv run unitunner train docs/examples/restoration-calibration.toml --device cuda
+uv run unituner mid-timestep docs/examples/restoration-calibration.toml --device cuda
+uv run unituner cache docs/examples/restoration-calibration.toml --device cuda
+uv run unituner train docs/examples/restoration-calibration.toml --device cuda
 ```
 
 The first command needs only VAE/images and no cache. It prints JSON without rewriting TOML. This example sets `calibrate=true`, so training calibrates automatically. To freeze a result, disable calibration and copy the output sigma into the configuration. Default `midtimestep=244` does not mean equal sigma for every family; see [restoration](../training/restoration.md).
 
 ## Inference
 
-Inference configurations use separate schemas and cannot be passed to `unitunner validate`. Each inference command loads and validates its own configuration before reading local models.
+Inference configurations use separate schemas and cannot be passed to `unituner validate`. Each inference command loads and validates its own configuration before reading local models.
 
 | Command | Examples |
 | --- | --- |
-| `unitunner generate CONFIG --device cuda` | [Z-Image](../../examples/generate.toml), [FLUX](../../examples/flux-generate.toml), [FLUX.2](../../examples/flux2-generate.toml), [FLUX3](../../examples/flux3-generate.toml), [MOSS](../../examples/moss-generate.toml), [MOSS Edit](../../examples/moss-edit-generate.toml), [Qwen](../../examples/qwen-image-generate.toml), [Qwen layered](../../examples/qwen-image-layered-generate.toml), [Krea2](../../examples/krea2-generate.toml) |
-| `unitunner generate-video CONFIG --device cuda` | [Wan](../../examples/wan-generate-video.toml), [H3](../../examples/minimax-h3-generate.toml) |
-| `unitunner restore CONFIG --device cuda` | [Z-Image](../../examples/restore.toml), [Qwen](../../examples/qwen-image-restore.toml), [Krea2](../../examples/krea2-restore.toml) |
+| `unituner generate CONFIG --device cuda` | [Z-Image](../../examples/generate.toml), [FLUX](../../examples/flux-generate.toml), [FLUX.2](../../examples/flux2-generate.toml), [FLUX3](../../examples/flux3-generate.toml), [MOSS](../../examples/moss-generate.toml), [MOSS Edit](../../examples/moss-edit-generate.toml), [Qwen](../../examples/qwen-image-generate.toml), [Qwen layered](../../examples/qwen-image-layered-generate.toml), [Krea2](../../examples/krea2-generate.toml) |
+| `unituner generate-video CONFIG --device cuda` | [Wan](../../examples/wan-generate-video.toml), [H3](../../examples/minimax-h3-generate.toml) |
+| `unituner restore CONFIG --device cuda` | [Z-Image](../../examples/restore.toml), [Qwen](../../examples/qwen-image-restore.toml), [Krea2](../../examples/krea2-restore.toml) |
 
 Adapter paths and algorithm/rank/alpha must match training publications. For full models, replace `model.weights`. Restoration `encoder_weights` points to the exported encoder adapter and uses the sigma recorded by the training publications.
 

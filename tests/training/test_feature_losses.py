@@ -6,8 +6,8 @@ from torch import nn
 from torch.nn import functional as F
 
 from tests.support.assertions import require_type
-from unitunner.training.losses.dists import dists_loss
-from unitunner.training.losses.frequency_distribution import FrequencyDistributionLoss, _SortedL1, _StableAngle
+from unituner.training.losses.dists import dists_loss
+from unituner.training.losses.frequency_distribution import FrequencyDistributionLoss, _SortedL1, _StableAngle
 
 
 def test_dists_matches_centered_channel_uniform_formula_and_target_detach():

@@ -11,7 +11,7 @@ from av.error import FFmpegError
 from PIL import Image
 
 from tests.support.assertions import require_value
-from unitunner.models.minimax_h3.data.media.output import (
+from unituner.models.minimax_h3.data.media.output import (
     MiniMaxH3DecodedImage,
     save_minimax_h3_av,
     save_minimax_h3_media,

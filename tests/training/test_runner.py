@@ -6,19 +6,19 @@ import pytest
 import torch
 from pydantic import JsonValue
 
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.config.loading import load_training_config
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.data.cache.storage import (
+from unituner.artifacts.tensors import TensorReader
+from unituner.config.loading import load_training_config
+from unituner.data.cache.schema import CacheIdentity
+from unituner.data.cache.storage import (
     LatentManifest,
     load_latent_manifest,
     save_latent_manifest,
     save_latent_record,
 )
-from unitunner.models.z_image.config.model import ZImageConfig
-from unitunner.models.z_image.loading import save_z_image
-from unitunner.models.z_image.transformer import ZImageTransformer
-from unitunner.training.workflows.common.images import train
+from unituner.models.z_image.config.model import ZImageConfig
+from unituner.models.z_image.loading import save_z_image
+from unituner.models.z_image.transformer import ZImageTransformer
+from unituner.training.workflows.common.images import train
 
 
 @pytest.mark.parametrize("retention", [0, 1, 2])
@@ -121,11 +121,11 @@ def test_cached_training_resume_and_export(tmp_path, monkeypatch, algorithm, gro
                 assert not (output / "resume" / f"model.state-{update:08d}.safetensors").exists()
                 continue
             with TensorReader(output / "weights" / f"model-{update:08d}.safetensors") as reader:
-                assert "unitunner.checkpoint" not in reader.metadata()
+                assert "unituner.checkpoint" not in reader.metadata()
             state_path = output / "resume" / f"model.state-{update:08d}.safetensors"
             if update in retained_updates:
                 with TensorReader(state_path) as reader:
-                    assert "unitunner.checkpoint" in reader.metadata()
+                    assert "unituner.checkpoint" in reader.metadata()
             else:
                 assert not state_path.exists()
         assert (output / "weights/model-00000003.safetensors").read_bytes() == (
@@ -167,7 +167,7 @@ def test_cached_training_resume_and_export(tmp_path, monkeypatch, algorithm, gro
                     for key in reader.keys()
                 )
         if algorithm is None and not grouped and save_interval == 1 and retention == 1:
-            from unitunner.training import checkpointing
+            from unituner.training import checkpointing
 
             save = checkpointing.save_checkpoint
 

@@ -11,18 +11,18 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unitunner.adapters.config import AdapterConfig
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.artifacts.formats.krea2_adapters import krea2_adapter_prefixes
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.data.cache.storage import load_latent_manifest, read_latent_record
-from unitunner.models.krea2.config.model import Krea2Config
-from unitunner.models.krea2.loading import load_krea2, save_krea2
-from unitunner.models.krea2.projections import adapter_projections
-from unitunner.models.krea2.transformer import Krea2Transformer
-from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
-from unitunner.models.qwen_image.loading import save_qwen_image_vae
-from unitunner.models.qwen_image.vae import QwenImageVAE
+from unituner.adapters.config import AdapterConfig
+from unituner.adapters.loading import LoadedAdapter
+from unituner.artifacts.formats.krea2_adapters import krea2_adapter_prefixes
+from unituner.artifacts.tensors import TensorReader
+from unituner.data.cache.storage import load_latent_manifest, read_latent_record
+from unituner.models.krea2.config.model import Krea2Config
+from unituner.models.krea2.loading import load_krea2, save_krea2
+from unituner.models.krea2.projections import adapter_projections
+from unituner.models.krea2.transformer import Krea2Transformer
+from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
+from unituner.models.qwen_image.loading import save_qwen_image_vae
+from unituner.models.qwen_image.vae import QwenImageVAE
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -96,7 +96,7 @@ alpha = 7.0
 [execution]
 precision = "fp32"
 recompute = "block"
-compile = {str(os.environ.get("UNITUNNER_TEST_COMPILE") == "1").lower()}
+compile = {str(os.environ.get("UNITUNER_TEST_COMPILE") == "1").lower()}
 [output]
 max_resume_checkpoints = 0
 directory = "{tmp_path}/run"
@@ -109,7 +109,7 @@ save_every_updates = 1
             )
         config = tmp_path / "train.toml"
         config.write_text(body)
-        selected = os.environ.get("UNITUNNER_TEST_DEVICE", "cpu")
+        selected = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         with sdpa_kernel(SDPBackend.MATH):
             assert main_with_local_tokenizers(["cache", str(config), "--device", selected]) == 0
             manifest = load_latent_manifest(tmp_path / "cache")

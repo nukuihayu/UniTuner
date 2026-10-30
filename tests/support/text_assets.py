@@ -5,8 +5,8 @@ import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 
-from unitunner.cli.main import main
-from unitunner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig, TokenizerSourceConfig
+from unituner.cli.main import main
+from unituner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig, TokenizerSourceConfig
 
 
 def local_text_config(

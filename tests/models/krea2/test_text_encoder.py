@@ -6,8 +6,8 @@ from safetensors.torch import load_file, save_file
 
 from tests.support.qwen_image_21 import write_text_assets, write_text_features
 from tests.support.text_assets import local_text_config
-from unitunner.config.text import TextEncodingConfig
-from unitunner.models.krea2.text.encoder import load_krea2_text
+from unituner.config.text import TextEncodingConfig
+from unituner.models.krea2.text.encoder import load_krea2_text
 
 
 @pytest.fixture

@@ -3,8 +3,8 @@
 import pytest
 import torch
 
-from unitunner.models.wan.inference.schedules import build_schedule
-from unitunner.models.wan.inference.solvers import WanSolver
+from unituner.models.wan.inference.schedules import build_schedule
+from unituner.models.wan.inference.solvers import WanSolver
 
 
 def test_native_time_truncation_controls_expert_boundary_without_training_offset():

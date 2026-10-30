@@ -87,7 +87,7 @@ LayerSync stops teacher gradients and uses negative cosine loss. REPA uses train
 
 ## REPA caches
 
-During `unitunner cache train.toml --device cuda`, REPA receives exactly the VAE's target crop and frame order. It does not decode latents or apply an independent center crop. Native or official MLP DINOv3 ViT-S/B/L safetensors are supported with bicubic/antialias preprocessing, ImageNet normalization, and per-frame encoding. CLS/register tokens are excluded. Native alpha remains in caches/supervision; DINO receives RGB.
+During `unituner cache train.toml --device cuda`, REPA receives exactly the VAE's target crop and frame order. It does not decode latents or apply an independent center crop. Native or official MLP DINOv3 ViT-S/B/L safetensors are supported with bicubic/antialias preprocessing, ImageNet normalization, and per-frame encoding. CLS/register tokens are excluded. Native alpha remains in caches/supervision; DINO receives RGB.
 
 Encoder content must match its configured digest and feature width. Training uses the feature cache without loading DINO. Callers providing precomputed features through `save_repa_target` and `save_repa_manifest` must guarantee correct crop/frame correspondence.
 

@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from unitunner.cli.main import main
-from unitunner.config.loading import load_training_config
-from unitunner.logging import configure_logging, get_logger, logging_session, operation_context, report_error
-from unitunner.progress import progress, status
+from unituner.cli.main import main
+from unituner.config.loading import load_training_config
+from unituner.logging import configure_logging, get_logger, logging_session, operation_context, report_error
+from unituner.progress import progress, status
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "docs/examples/flow.toml"
 
@@ -32,7 +32,7 @@ def test_failures_include_phase_context_trace_and_json_file(tmp_path, monkeypatc
         with operation_context(update=17, source="bad-image.png"):
             raise error
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     run_dir = tmp_path / "run"
     assert main(["train", str(EXAMPLE), "--output.directory", str(run_dir)]) == code
     (path,) = (run_dir / "logs").glob("*.jsonl")
@@ -60,7 +60,7 @@ def test_nested_exception_chain_survives_logging(tmp_path, monkeypatch, capsys):
         except OSError as cause:
             raise RuntimeError("Cannot load weights") from cause
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     run_dir = tmp_path / "run"
     assert main(["--log-level", "INFO", "train", str(EXAMPLE), "--output.directory", str(run_dir)]) == 1
     (path,) = (run_dir / "logs").glob("*.jsonl")
@@ -75,7 +75,7 @@ def test_failed_cache_consumer_retains_active_filename(tmp_path, monkeypatch, ca
         for _ in progress([Path("broken.png")], "encoding"):
             raise ValueError("cannot decode image")
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert main(["train", str(EXAMPLE), "--output.directory", str(tmp_path / "run")]) == 2
     assert "item=broken.png" in capsys.readouterr().err
 
@@ -109,7 +109,7 @@ def test_console_level_and_sessions_do_not_duplicate_or_change_host_logging(tmp_
         get_logger("testing").warning("visible warning")
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     run_dir = tmp_path / "run"
     for _ in range(2):
         assert main(["train", str(EXAMPLE), "--log-level", "WARNING", "--output.directory", str(run_dir)]) == 0
@@ -126,7 +126,7 @@ def test_interrupt_and_argument_errors_have_clean_exit_semantics(tmp_path, monke
     def run(config, **kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert main(["train", str(EXAMPLE), "--output.directory", str(tmp_path / "run")]) == 130
     assert "Traceback" not in capsys.readouterr().err
     with pytest.raises(SystemExit) as result:

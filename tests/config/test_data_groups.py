@@ -4,8 +4,8 @@ from collections import Counter
 
 import pytest
 
-from unitunner.config.loading import ConfigError, load_training_config
-from unitunner.data.datasets.batching import DatasetBatches, EpochBatches
+from unituner.config.loading import ConfigError, load_training_config
+from unituner.data.datasets.batching import DatasetBatches, EpochBatches
 
 
 def document():
@@ -124,7 +124,7 @@ def test_independent_batches_preserve_repeats_short_tails_and_resume():
 
 
 def test_group_order_is_part_of_resume_identity():
-    from unitunner.checkpoints.schema import build_resume_identity
+    from unituner.checkpoints.schema import build_resume_identity
 
     values = document()
     first = load_training_config(overrides=values)

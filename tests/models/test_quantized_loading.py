@@ -9,14 +9,14 @@ from torch import nn
 from torch.nn import functional as F
 
 from tests.support.assertions import require_type, require_value
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.conversion import convert_weights
-from unitunner.artifacts.formats.quantization import FORMATS
-from unitunner.artifacts.quantization import quantize_weight, serialize_weight, tensor_json
-from unitunner.artifacts.quantized_loading import load_quantized_model
-from unitunner.artifacts.tensors import TensorReader
-from unitunner.models.components.quantized import QuantizedLinear
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.conversion import convert_weights
+from unituner.artifacts.formats.quantization import FORMATS
+from unituner.artifacts.quantization import quantize_weight, serialize_weight, tensor_json
+from unituner.artifacts.quantized_loading import load_quantized_model
+from unituner.artifacts.tensors import TensorReader
+from unituner.models.components.quantized import QuantizedLinear
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture(autouse=True)
@@ -245,11 +245,11 @@ CASES = {
 @pytest.mark.parametrize("algorithm", ("lora", "loha", "lokr"))
 def test_all_family_load_adapter_update_and_quantized_export(tmp_path, family, algorithm):
     classname, fields = CASES[family]
-    config = getattr(importlib.import_module(f"unitunner.models.{family}.config.model"), classname + "Config")(**fields)
-    model = getattr(importlib.import_module(f"unitunner.models.{family}.transformer"), classname + "Transformer")(
+    config = getattr(importlib.import_module(f"unituner.models.{family}.config.model"), classname + "Config")(**fields)
+    model = getattr(importlib.import_module(f"unituner.models.{family}.transformer"), classname + "Transformer")(
         config
     )
-    api = importlib.import_module(f"unitunner.models.{family}.loading")
+    api = importlib.import_module(f"unituner.models.{family}.loading")
     suffix = "qwen_image_21" if family == "qwen_image_2_1" else family
     save, load = getattr(api, f"save_{suffix}"), getattr(api, f"load_{suffix}")
     source, packed, republished = (
@@ -271,7 +271,7 @@ def test_all_family_load_adapter_update_and_quantized_export(tmp_path, family, a
         torch.testing.assert_close(restored.state_dict()[key], original[key], atol=0, rtol=0)
     with pytest.raises(ValueError, match="adapter"):
         ParameterInstallation(restored)
-    targets = importlib.import_module(f"unitunner.models.{family}.projections").adapter_projections(restored)
+    targets = importlib.import_module(f"unituner.models.{family}.projections").adapter_projections(restored)
     selected = {name: module for name, module in targets.items() if name in quantized}
     assert selected
     before = {name: layer.weight.clone() for name, layer in quantized.items()}
@@ -329,9 +329,9 @@ def test_cuda_frozen_block_replay_and_amp_match_resident(compiled, precision):
     from contextlib import ExitStack
     from copy import deepcopy
 
-    from unitunner.execution.compiler import CompilerInstallation
-    from unitunner.execution.frozen_blocks import FrozenBlockInstallation
-    from unitunner.execution.regions import ModelRegion
+    from unituner.execution.compiler import CompilerInstallation
+    from unituner.execution.frozen_blocks import FrozenBlockInstallation
+    from unituner.execution.regions import ModelRegion
 
     torch.manual_seed(910)
     device = torch.device("cuda", torch.cuda.current_device())

@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from unitunner.adapters.ops.lokr import scaled_kronecker
+from unituner.adapters.ops.lokr import scaled_kronecker
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")

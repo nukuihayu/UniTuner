@@ -4,9 +4,9 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from unitunner.adapters.loha import LoHa
-from unitunner.adapters.lokr import LoKr
-from unitunner.adapters.lora import LoRA
+from unituner.adapters.loha import LoHa
+from unituner.adapters.lokr import LoKr
+from unituner.adapters.lora import LoRA
 
 
 @pytest.mark.parametrize("algorithm", ["lora", "loha", "lokr", "lokr-full"])

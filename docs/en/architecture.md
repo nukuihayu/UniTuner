@@ -4,7 +4,7 @@
 
 [Documentation](README.md) · [Project home](../../README.md)
 
-UniTunner separates native model computation, training methods, execution policies, and external artifacts. Models share orchestration while retaining native conditioning, time units, prediction direction, and weight semantics.
+UniTuner separates native model computation, training methods, execution policies, and external artifacts. Models share orchestration while retaining native conditioning, time units, prediction direction, and weight semantics.
 
 Training and output schemas live in `config/train.py` and `config/output.py`; `config/training.py` composes them. `training_validation.py` checks run policy and previews once, then validates each dataset group. Floating precision names are compute-free contracts in `artifacts/formats/precision.py`, with runtime dtypes and contexts in `precision.py`. Image model loading lives in `models/image.py`; training bindings and publication live in `training/integrations/image_models.py` and `image_publication.py`. Shared previews import only the selected family when needed, keeping text providers optional for restoration previews.
 
@@ -27,7 +27,7 @@ Training and output schemas live in `config/train.py` and `config/output.py`; `c
 Paths are relative to the repository root:
 
 ```text
-src/unitunner/
+src/unituner/
 ├── cli/             # Argument parsing, configuration overrides, lazy dispatch
 ├── config/          # Strict shared schemas and combination validation
 ├── models/          # Native model families and specialized components

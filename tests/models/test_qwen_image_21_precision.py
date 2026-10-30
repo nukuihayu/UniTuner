@@ -7,7 +7,7 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from unitunner.models.qwen_image_2_1.layers import FinalNorm, RMSNorm, TimeEmbedding
+from unituner.models.qwen_image_2_1.layers import FinalNorm, RMSNorm, TimeEmbedding
 
 DEVICES = ("cpu", "cuda") if torch.cuda.is_available() else ("cpu",)
 

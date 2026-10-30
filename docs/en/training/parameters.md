@@ -34,8 +34,8 @@ name = "portrait-lora"
 ```
 
 ```bash
-uv run unitunner train train.toml --device cuda --train.learning-rate 5e-5
-uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch_size=1'
+uv run unituner train train.toml --device cuda --train.learning-rate 5e-5
+uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_size=1'
 ```
 
 ## `model`
@@ -257,7 +257,7 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 
 Set `output.adapter_format = "diffusers"` in TOML or pass `--set output.adapter_format=diffusers`. Publication converts factors directly: it never merges LoRA into the base, combines independent layers or performs SVD. Keep consumer-supported split projections independent, including Qwen Image 2.1 `gate_layer/proj`. Where the official architecture splits a native fused projection, slice its output factor and reuse its input factor.
 
-Diffusers uses `transformer.<official projection>.lora_A.weight/lora_B.weight`, with the original `alpha/r` baked into B and consumer scaling of 1. Use a Diffusers/PEFT loader supporting the corresponding architecture; UniTunner native inference continues to use the default ComfyUI export. LoHa/LoKr use ComfyUI format. This option affects denoiser adapter exports only, not full weights, companion VAE encoder adapters or resume state.
+Diffusers uses `transformer.<official projection>.lora_A.weight/lora_B.weight`, with the original `alpha/r` baked into B and consumer scaling of 1. Use a Diffusers/PEFT loader supporting the corresponding architecture; UniTuner native inference continues to use the default ComfyUI export. LoHa/LoKr use ComfyUI format. This option affects denoiser adapter exports only, not full weights, companion VAE encoder adapters or resume state.
 
 ## `preview`
 

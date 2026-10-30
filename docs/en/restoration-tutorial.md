@@ -99,7 +99,7 @@ The model's schedule maps integer time to sigma; dividing by 1000 is not correct
 To inspect calibration without training:
 
 ```bash
-uv run --no-dev unitunner mid-timestep restoration.toml --device cuda
+uv run --no-dev unituner mid-timestep restoration.toml --device cuda
 ```
 
 This reads only the VAE and pairs, needs no cache, and does not load denoiser/text weights. It prints JSON without editing TOML. To retain its result, set sigma manually under method.restoration and disable calibrate. Reconsider calibration after changing data, dimensions or VAE.
@@ -122,9 +122,9 @@ num_images = 1
 Do not add preview.samples for restoration. Previews rotate through actual data and display LQ/restored/HQ comparisons. A fixed seed keeps selection order stable. Inspect input consistency, skin tones, texture and excessive sharpening.
 
 ```bash
-uv run --no-dev unitunner validate restoration.toml
-uv run --no-dev unitunner cache restoration.toml --device cuda
-uv run --no-dev unitunner train restoration.toml --device cuda
+uv run --no-dev unituner validate restoration.toml
+uv run --no-dev unituner cache restoration.toml --device cuda
+uv run --no-dev unituner train restoration.toml --device cuda
 ```
 
 Restoration reads original pairs and runs the trainable encoder/image losses live. Keep source images after caching.
@@ -170,7 +170,7 @@ TensorBoard records generator, discriminator and component losses at every updat
 
 ```bash
 cp docs/examples/tutorial-restore.toml restore.toml
-uv run --no-dev unitunner restore restore.toml --device cuda
+uv run --no-dev unituner restore restore.toml --device cuda
 ```
 
 Edit root input/output/prompt and model paths. adapter.weights and encoder_weights must reference the same update. Numbered files prevent version drift while training continues exporting.
@@ -187,7 +187,7 @@ Artifacts store sigma, so inference normally needs no override. Restoration uses
 ## 7. Resume
 
 ```bash
-uv run --no-dev unitunner train restoration.toml --device cuda --resume runs/restoration/resume/restoration.state-00000050.safetensors
+uv run --no-dev unituner train restoration.toml --device cuda --resume runs/restoration/resume/restoration.state-00000050.safetensors
 ```
 
 This applies to an interrupted run where update 50 remains the newest state. After finishing update 100, only that final state remains by default. Resume includes effective sigma, encoder, discriminator, optimizers, RNG and data cursor; it does not recalibrate. An inference LoRA cannot replace a resume file.

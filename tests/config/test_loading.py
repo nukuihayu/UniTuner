@@ -7,8 +7,8 @@ import pytest
 from pydantic import JsonValue, ValidationError
 
 from tests.support.assertions import require_value
-from unitunner.cli.main import main
-from unitunner.config.loading import ConfigError, load_cache_config, load_calibration_config, load_training_config
+from unituner.cli.main import main
+from unituner.config.loading import ConfigError, load_cache_config, load_calibration_config, load_training_config
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs/examples"
 
@@ -35,7 +35,7 @@ def test_cache_batch_size_cli_and_shared_training_config(monkeypatch):
         received.append((config.cache.batch_size, device))
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     assert main(["cache", str(EXAMPLES / "restoration.toml"), "--cache.batch-size", "16", "--device", "cpu"]) == 0
     assert received == [(16, "cpu")]
 
@@ -91,7 +91,7 @@ def test_restoration_midtimestep_cli_overrides_toml_before_validation(monkeypatc
         received.append(config.method.restoration.midtimestep)
         return 0
 
-    monkeypatch.setattr("unitunner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
+    monkeypatch.setattr("unituner.cli.main.import_module", lambda name: SimpleNamespace(run=run))
     path = str(EXAMPLES / "restoration.toml")
     assert require_value(load_training_config(Path(path)).method.restoration).midtimestep == 244
     assert main(["train", path, "--midtimestep", "321"]) == 0

@@ -8,13 +8,13 @@ import pytest
 import torch
 from torch import nn
 
-from unitunner.adapters.attachment import AdapterAttachment
-from unitunner.adapters.lora import LoRA
-from unitunner.config.execution import ExecutionConfig
-from unitunner.execution.installation import ExecutionInstallation
-from unitunner.execution.recompute import RecomputeInstallation, run_region
-from unitunner.execution.regions import ModelRegion, ModelRegions
-from unitunner.training.session import TrainingSession
+from unituner.adapters.attachment import AdapterAttachment
+from unituner.adapters.lora import LoRA
+from unituner.config.execution import ExecutionConfig
+from unituner.execution.installation import ExecutionInstallation
+from unituner.execution.recompute import RecomputeInstallation, run_region
+from unituner.execution.regions import ModelRegion, ModelRegions
+from unituner.training.session import TrainingSession
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda:0"])
@@ -118,7 +118,7 @@ def test_recompute_dropout_and_reused_module_regions():
 
 
 def test_compile_recompute_and_adapter_combination():
-    from unitunner.execution.compiler import CompilerInstallation
+    from unituner.execution.compiler import CompilerInstallation
 
     torch.manual_seed(9)
     model = nn.Linear(4, 4, dtype=torch.float64)
@@ -149,7 +149,7 @@ def test_compile_recompute_and_adapter_combination():
 
 
 def test_preview_exception_restores_rng_and_mixed_child_flags():
-    from unitunner.training.previews.context import preview_context
+    from unituner.training.previews.context import preview_context
 
     model = nn.Sequential(nn.Linear(2, 2), nn.Dropout(0.5))
     model[0].eval()
@@ -177,7 +177,7 @@ def test_preview_exception_restores_rng_and_mixed_child_flags():
 
 
 def test_compiled_recompute_owners_isolate_heterogeneous_region_guard_budgets():
-    from unitunner.execution.compiler import CompilerInstallation
+    from unituner.execution.compiler import CompilerInstallation
 
     torch.manual_seed(91)
     models = [nn.Sequential(nn.Linear(size, size), nn.SiLU()) for size in range(3, 15)]
@@ -205,7 +205,7 @@ def test_compiler_scoped_settings_restore_after_failed_training_and_evaluation()
     from torch._dynamo import config as dynamo_config
     from torch._functorch import config as autograd_config
 
-    from unitunner.execution.compiler import CompilerInstallation
+    from unituner.execution.compiler import CompilerInstallation
 
     class Failing(torch.nn.Module):
         def forward(self, values):

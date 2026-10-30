@@ -5,7 +5,7 @@ import pytest
 import torch
 from PIL import Image
 
-from unitunner.models.flux3.data.media import read_reference_images, reference_canvas
+from unituner.models.flux3.data.media import read_reference_images, reference_canvas
 
 
 def test_flux3_reference_orientation_alpha_and_single_padding(tmp_path):

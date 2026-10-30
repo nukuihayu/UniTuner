@@ -15,9 +15,9 @@ from tests.training.test_image_integrations import IMAGE_CASES
 
 def test_importing_shared_preview_does_not_import_text_providers():
     code = (
-        "import sys; import unitunner.training.previews.images; "
+        "import sys; import unituner.training.previews.images; "
         "assert 'transformers' not in sys.modules; "
-        "assert not any(n.startswith('unitunner.training.integrations.') and n.endswith('.previews') "
+        "assert not any(n.startswith('unituner.training.integrations.') and n.endswith('.previews') "
         "for n in sys.modules)"
     )
     environment = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[2] / "src")}
@@ -26,10 +26,10 @@ def test_importing_shared_preview_does_not_import_text_providers():
 
 @pytest.mark.parametrize("module, stem, options", IMAGE_CASES)
 def test_factory_loads_only_selected_native_preview(monkeypatch, module, stem, options):
-    from unitunner.training.previews import images
+    from unituner.training.previews import images
 
-    topology = getattr(import_module(f"unitunner.models.{module}.config.model"), stem + "Config")(**options)
-    model = getattr(import_module(f"unitunner.models.{module}.transformer"), stem + "Transformer")(topology)
+    topology = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
+    model = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(topology)
     seen = []
     config = object()
 
@@ -49,9 +49,9 @@ def test_factory_loads_only_selected_native_preview(monkeypatch, module, stem, o
     publisher = images.build_flow_preview(config, model)
     publisher(7)
     provider = (
-        "unitunner.training.previews.flow"
+        "unituner.training.previews.flow"
         if module in ("flux", "flux2", "flux3", "moss_image", "z_image")
-        else f"unitunner.training.integrations.{module}.previews"
+        else f"unituner.training.integrations.{module}.previews"
     )
     assert seen == [provider, 7]
     with pytest.raises(TypeError, match="No image preview"):

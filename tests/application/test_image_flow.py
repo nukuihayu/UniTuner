@@ -9,16 +9,16 @@ import pytest
 import torch
 
 from tests.support.text_assets import local_text_config, main_with_local_tokenizers
-from unitunner.artifacts.tensors import iter_tensors, save_tensors
-from unitunner.data.cache.storage import load_latent_manifest
-from unitunner.models.features.convnext import DinoConvNeXt
-from unitunner.models.z_image.config.model import ZImageConfig
-from unitunner.models.z_image.config.vae import ZImageVAEConfig
-from unitunner.models.z_image.loading import load_z_image, load_z_image_vae, save_z_image, save_z_image_vae
-from unitunner.models.z_image.text.encoder import load_z_image_text
-from unitunner.models.z_image.transformer import ZImageTransformer
-from unitunner.models.z_image.vae import ZImageVAE
-from unitunner.training.methods.restoration import RestorationMethod
+from unituner.artifacts.tensors import iter_tensors, save_tensors
+from unituner.data.cache.storage import load_latent_manifest
+from unituner.models.features.convnext import DinoConvNeXt
+from unituner.models.z_image.config.model import ZImageConfig
+from unituner.models.z_image.config.vae import ZImageVAEConfig
+from unituner.models.z_image.loading import load_z_image, load_z_image_vae, save_z_image, save_z_image_vae
+from unituner.models.z_image.text.encoder import load_z_image_text
+from unituner.models.z_image.transformer import ZImageTransformer
+from unituner.models.z_image.vae import ZImageVAE
+from unituner.training.methods.restoration import RestorationMethod
 
 Image = pytest.importorskip("PIL.Image")
 transformers = pytest.importorskip("transformers")
@@ -255,7 +255,7 @@ def test_cache_command_reencodes_corrupt_existing_cache_with_visible_progress(im
     stale = root / "cache" / ("f" * 64 + ".safetensors")
     stale.write_bytes(b"obsolete")
     (root / "cache/notes.txt").write_text("keep")
-    from unitunner.models.z_image.text.encoder import ZImageTextEncoder
+    from unituner.models.z_image.text.encoder import ZImageTextEncoder
 
     calls = []
     original = ZImageTextEncoder.encode
@@ -294,9 +294,9 @@ def test_cache_command_reencodes_corrupt_existing_cache_with_visible_progress(im
 
 def test_global_prompts_without_caption_files_cache_train_and_validate_restoration(image_assets):
     """Run independent cache CLI, two prompt groups and real training without TXT files."""
-    from unitunner.config.loading import load_training_config
-    from unitunner.data.datasets.restoration import index_restoration_pairs
-    from unitunner.data.media.image import discover_images
+    from unituner.config.loading import load_training_config
+    from unituner.data.datasets.restoration import index_restoration_pairs
+    from unituner.data.media.image import discover_images
 
     training, _ = image_assets
     root = training.parent
@@ -457,7 +457,7 @@ fdl = 0.0
             raise AssertionError("Resume must restore sigma without recalibrating")
 
         monkeypatch.setattr(
-            "unitunner.training.methods.restoration.RestorationMethod.calibrate", unexpected_calibration
+            "unituner.training.methods.restoration.RestorationMethod.calibrate", unexpected_calibration
         )
     checkpoint = root / "run/resume/model.state-00000001.safetensors"
     training.write_text(content.replace((root / "run").as_posix(), (root / "resumed").as_posix()))
@@ -523,7 +523,7 @@ alpha = 3.0
 
 
 def test_image_restoration_real_adversarial_training_and_resume(image_assets, monkeypatch):
-    from unitunner.training.workflows.common import images as workflow
+    from unituner.training.workflows.common import images as workflow
 
     optimizers = []
     create = workflow.create_adamw
@@ -702,7 +702,7 @@ fdl = 0.0
         content += '\n[train.adapter]\nalgorithm = "lora"\nrank = 2\nalpha = 3.0\n'
     training.write_text(content)
     assert main_with_local_tokenizers(["cache", str(training)]) == 0
-    original = import_module("unitunner.training.run").train
+    original = import_module("unituner.training.run").train
 
     def checked_train(config, *, restoration_data, **kwargs):
         pairs = restoration_data.pairs
@@ -733,7 +733,7 @@ fdl = 0.0
         ]
 
     monkeypatch.setattr(RestorationMethod, "calibrate", checked_calibration)
-    monkeypatch.setattr("unitunner.training.run.train", checked_train)
+    monkeypatch.setattr("unituner.training.run.train", checked_train)
     assert main_with_local_tokenizers(["train", str(training)]) == 0
     checkpoint = root / "run/resume/model.state-00000001.safetensors"
     training.write_text(content.replace((root / "run").as_posix(), (root / "resumed").as_posix()))
@@ -846,9 +846,9 @@ def test_real_repa_cache_training_objectives_and_compact_checkpoint_resume(image
     """Run public cache/train/resume with real frozen ViT features and all feature objectives."""
     from dataclasses import asdict
 
-    from unitunner.artifacts.hashing import file_sha256
-    from unitunner.artifacts.tensors import TensorReader
-    from unitunner.models.features.vit import DinoViT, DinoViTConfig
+    from unituner.artifacts.hashing import file_sha256
+    from unituner.artifacts.tensors import TensorReader
+    from unituner.models.features.vit import DinoViT, DinoViTConfig
 
     training, _generation = image_assets
     root = training.parent
@@ -856,7 +856,7 @@ def test_real_repa_cache_training_objectives_and_compact_checkpoint_resume(image
     save_z_image(ZImageTransformer(config), root / "model.safetensors")
     encoder = DinoViT(DinoViTConfig(width=16, depth=2, heads=2, patch=4, image_size=16, hidden=24))
     weights = root / "features.safetensors"
-    save_tensors(encoder.state_dict(), weights, metadata={"unitunner.dinov3": json.dumps(asdict(encoder.config))})
+    save_tensors(encoder.state_dict(), weights, metadata={"unituner.dinov3": json.dumps(asdict(encoder.config))})
     document = training.read_text().replace('parameter_mode = "full"', 'parameter_mode = "adapter"')
     document = document.replace("max_updates = 2", "max_updates = 3")
     document = document.replace("[output]", '[output]\nsave_every_updates=1\ncheckpoint_storage="frozen-reference"')
@@ -885,7 +885,7 @@ cache_directory="{(root / "repa").as_posix()}"
     assert main_with_local_tokenizers(["train", str(training)]) == 0
     checkpoint = root / "run/resume/model.state-00000001.safetensors"
     with TensorReader(checkpoint) as reader:
-        manifest = json.loads(reader.metadata()["unitunner.checkpoint"])
+        manifest = json.loads(reader.metadata()["unituner.checkpoint"])
         assert manifest["schema_version"] == 3
         assert "repa" in manifest["frozen_parameters"]
     training.write_text(document.replace((root / "run").as_posix(), (root / "resumed").as_posix()))

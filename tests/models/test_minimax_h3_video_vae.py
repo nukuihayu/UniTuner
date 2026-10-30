@@ -5,11 +5,11 @@ import torch
 from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.minimax_h3.conditioning import encode_condition_video
-from unitunner.models.minimax_h3.config.video_vae import MiniMaxH3VideoDecoderConfig, MiniMaxH3VideoVAEConfig
-from unitunner.models.minimax_h3.data.cache.video import encode_target_video, target_video_seed
-from unitunner.models.minimax_h3.vae import MiniMaxH3VideoVAE, load_video_vae, save_video_vae
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.minimax_h3.conditioning import encode_condition_video
+from unituner.models.minimax_h3.config.video_vae import MiniMaxH3VideoDecoderConfig, MiniMaxH3VideoVAEConfig
+from unituner.models.minimax_h3.data.cache.video import encode_target_video, target_video_seed
+from unituner.models.minimax_h3.vae import MiniMaxH3VideoVAE, load_video_vae, save_video_vae
 
 
 @pytest.fixture(autouse=True)

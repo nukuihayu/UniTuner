@@ -8,20 +8,20 @@ import pytest
 import torch
 
 from tests.training.test_image_integrations import IMAGE_CASES
-from unitunner.adapters.config import AdapterConfig
-from unitunner.config.generation import GenerationAdapterConfig
-from unitunner.config.output import OutputConfig
-from unitunner.inference.adapters import image_adapter
-from unitunner.training.integrations.image_models import bind_image_model
-from unitunner.training.integrations.image_publication import publish_image_model
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.config.generation import GenerationAdapterConfig
+from unituner.config.output import OutputConfig
+from unituner.inference.adapters import image_adapter
+from unituner.training.integrations.image_models import bind_image_model
+from unituner.training.integrations.image_publication import publish_image_model
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.mark.parametrize("module,stem,options", IMAGE_CASES)
 @pytest.mark.parametrize("algorithm", ["lora", "loha", "lokr"])
 def test_native_image_adapter_roundtrip_and_failure_cleanup(tmp_path, module, stem, options, algorithm):
-    topology = getattr(import_module(f"unitunner.models.{module}.config.model"), stem + "Config")(**options)
-    model = getattr(import_module(f"unitunner.models.{module}.transformer"), stem + "Transformer")(topology).eval()
+    topology = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
+    model = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(topology).eval()
     binding = bind_image_model(model)
     targets = binding.adapter_targets()
     name, projection = next(iter(targets.items()))

@@ -99,7 +99,7 @@ encoder_rank=4 训练独立的 VAE encoder adapter；0 禁用。它与 denoiser 
 仅检查校准，不开始训练：
 
 ```bash
-uv run --no-dev unitunner mid-timestep restoration.toml --device cuda
+uv run --no-dev unituner mid-timestep restoration.toml --device cuda
 ```
 
 命令只读取 VAE 和配对图，不加载 denoiser/文本编码器，不需要缓存，输出 JSON，不自动改 TOML。需要保留结果时手动把输出 sigma 合并进 method.restoration，并关闭 calibrate。修改数据、尺寸或 VAE 后重新评估校准。
@@ -122,9 +122,9 @@ num_images = 1
 修复预览不填 preview.samples。它轮换真实数据，输出 LQ/恢复结果/HQ 对比。固定 seed 保持选图顺序，重点看输入一致性、肤色、纹理和过度锐化。
 
 ```bash
-uv run --no-dev unitunner validate restoration.toml
-uv run --no-dev unitunner cache restoration.toml --device cuda
-uv run --no-dev unitunner train restoration.toml --device cuda
+uv run --no-dev unituner validate restoration.toml
+uv run --no-dev unituner cache restoration.toml --device cuda
+uv run --no-dev unituner train restoration.toml --device cuda
 ```
 
 修复训练实时读取原始 LQ/HQ 并运行可训练 encoder 和图像损失，缓存后不要删除源图。
@@ -170,7 +170,7 @@ TensorBoard 逐步记录生成器、判别器及各分损失。总损失下降�
 
 ```bash
 cp docs/examples/tutorial-restore.toml restore.toml
-uv run --no-dev unitunner restore restore.toml --device cuda
+uv run --no-dev unituner restore restore.toml --device cuda
 ```
 
 修改根级 input/output/prompt 和模型路径；adapter.weights 填训练 LoRA，encoder_weights 填同一步 encoder adapter。固定使用编号文件可避免训练继续保存时引用到不同版本。
@@ -187,7 +187,7 @@ encoder_weights = "runs/restoration/weights/restoration-00000100.encoder.safeten
 ## 7. 续训
 
 ```bash
-uv run --no-dev unitunner train restoration.toml --device cuda --resume runs/restoration/resume/restoration.state-00000050.safetensors
+uv run --no-dev unituner train restoration.toml --device cuda --resume runs/restoration/resume/restoration.state-00000050.safetensors
 ```
 
 此命令适用于在第 50 步后中断、该文件仍为最新 resume 的情况；完成 100 步后默认只剩 100 步状态。恢复状态包含有效 sigma、encoder、判别器、优化器、RNG 和数据游标，恢复时不会重新校准。不要用正式 LoRA 代替 resume 文件。

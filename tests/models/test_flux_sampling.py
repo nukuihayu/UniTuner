@@ -3,10 +3,10 @@
 import pytest
 import torch
 
-from unitunner.models.flux.conditioning import FluxCondition, image_ids
-from unitunner.models.flux.config.model import FluxConfig
-from unitunner.models.flux.inference.sampling import build_schedule, sample_latents
-from unitunner.models.flux.transformer import FluxTransformer
+from unituner.models.flux.conditioning import FluxCondition, image_ids
+from unituner.models.flux.config.model import FluxConfig
+from unituner.models.flux.inference.sampling import build_schedule, sample_latents
+from unituner.models.flux.transformer import FluxTransformer
 
 
 @pytest.fixture(autouse=True)

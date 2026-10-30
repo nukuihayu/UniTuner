@@ -5,17 +5,17 @@ import json
 import pytest
 import torch
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.formats.transformer import convert_transformer
-from unitunner.artifacts.quantization import json_tensor, quantize_weight, serialize_weight
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.models.components.quantized import QuantizedLinear
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.layers import QwenImage21Block
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21
-from unitunner.models.qwen_image_2_1.projections import adapter_projections
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.formats.transformer import convert_transformer
+from unituner.artifacts.quantization import json_tensor, quantize_weight, serialize_weight
+from unituner.artifacts.tensors import save_tensors
+from unituner.models.components.quantized import QuantizedLinear
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.layers import QwenImage21Block
+from unituner.models.qwen_image_2_1.loading import load_qwen_image_21
+from unituner.models.qwen_image_2_1.projections import adapter_projections
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.training.parameters import ParameterInstallation
 
 
 @pytest.fixture

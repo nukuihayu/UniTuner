@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 import torch
 
-from unitunner.artifacts.formats.z_image import convert_vae_tensors, vae_key_map
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.z_image.config.vae import ZImageVAEConfig
-from unitunner.models.z_image.loading import load_z_image_vae
-from unitunner.models.z_image.vae import ZImageVAE
+from unituner.artifacts.formats.z_image import convert_vae_tensors, vae_key_map
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.z_image.config.vae import ZImageVAEConfig
+from unituner.models.z_image.loading import load_z_image_vae
+from unituner.models.z_image.vae import ZImageVAE
 
 
 @pytest.mark.parametrize("widths", [(4, 8), (4, 8, 8)])

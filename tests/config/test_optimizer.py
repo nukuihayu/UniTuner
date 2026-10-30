@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from unitunner.checkpoints.schema import build_resume_identity
-from unitunner.config.loading import load_training_config
-from unitunner.config.optimizer import AdamWConfig
+from unituner.checkpoints.schema import build_resume_identity
+from unituner.config.loading import load_training_config
+from unituner.config.optimizer import AdamWConfig
 
 EXAMPLE = Path(__file__).parents[2] / "docs/examples/flow.toml"
 

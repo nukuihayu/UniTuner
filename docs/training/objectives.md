@@ -88,7 +88,7 @@ LayerSync 使用停止教师梯度的负余弦损失。REPA 使用训练专属 F
 
 ## REPA 缓存
 
-运行 `unitunner cache train.toml --device cuda` 时，REPA 编码器收到与原生 VAE 完全相同的目标裁剪和帧顺序，不从 latent 解码，也不另行中心裁剪。支持原生或官方 MLP DINOv3 ViT-S/B/L safetensors，保留原有 bicubic/antialias、ImageNet 归一化和逐帧处理，排除 CLS/register token。Alpha 保留在原生缓存与监督中，DINO 输入使用 RGB。编码器文件内容必须匹配配置摘要与输出宽度。训练只需要生成的特征缓存，不加载 DINO；手动提供预计算特征可调用 `save_repa_target` 和 `save_repa_manifest`，调用者负责确保裁剪和帧对应正确。
+运行 `unituner cache train.toml --device cuda` 时，REPA 编码器收到与原生 VAE 完全相同的目标裁剪和帧顺序，不从 latent 解码，也不另行中心裁剪。支持原生或官方 MLP DINOv3 ViT-S/B/L safetensors，保留原有 bicubic/antialias、ImageNet 归一化和逐帧处理，排除 CLS/register token。Alpha 保留在原生缓存与监督中，DINO 输入使用 RGB。编码器文件内容必须匹配配置摘要与输出宽度。训练只需要生成的特征缓存，不加载 DINO；手动提供预计算特征可调用 `save_repa_target` 和 `save_repa_manifest`，调用者负责确保裁剪和帧对应正确。
 
 REPA 清单绑定每个原生缓存记录的完整摘要，训练前检查覆盖与内容，恢复身份包括特征清单摘要；投影器随 checkpoint 恢复，不混入推理适配器产物。
 

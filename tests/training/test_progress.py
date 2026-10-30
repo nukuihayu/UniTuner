@@ -8,15 +8,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from unitunner.logging import logging_session, start_training_log
-from unitunner.progress import Progress
-from unitunner.training.progress import TrainingProgress
+from unituner.logging import logging_session, start_training_log
+from unituner.progress import Progress
+from unituner.training.progress import TrainingProgress
 
 
 def test_notebook_bash_child_shows_progress_without_json_summaries():
     """Exercise the pipe-backed subprocess used by a notebook bash cell."""
     script = """
-from unitunner.training.progress import TrainingProgress
+from unituner.training.progress import TrainingProgress
 display = TrainingProgress(1)
 display.report(1, 1, {
     'loss/main': 0.25,
@@ -27,7 +27,7 @@ display.close()
 """
     result = subprocess.run(
         ["bash", "-c", 'exec "$1" -c "$2"', "notebook-test", sys.executable, script],
-        env={**os.environ, "JPY_PARENT_PID": str(os.getpid()), "UNITUNNER_PROGRESS": "auto"},
+        env={**os.environ, "JPY_PARENT_PID": str(os.getpid()), "UNITUNER_PROGRESS": "auto"},
         capture_output=True,
         text=True,
         check=True,
@@ -51,9 +51,9 @@ def test_non_tty_progress_in_notebook_and_redirected_commands(monkeypatch, capsy
     """Render a text fallback for notebook shells without breaking redirected JSON."""
     from tqdm.std import tqdm
 
-    monkeypatch.setenv("UNITUNNER_PROGRESS", mode)
+    monkeypatch.setenv("UNITUNER_PROGRESS", mode)
     monkeypatch.setenv("JPY_PARENT_PID", parent)
-    monkeypatch.setattr("unitunner.progress.tqdm", tqdm)
+    monkeypatch.setattr("unituner.progress.tqdm", tqdm)
     shell = SimpleNamespace(kernel=object()) if kernel else None
     monkeypatch.setitem(sys.modules, "IPython", SimpleNamespace(get_ipython=lambda: shell))
     display = Progress("updates", 2)
@@ -81,9 +81,9 @@ def test_training_display_throttles_console_but_keeps_all_file_metrics(tmp_path,
         def close(self):
             pass
 
-    monkeypatch.setattr("unitunner.training.progress.Progress", Display)
+    monkeypatch.setattr("unituner.training.progress.Progress", Display)
     times = iter((0.0, 10.0, 59.0, 60.0, 61.0))
-    monkeypatch.setattr("unitunner.training.progress.monotonic", lambda: next(times))
+    monkeypatch.setattr("unituner.training.progress.monotonic", lambda: next(times))
     scalars = {
         "loss/generator": 4.5,
         "loss/discriminator": 2.0,

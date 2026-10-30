@@ -16,9 +16,9 @@
 | dataset.groups.main.video | target_frames、extraction、target_fps、fps_resampling |
 
 ```bash
-uv run --no-dev unitunner cache wan-cache.toml --device cuda
-uv run --no-dev unitunner validate wan-train.toml
-uv run --no-dev unitunner train wan-train.toml --device cuda
+uv run --no-dev unituner cache wan-cache.toml --device cuda
+uv run --no-dev unituner validate wan-train.toml
+uv run --no-dev unituner train wan-train.toml --device cuda
 ```
 
 将复制出的文件分别命名为 `wan-cache.toml` 和 `wan-train.toml`。Wan 的 target_frames 和 max_frames 必须满足 1+4k，例如 81、129。帧数和分辨率共同影响显存；先用短片段验证，不要仅根据图像训练的 batch 推断视频需求。
@@ -42,9 +42,9 @@ uv run --no-dev unitunner train wan-train.toml --device cuda
 H3 使用 batch_size=1、32 对齐分辨率和原生 32 kHz 双声道音频。示例 124 帧满足 17n+5。保留标准时长策略；只有主动测试实验时长时才启用 allow_experimental_duration。
 
 ```bash
-uv run --no-dev unitunner cache h3-cache.toml --device cuda
-uv run --no-dev unitunner validate h3-train.toml
-uv run --no-dev unitunner train h3-train.toml --device cuda
+uv run --no-dev unituner cache h3-cache.toml --device cuda
+uv run --no-dev unituner validate h3-train.toml
+uv run --no-dev unituner train h3-train.toml --device cuda
 ```
 
 缓存与训练配置指向同一组数据和 cache_directory。method.minimax_h3 控制视频/音频时间移位、条件清洁度和音频损失权重；先保持示例配方，再单独调整。
@@ -56,8 +56,8 @@ Wan 使用 `[[preview.videos]]`，H3 使用 `[[preview.audio_video]]` 下的 inp
 保存周期、正式权重/续训状态分离、保留数量和 TensorBoard 与图像训练相同。续训加载 resume/*.state-*.safetensors；生成加载 weights/ 下的正式 LoRA 或基模。
 
 ```bash
-uv run --no-dev unitunner generate-video wan-generate.toml --device cuda
-uv run --no-dev unitunner generate-video h3-generate.toml --device cuda
+uv run --no-dev unituner generate-video wan-generate.toml --device cuda
+uv run --no-dev unituner generate-video h3-generate.toml --device cuda
 ```
 
 推理配置分别复制 `wan-generate-video.toml` 和 `minimax-h3-generate.toml`。填写输出文件、同一底模、适配器、原生采样帧数和条件。Wan2.2 双专家生成的 high_noise 设置只在需要第二个专家权重时添加。

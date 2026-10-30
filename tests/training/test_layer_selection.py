@@ -7,8 +7,8 @@ import torch
 from torch import nn
 
 from tests.support.assertions import require_type
-from unitunner.adapters.config import AdapterConfig
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.training.parameters import ParameterInstallation
 
 
 def test_full_selection_updates_only_selected_native_parameters():

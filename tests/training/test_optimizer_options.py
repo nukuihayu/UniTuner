@@ -5,11 +5,11 @@ import copy
 import pytest
 import torch
 
-from unitunner.config.optimizer import AdamWConfig
-from unitunner.config.train import TrainConfig
-from unitunner.training.optimizers.adamw import create_adamw
-from unitunner.training.optimizers.schedules import apply_learning_rate, learning_rate
-from unitunner.training.parameters import ParameterGroup
+from unituner.config.optimizer import AdamWConfig
+from unituner.config.train import TrainConfig
+from unituner.training.optimizers.adamw import create_adamw
+from unituner.training.optimizers.schedules import apply_learning_rate, learning_rate
+from unituner.training.parameters import ParameterGroup
 
 
 @pytest.mark.parametrize("backend", ["auto", "single", "foreach"])

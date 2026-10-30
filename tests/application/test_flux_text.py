@@ -7,7 +7,7 @@ from tokenizers.pre_tokenizers import ByteLevel
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5Config, T5EncoderModel, T5Tokenizer
 
 from tests.support.text_assets import local_text_config
-from unitunner.models.flux.text.encoder import clean_clip_text, load_flux_text
+from unituner.models.flux.text.encoder import clean_clip_text, load_flux_text
 
 
 @pytest.fixture

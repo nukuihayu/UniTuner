@@ -17,27 +17,27 @@ from tests.training import (
     test_qwen_image,
     test_wan,
 )
-from unitunner.adapters.config import AdapterConfig
-from unitunner.checkpoints.restore import restore_checkpoint
-from unitunner.checkpoints.saving import save_checkpoint
-from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.config.execution import ExecutionConfig
-from unitunner.execution.allocator_bootstrap import vbar_initialized
-from unitunner.execution.frozen_blocks import FrozenModelPlacement
-from unitunner.execution.installation import ExecutionInstallation
-from unitunner.models.krea2.config.model import Krea2Config
-from unitunner.models.krea2.transformer import Krea2Transformer
-from unitunner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
-from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.training.contracts import RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.krea2.binding import Krea2Binding, Krea2FlowRequest
-from unitunner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding, QwenImage21FlowRequest
-from unitunner.training.integrations.wan.binding import WanFlowRequest
-from unitunner.training.integrations.z_image.binding import ZImageBinding
-from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.session import TrainingSession
+from unituner.adapters.config import AdapterConfig
+from unituner.checkpoints.restore import restore_checkpoint
+from unituner.checkpoints.saving import save_checkpoint
+from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.config.execution import ExecutionConfig
+from unituner.execution.allocator_bootstrap import vbar_initialized
+from unituner.execution.frozen_blocks import FrozenModelPlacement
+from unituner.execution.installation import ExecutionInstallation
+from unituner.models.krea2.config.model import Krea2Config
+from unituner.models.krea2.transformer import Krea2Transformer
+from unituner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
+from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
+from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unituner.training.contracts import RunState
+from unituner.training.engine import update_phase
+from unituner.training.integrations.krea2.binding import Krea2Binding, Krea2FlowRequest
+from unituner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding, QwenImage21FlowRequest
+from unituner.training.integrations.wan.binding import WanFlowRequest
+from unituner.training.integrations.z_image.binding import ZImageBinding
+from unituner.training.parameters import ParameterInstallation
+from unituner.training.session import TrainingSession
 
 FAMILIES = [
     "flux",
@@ -306,8 +306,8 @@ def test_native_inductor_forward_and_every_active_gradient(family, residency, ca
 @pytest.mark.parametrize("family", FAMILIES)
 @pytest.mark.parametrize("device_name", ["cpu", "cuda"])
 def test_native_layersync_target_capture_backward_and_h2d(family, device_name):
-    from unitunner.config.features import LayerSyncConfig
-    from unitunner.training.objectives import FeatureAlignment
+    from unituner.config.features import LayerSyncConfig
+    from unituner.training.objectives import FeatureAlignment
 
     if device_name == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
@@ -369,8 +369,8 @@ def test_native_tread_resident_vs_h2d_three_updates(family, compiled):
     Do not add runtime graph breaks just to make those graphs bitwise identical.
     RNG and gradient participation must still match exactly for both providers.
     """
-    from unitunner.config.routing import TreadConfig
-    from unitunner.training.objectives import TokenRoutingInstallation
+    from unituner.config.routing import TreadConfig
+    from unituner.training.objectives import TokenRoutingInstallation
 
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
@@ -453,14 +453,14 @@ def test_native_tread_resident_vs_h2d_three_updates(family, compiled):
 
 @pytest.mark.parametrize("family", ["flux", "flux2", "flux3", "qwen-image"])
 def test_native_preview_sampling_resident_vs_cpu_loaded_h2d(family):
-    from unitunner.config.routing import TreadConfig
-    from unitunner.models.components.conditioning import Caption
-    from unitunner.models.flux.inference.sampling import sample_latents as sample_flux
-    from unitunner.models.flux2.inference.sampling import sample_latents as sample_flux2
-    from unitunner.models.flux3.inference.sampling import sample_latents as sample_flux3
-    from unitunner.models.qwen_image.inference.sampling import sample_latents as sample_qwen
-    from unitunner.training.objectives import TokenRoutingInstallation
-    from unitunner.training.previews.context import preview_context
+    from unituner.config.routing import TreadConfig
+    from unituner.models.components.conditioning import Caption
+    from unituner.models.flux.inference.sampling import sample_latents as sample_flux
+    from unituner.models.flux2.inference.sampling import sample_latents as sample_flux2
+    from unituner.models.flux3.inference.sampling import sample_latents as sample_flux3
+    from unituner.models.qwen_image.inference.sampling import sample_latents as sample_qwen
+    from unituner.training.objectives import TokenRoutingInstallation
+    from unituner.training.previews.context import preview_context
 
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")

@@ -6,10 +6,10 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from unitunner.artifacts.hashing import file_sha256
-from unitunner.artifacts.tensors import TensorReader, save_tensors
-from unitunner.data.cache.schema import CacheIdentity
-from unitunner.models.minimax_h3.data.cache.storage import (
+from unituner.artifacts.hashing import file_sha256
+from unituner.artifacts.tensors import TensorReader, save_tensors
+from unituner.data.cache.schema import CacheIdentity
+from unituner.models.minimax_h3.data.cache.storage import (
     MiniMaxH3CacheFormat,
     MiniMaxH3CacheItem,
     MiniMaxH3CacheManifest,
@@ -143,11 +143,11 @@ def test_corrupt_records_rejected_even_when_manifest_file_digest_is_updated(tmp_
     elif damage == "missing":
         del tensors["audio.ref_001_audio"]
     elif damage == "identity":
-        metadata["unitunner.cache.identity"] = identity.model_copy(update={"source_sha256": "4" * 64}).model_dump_json()
+        metadata["unituner.cache.identity"] = identity.model_copy(update={"source_sha256": "4" * 64}).model_dump_json()
     elif damage == "format":
-        metadata["unitunner.cache.format"] = MiniMaxH3CacheFormat(task="t2va").model_dump_json()
+        metadata["unituner.cache.format"] = MiniMaxH3CacheFormat(task="t2va").model_dump_json()
     else:
-        metadata["unitunner.cache.item"] = record.item.model_copy(update={"frame_count": 5}).model_dump_json()
+        metadata["unituner.cache.item"] = record.item.model_copy(update={"frame_count": 5}).model_dump_json()
     save_tensors(tensors, path, metadata=metadata)
     with pytest.raises(ValueError):
         read_minimax_h3_record(

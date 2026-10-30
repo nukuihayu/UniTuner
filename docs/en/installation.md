@@ -34,11 +34,11 @@ GPU memory requirements depend on the model, dimensions, batch, parameter mode, 
 ## Install
 
 ```bash
-git clone https://github.com/nukuihayu/UniTunner.git
-cd UniTunner
+git clone https://github.com/nukuihayu/UniTuner.git
+cd UniTuner
 uv python install 3.13
 uv sync --locked --no-dev --extra media --extra text
-uv run --no-dev unitunner --help
+uv run --no-dev unituner --help
 ```
 
 Commands assume the repository root as the working directory. Installing dependencies does not download model weights.
@@ -68,7 +68,7 @@ uv run --no-sync --no-dev python -c "import torch; print('Torch:', torch.__versi
 
 If CUDA is unavailable, check the driver, active Python environment, and Torch build. `--device cuda` selects a device; it does not install drivers or replace Torch. For CPU workflows explicitly choose `--device cpu --execution.precision fp32`. Automatic precision follows the weights and does not guarantee a CPU-compatible selection.
 
-The `unitunner train` entry initializes VBAR before Torch. If a Notebook process already imported Torch, launch a fresh CLI process for VBAR.
+The `unituner train` entry initializes VBAR before Torch. If a Notebook process already imported Torch, launch a fresh CLI process for VBAR.
 
 ## Tokenizers and offline use
 
@@ -90,7 +90,7 @@ Set a PyPI mirror when needed:
 UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev --extra media --extra text
 ```
 
-This controls Python package sources, not model or interpreter downloads. After installation, `uv run --no-sync --no-dev unitunner …` avoids synchronizing dependencies at launch.
+This controls Python package sources, not model or interpreter downloads. After installation, `uv run --no-sync --no-dev unituner …` avoids synchronizing dependencies at launch.
 
 ## Development
 

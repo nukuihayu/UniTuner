@@ -7,20 +7,20 @@ import torch
 from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.adapters.config import AdapterConfig
-from unitunner.models.minimax_h3.config.model import MiniMaxH3Config
-from unitunner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
-from unitunner.models.minimax_h3.layout import build_layout
-from unitunner.models.minimax_h3.packing import MiniMaxH3Targets
-from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
-from unitunner.training.contracts import RunState
-from unitunner.training.engine import update_phase
-from unitunner.training.integrations.minimax_h3.binding import (
+from unituner.adapters.config import AdapterConfig
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
+from unituner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
+from unituner.models.minimax_h3.layout import build_layout
+from unituner.models.minimax_h3.packing import MiniMaxH3Targets
+from unituner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unituner.training.contracts import RunState
+from unituner.training.engine import update_phase
+from unituner.training.integrations.minimax_h3.binding import (
     MiniMaxH3Binding,
     MiniMaxH3FlowRequest,
     build_noisy_inputs,
 )
-from unitunner.training.parameters import ParameterInstallation
+from unituner.training.parameters import ParameterInstallation
 
 
 def _request():

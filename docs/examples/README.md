@@ -37,8 +37,8 @@
 
 ## 训练与缓存
 
-训练示例使用训练配置；纯 cache 示例只使用编码配置。通常先 `unitunner cache CONFIG --device cuda`，
-再 `unitunner train CONFIG --device cuda`；仅有 denoiser 路径的训练配置需要先使用对应 cache 示例。
+训练示例使用训练配置；纯 cache 示例只使用编码配置。通常先 `unituner cache CONFIG --device cuda`，
+再 `unituner train CONFIG --device cuda`；仅有 denoiser 路径的训练配置需要先使用对应 cache 示例。
 
 | 任务 | 示例 | 说明 |
 | --- | --- | --- |
@@ -67,7 +67,7 @@
 | H3 训练 | [minimax-h3-train.toml](minimax-h3-train.toml)、[minimax-h3-train-preview.toml](minimax-h3-train-preview.toml) | 已有缓存训练／带 AV 预览 |
 
 H3 外部拆分缓存使用 [minimax-h3-cache-import.json](minimax-h3-cache-import.json)：
-`unitunner caches import SPECIFICATION DESTINATION`，这是显式转换入口，不是 TOML 训练配置。
+`unituner caches import SPECIFICATION DESTINATION`，这是显式转换入口，不是 TOML 训练配置。
 
 ## 图像修复
 
@@ -87,9 +87,9 @@ H3 外部拆分缓存使用 [minimax-h3-cache-import.json](minimax-h3-cache-impo
 先替换路径，然后执行：
 
 ```bash
-unitunner mid-timestep docs/examples/restoration-calibration.toml --device cuda
-unitunner cache docs/examples/restoration-calibration.toml --device cuda
-unitunner train docs/examples/restoration-calibration.toml --device cuda
+unituner mid-timestep docs/examples/restoration-calibration.toml --device cuda
+unituner cache docs/examples/restoration-calibration.toml --device cuda
+unituner train docs/examples/restoration-calibration.toml --device cuda
 ```
 
 第一条不需要缓存，仅加载 VAE 和图像。它输出 JSON，不自动重写 TOML。
@@ -98,14 +98,14 @@ unitunner train docs/examples/restoration-calibration.toml --device cuda
 
 ## 推理
 
-这些配置采用独立 schema，不能交给 `unitunner validate`（该命令当前只验证训练配置）。
+这些配置采用独立 schema，不能交给 `unituner validate`（该命令当前只验证训练配置）。
 使用对应推理命令会加载并验证配置，然后读取本地模型。
 
 | 命令 | 示例 |
 | --- | --- |
-| `unitunner generate CONFIG --device cuda` | [Z-Image](generate.toml)、[FLUX](flux-generate.toml)、[FLUX.2](flux2-generate.toml)、[FLUX3](flux3-generate.toml)、[MOSS](moss-generate.toml)、[MOSS Edit](moss-edit-generate.toml)、[Qwen](qwen-image-generate.toml)、[Qwen图层](qwen-image-layered-generate.toml)、[Krea2](krea2-generate.toml) |
-| `unitunner generate-video CONFIG --device cuda` | [Wan](wan-generate-video.toml)、[H3](minimax-h3-generate.toml) |
-| `unitunner restore CONFIG --device cuda` | [Z-Image](restore.toml)、[Qwen](qwen-image-restore.toml)、[Krea2](krea2-restore.toml) |
+| `unituner generate CONFIG --device cuda` | [Z-Image](generate.toml)、[FLUX](flux-generate.toml)、[FLUX.2](flux2-generate.toml)、[FLUX3](flux3-generate.toml)、[MOSS](moss-generate.toml)、[MOSS Edit](moss-edit-generate.toml)、[Qwen](qwen-image-generate.toml)、[Qwen图层](qwen-image-layered-generate.toml)、[Krea2](krea2-generate.toml) |
+| `unituner generate-video CONFIG --device cuda` | [Wan](wan-generate-video.toml)、[H3](minimax-h3-generate.toml) |
+| `unituner restore CONFIG --device cuda` | [Z-Image](restore.toml)、[Qwen](qwen-image-restore.toml)、[Krea2](krea2-restore.toml) |
 
 推理 adapter 的路径与 algorithm／rank／alpha 必须匹配训练产物；full 模型直接替换 model.weights。
 修复推理的 encoder_weights 指向训练导出的 encoder adapter，并读取训练产物记录的 sigma。

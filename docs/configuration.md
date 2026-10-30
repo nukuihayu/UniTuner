@@ -21,8 +21,8 @@
 **配置默认值 → TOML → CLI 覆盖**。省略 TOML 时也可以完全通过 CLI 提供必填字段。
 
 ```bash
-uv run --no-dev unitunner train train.toml --device cuda --train.learning-rate 5e-5
-uv run --no-dev unitunner train --config train.toml --device cuda --train.learning-rate 5e-5
+uv run --no-dev unituner train train.toml --device cuda --train.learning-rate 5e-5
+uv run --no-dev unituner train --config train.toml --device cuda --train.learning-rate 5e-5
 ```
 
 两种文件写法选择同一个配置。相对路径始终以命令的工作目录为基准，不是 TOML 所在目录。需要从不同目录启动时，模型与数据路径使用绝对路径。
@@ -70,13 +70,13 @@ repeats = 2
 字段层级使用点号，字段名可使用连字符形式；动态数据组使用 `--set`：
 
 ```bash
-uv run --no-dev unitunner validate train.toml \
+uv run --no-dev unituner validate train.toml \
   --train.learning-rate 5e-5 \
   --set 'dataset.groups.main.batch_size=1' \
   --set 'train.include_layers=["layers.*"]'
 ```
 
-包含空格、数组、JSON 对象或 shell 特殊字符时对整个赋值加引号。常用字段也可以查看 `unitunner train --help`。切换全参数训练使用 `--parameter-mode full`，该快捷选项会同时清除适配器配置。
+包含空格、数组、JSON 对象或 shell 特殊字符时对整个赋值加引号。常用字段也可以查看 `unituner train --help`。切换全参数训练使用 `--parameter-mode full`，该快捷选项会同时清除适配器配置。
 
 ## 命令速查
 
@@ -95,11 +95,11 @@ uv run --no-dev unitunner validate train.toml \
 单独检查不同任务：
 
 ```bash
-uv run --no-dev unitunner validate image-cache.toml --for cache
-uv run --no-dev unitunner validate generate.toml --for generate
-uv run --no-dev unitunner validate restore.toml --for restore
-uv run --no-dev unitunner validate video.toml --for generate-video
-uv run --no-dev unitunner validate calibration.toml --for mid-timestep
+uv run --no-dev unituner validate image-cache.toml --for cache
+uv run --no-dev unituner validate generate.toml --for generate
+uv run --no-dev unituner validate restore.toml --for restore
+uv run --no-dev unituner validate video.toml --for generate-video
+uv run --no-dev unituner validate calibration.toml --for mid-timestep
 ```
 
 配置检查通过表示字段及组合合法，不表示资产文件已存在或与模型拓扑匹配。实际加载还会检查文件格式、键名和形状。

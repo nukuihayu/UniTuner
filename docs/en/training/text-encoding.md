@@ -66,7 +66,7 @@ precision = "bf16"
 quantization = "float8_e4m3fn"
 ```
 
-Keep `model.text_encoder` pointing to local source assets. `unitunner cache train.toml --device cuda` loads the floating text model on CPU, quantizes each projection on GPU, returns packed layers to CPU, then places the encoder on its inference device. The complete floating encoder never needs to occupy GPU memory; host memory must still fit the floating source. CPU execution quantizes on CPU. Source files are unchanged.
+Keep `model.text_encoder` pointing to local source assets. `unituner cache train.toml --device cuda` loads the floating text model on CPU, quantizes each projection on GPU, returns packed layers to CPU, then places the encoder on its inference device. The complete floating encoder never needs to occupy GPU memory; host memory must still fit the floating source. CPU execution quantizes on CPU. Source files are unchanged.
 
 | Field | Default | Purpose |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ The same settings apply to text loading for training previews and standalone gen
 Prepare matching model configuration in the output directory, then convert weights. Tokenizer, chat-template, and processor assets can come from the independent sources described below:
 
 ```bash
-uv run unitunner weights convert models/qwen3/model.safetensors models/qwen3-fp8/model.safetensors \
+uv run unituner weights convert models/qwen3/model.safetensors models/qwen3-fp8/model.safetensors \
   --family qwen3 --precision float8_e4m3fn --device cuda
 ```
 

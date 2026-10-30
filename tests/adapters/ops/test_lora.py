@@ -5,7 +5,7 @@ import torch
 from torch.autograd import gradcheck, gradgradcheck
 from torch.nn import functional as F
 
-from unitunner.adapters.ops.lora import _scaled_residual, fused_lora_linear
+from unituner.adapters.ops.lora import _scaled_residual, fused_lora_linear
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])

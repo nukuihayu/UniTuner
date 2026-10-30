@@ -8,15 +8,15 @@ import pytest
 import torch
 
 from tests.models.test_transformer_external_loading import _CASES
-from unitunner.adapters.config import AdapterConfig
-from unitunner.artifacts.tensors import TensorReader, iter_tensors
-from unitunner.config.model import ModelConfig
-from unitunner.config.output import OutputConfig
-from unitunner.models.catalog import ModelFamily
-from unitunner.models.image import load_image_model
-from unitunner.training.integrations.image_models import bind_image_model
-from unitunner.training.integrations.image_publication import publish_image_model
-from unitunner.training.parameters import ParameterInstallation
+from unituner.adapters.config import AdapterConfig
+from unituner.artifacts.tensors import TensorReader, iter_tensors
+from unituner.config.model import ModelConfig
+from unituner.config.output import OutputConfig
+from unituner.models.catalog import ModelFamily
+from unituner.models.image import load_image_model
+from unituner.training.integrations.image_models import bind_image_model
+from unituner.training.integrations.image_publication import publish_image_model
+from unituner.training.parameters import ParameterInstallation
 
 IMAGE_CASES = [case for case in _CASES if case[0] not in ("wan", "minimax_h3")]
 
@@ -27,9 +27,9 @@ IMAGE_CASES = [case for case in _CASES if case[0] not in ("wan", "minimax_h3")]
     [(None, "comfyui"), ("lora", "comfyui"), ("loha", "comfyui"), ("lokr", "comfyui"), ("lora", "diffusers")],
 )
 def test_image_loading_and_publication_roundtrip(tmp_path, module, stem, options, algorithm, adapter_format):
-    provider = import_module(f"unitunner.models.{module}.loading")
-    topology = getattr(import_module(f"unitunner.models.{module}.config.model"), stem + "Config")(**options)
-    original = getattr(import_module(f"unitunner.models.{module}.transformer"), stem + "Transformer")(topology)
+    provider = import_module(f"unituner.models.{module}.loading")
+    topology = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
+    original = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(topology)
     suffix = "qwen_image_21" if module == "qwen_image_2_1" else module
     source = tmp_path / "original.safetensors"
     getattr(provider, "save_" + suffix)(original, source)
@@ -76,11 +76,11 @@ def test_image_loading_and_publication_roundtrip(tmp_path, module, stem, options
             for name, value in restored.state_dict().items():
                 torch.testing.assert_close(value, model.state_dict()[name].to(torch.bfloat16), atol=0, rtol=0)
         else:
-            assert info["unitunner.adapter.format"] == adapter_format
+            assert info["unituner.adapter.format"] == adapter_format
             if adapter_format == "diffusers":
                 assert all(key.endswith((".lora_A.weight", ".lora_B.weight")) for key in tensors)
             if module in ("flux", "flux2") and adapter_format == "comfyui":
-                assert info["unitunner.adapter.layout"] == "flux-diffusers"
+                assert info["unituner.adapter.layout"] == "flux-diffusers"
                 assert not any("double_blocks" in key for key in tensors)
                 assert any("attn_to_k" in key.replace(".", "_") for key in tensors)
             if algorithm == "lora":

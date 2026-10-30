@@ -6,13 +6,13 @@ import pytest
 import torch
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from unitunner.artifacts.importing import import_weights
-from unitunner.artifacts.tensors import save_tensors
-from unitunner.cli.main import main
-from unitunner.models.moss_image.config.model import MossImageConfig
-from unitunner.models.moss_image.layers import RotaryEmbedding, SiTUGLU
-from unitunner.models.moss_image.loading import load_moss_image, save_moss_image
-from unitunner.models.moss_image.transformer import MossImageTransformer
+from unituner.artifacts.importing import import_weights
+from unituner.artifacts.tensors import save_tensors
+from unituner.cli.main import main
+from unituner.models.moss_image.config.model import MossImageConfig
+from unituner.models.moss_image.layers import RotaryEmbedding, SiTUGLU
+from unituner.models.moss_image.loading import load_moss_image, save_moss_image
+from unituner.models.moss_image.transformer import MossImageTransformer
 
 
 @pytest.fixture(autouse=True)
@@ -154,7 +154,7 @@ def test_moss_external_fused_qkv_import_preserves_values_and_rejects_mixed_layou
 
 
 def test_moss_sampling_preserves_explicit_noise_rng_modes_and_fp32_under_autocast():
-    from unitunner.models.moss_image.inference.sampling import build_schedule, sample_latents
+    from unituner.models.moss_image.inference.sampling import build_schedule, sample_latents
 
     model = MossImageTransformer(small_config()).eval()
     noise = torch.randn(2, 8, 2, 3)
