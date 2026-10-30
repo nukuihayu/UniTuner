@@ -8,8 +8,7 @@ from safetensors import SafetensorError, safe_open
 from safetensors.torch import save_file
 
 from unitunner.artifacts.atomic import atomic_output
-from unitunner.artifacts.hashing import file_sha256
-from unitunner.artifacts.tensors import TensorReader, iter_tensors, resolve_shards, save_tensors, weight_artifact_sha256
+from unitunner.artifacts.tensors import TensorReader, iter_tensors, resolve_shards, save_tensors
 
 
 def test_streamed_external_roundtrip(tmp_path):
@@ -96,46 +95,6 @@ def test_corrupt_header_rejected(tmp_path):
     path.write_bytes(struct.pack("<Q", 1000) + b"{}")
     with pytest.raises(SafetensorError):
         TensorReader(path)
-
-
-def test_weight_identity_covers_later_shard_and_preserves_plain_file_digest(tmp_path):
-    first, second = (tmp_path / f"weights-{index:02}-of-02.safetensors" for index in (1, 2))
-    save_file({"a": torch.ones(2)}, first)
-    save_file({"b": torch.zeros(2)}, second)
-    first_digest, previous = file_sha256(first), weight_artifact_sha256(first)
-    assert previous == weight_artifact_sha256(second)
-    save_file({"b": torch.ones(2)}, second)
-    assert file_sha256(first) == first_digest and weight_artifact_sha256(first) != previous
-    plain = tmp_path / "weights.safetensors"
-    save_file({"a": torch.ones(2)}, plain)
-    assert weight_artifact_sha256(plain) == file_sha256(plain)
-    second.unlink()
-    with pytest.raises(FileNotFoundError):
-        weight_artifact_sha256(first)
-
-
-@pytest.mark.parametrize("sharded", (False, True))
-def test_weight_hash_cache_release_covers_all_shards_without_changing_digest(tmp_path, monkeypatch, sharded):
-    from unitunner.artifacts import tensors
-
-    paths = (
-        tuple(tmp_path / f"weights-{i:02}-of-02.safetensors" for i in (1, 2))
-        if sharded
-        else (tmp_path / "weights.safetensors",)
-    )
-    for path in paths:
-        save_file({"weight": torch.ones(2)}, path)
-    expected = weight_artifact_sha256(paths[0])
-    scanned = []
-
-    def scan(path, *, release_cache=False):
-        assert release_cache
-        scanned.append(path)
-        return file_sha256(path, release_cache=True)
-
-    monkeypatch.setattr(tensors, "file_sha256", scan)
-    assert weight_artifact_sha256(paths[0], release_cache=True) == expected
-    assert scanned == list(paths)
 
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])

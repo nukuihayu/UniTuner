@@ -16,11 +16,11 @@ from unitunner.data.datasets.restoration import AlignedImagePair, RestorationDat
 from unitunner.inference.restoration.vae import (
     decode_restoration_latents,
     encode_restoration_image,
-    load_restoration_vae,
     restoration_posterior,
 )
 from unitunner.logging import clear_context, set_context
 from unitunner.models.components.conditioning import Caption, batch_captions
+from unitunner.models.components.image_encoders import load_image_vae
 from unitunner.models.features.loading import load_dino_convnext, load_vgg19_features
 from unitunner.models.flux.conditioning import FluxTextFeatures
 from unitunner.models.flux2.vae import Flux2VAE
@@ -98,7 +98,7 @@ class RestorationMethod:
         self.phase_cycles = options.phase_cycles
         self.phase_epsilon = options.phase_epsilon
         status(f"[train] Loading restoration VAE: {config.model.vae}")
-        self.vae = load_restoration_vae(Path(config.model.vae), family=config.model.family, device=device)
+        self.vae = load_image_vae(Path(config.model.vae), family=config.model.family, device=device)
         status("[train] Restoration VAE loaded; installing encoder adapters")
         self.vae.compute_precision = self.compute_precision
         self.posterior: Literal["mean", "sample"] = restoration_posterior(config.model.family, options.posterior)

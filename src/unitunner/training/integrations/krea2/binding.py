@@ -16,8 +16,7 @@ from unitunner.models.krea2.conditioning import (
 from unitunner.models.krea2.projections import adapter_projections
 from unitunner.models.krea2.restoration import restore_latents
 from unitunner.models.krea2.transformer import Krea2Transformer
-from unitunner.training.contracts import StepResult
-from unitunner.training.integrations.common.image_flow import ImageFlowPrediction
+from unitunner.training.contracts import ImageFlowPrediction, StepResult
 from unitunner.training.losses.wavelet import WaveletLoss, image_flow_loss
 
 

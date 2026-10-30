@@ -15,11 +15,11 @@ from unitunner.execution.recompute import RecomputeInstallation
 from unitunner.models.flux3.conditioning import Flux3Sample, image_tokens, pack_samples, reference_tokens, text_tokens
 from unitunner.models.flux3.config.model import Flux3Config
 from unitunner.models.flux3.transformer import Flux3Transformer
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.flux3.binding import Flux3Binding, Flux3FlowRequest
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

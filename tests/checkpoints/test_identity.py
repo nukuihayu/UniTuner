@@ -66,7 +66,7 @@ def test_timestep_rounding_policy_is_pinned_only_for_low_precision(monkeypatch, 
     assert captured.get("timestep_precision_policy") == (None if precision == "fp32" else policy)
 
 
-def test_provenance_needs_no_deleted_cli_attributes():
+def test_provenance_serializes_training_metadata():
     provenance = Provenance(
         model_family="z-image",
         variant="base",
@@ -81,19 +81,6 @@ def test_provenance_needs_no_deleted_cli_attributes():
     metadata = provenance.metadata()
     assert all(isinstance(value, str) for value in metadata.values())
     assert json.loads(metadata["unitunner.provenance"])["completed_updates"] == 3
-
-
-def test_execution_defaults_pin_image_and_wan_numerical_identities():
-    """Pin compiler and dataset policies that determine numerical continuation."""
-    published = {
-        "flow.toml": "4a25dbfefe8fcbd2d79373c4bff09086cdce16fff09be0605866bb47bb5f314c",
-        "wan-flow.toml": "fa26924e6c17fe34393d041315943ab18546078347fb6f3ee1904899227f6aff",
-        "restoration.toml": "4d019406e108b2e8bb73d76228dd143c4f7b6fdf5364e91defd63d9dc5a159f4",
-    }
-    for name, expected in published.items():
-        config = load_training_config(EXAMPLE.with_name(name))
-        identity = build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)
-        assert identity.config_sha256 == expected
 
 
 def test_ffn_recompute_configuration_is_rejected():

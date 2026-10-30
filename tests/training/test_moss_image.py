@@ -12,12 +12,11 @@ from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
 from unitunner.execution.recompute import RecomputeInstallation
 from unitunner.models.moss_image.config.model import MossImageConfig
 from unitunner.models.moss_image.transformer import MossImageTransformer
+from unitunner.training.contracts import ImageFlowRequest, RunState
 from unitunner.training.engine import update_phase
-from unitunner.training.integrations.common.image_flow import ImageFlowRequest
 from unitunner.training.integrations.moss_image.binding import MossImageBinding
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

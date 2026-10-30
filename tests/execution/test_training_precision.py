@@ -19,11 +19,10 @@ from unitunner.config.execution import ExecutionConfig
 from unitunner.config.loading import load_training_config
 from unitunner.execution.installation import training_base_dtype
 from unitunner.execution.precision import artifact_precision, resolve_training_precision
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.engine import update_phase
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 
 @pytest.fixture(autouse=True)

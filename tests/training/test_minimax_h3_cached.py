@@ -32,10 +32,10 @@ from unitunner.models.minimax_h3.data.cache.storage import (
 )
 from unitunner.models.minimax_h3.loading import load_minimax_h3, save_minimax_h3
 from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.minimax_h3.binding import MiniMaxH3Binding, build_cached_request
 from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.state import RunState
 
 
 def test_named_image_video_groups_train_and_resume(tmp_path):

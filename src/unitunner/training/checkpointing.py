@@ -9,8 +9,8 @@ from torch import nn
 from unitunner.checkpoints.saving import OptimizerSet, save_checkpoint
 from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
 from unitunner.config.training import TrainingConfig
+from unitunner.training.contracts import RunState
 from unitunner.training.output import prune_checkpoints, resume_path
-from unitunner.training.state import RunState
 
 
 def save_training_update(

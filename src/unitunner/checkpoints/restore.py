@@ -12,10 +12,9 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 
 from unitunner.artifacts.tensors import TensorReader
-from unitunner.checkpoints.frozen_state import frozen_tensor_sha256
 from unitunner.checkpoints.saving import OptimizerSet, optimizer_roles, optimizer_signature
 from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.checkpoints.state_tree import StateValue, decode_state, string_mapping
+from unitunner.checkpoints.state_tree import StateValue, decode_state, frozen_tensor_sha256, string_mapping
 
 
 class CheckpointManifest(BaseModel):

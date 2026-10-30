@@ -5,79 +5,10 @@ import torch
 from torch import Tensor, nn
 
 from unitunner.artifacts.formats.precision import FloatingPrecision
-from unitunner.models.components.autoencoder import (
-    AutoencoderMiddle,
-    AutoencoderStage,
-    Downsample2d,
-    ResidualConvBlock,
-    Upsample2d,
-    swish,
-)
+from unitunner.models.components.autoencoder import AutoencoderDecoder, AutoencoderEncoder
 from unitunner.models.components.posterior import DiagonalPosterior
 from unitunner.models.flux.config.vae import FluxVAEConfig
 from unitunner.precision import compute_context
-
-
-class Encoder(nn.Module):
-    """Own native convolutional encoder keys without quant-convolution parameters."""
-
-    def __init__(self, config: FluxVAEConfig) -> None:
-        super().__init__()
-        self.conv_in = nn.Conv2d(config.in_channels, config.base_channels, 3, padding=1)
-        self.down = nn.ModuleList()
-        width = config.base_channels
-        for index, multiplier in enumerate(config.channel_multipliers):
-            output_width = config.base_channels * multiplier
-            blocks = nn.ModuleList()
-            for _ in range(config.layers_per_block):
-                blocks.append(ResidualConvBlock(width, output_width, config.norm_groups))
-                width = output_width
-            self.down.append(
-                AutoencoderStage(
-                    blocks, downsample=Downsample2d(width) if index < len(config.channel_multipliers) - 1 else None
-                )
-            )
-        self.mid = AutoencoderMiddle(width, config.norm_groups)
-        self.norm_out = nn.GroupNorm(config.norm_groups, width, eps=1e-6)
-        self.conv_out = nn.Conv2d(width, 2 * config.latent_channels, 3, padding=1)
-
-    def encode(self, pixels: Tensor) -> Tensor:
-        """Return native BCHW mean/log-variance moments with a complete gradient path."""
-        hidden = self.conv_in(pixels)
-        for stage in self.down:
-            hidden = stage(hidden)
-        return self.conv_out(swish(self.norm_out(self.mid(hidden))))
-
-    forward = encode
-
-
-class Decoder(nn.Module):
-    """Own native decoder stages indexed in checkpoint resolution order."""
-
-    def __init__(self, config: FluxVAEConfig) -> None:
-        super().__init__()
-        width = config.base_channels * config.channel_multipliers[-1]
-        self.conv_in = nn.Conv2d(config.latent_channels, width, 3, padding=1)
-        self.mid = AutoencoderMiddle(width, config.norm_groups)
-        self.up = nn.ModuleList()
-        for index in reversed(range(len(config.channel_multipliers))):
-            output_width = config.base_channels * config.channel_multipliers[index]
-            blocks = nn.ModuleList()
-            for _ in range(config.layers_per_block + 1):
-                blocks.append(ResidualConvBlock(width, output_width, config.norm_groups))
-                width = output_width
-            self.up.insert(0, AutoencoderStage(blocks, upsample=Upsample2d(width) if index else None))
-        self.norm_out = nn.GroupNorm(config.norm_groups, width, eps=1e-6)
-        self.conv_out = nn.Conv2d(width, config.out_channels, 3, padding=1)
-
-    def decode(self, latents: Tensor) -> Tensor:
-        """Return BCHW unclamped pixels from raw VAE latents."""
-        hidden = self.mid(self.conv_in(latents))
-        for stage in reversed(self.up):
-            hidden = stage(hidden)
-        return self.conv_out(swish(self.norm_out(hidden)))
-
-    forward = decode
 
 
 class FluxVAE(nn.Module):
@@ -96,8 +27,8 @@ class FluxVAE(nn.Module):
     def __init__(self, config: FluxVAEConfig) -> None:
         super().__init__()
         self.config = config
-        self.encoder = Encoder(config)
-        self.decoder = Decoder(config)
+        self.encoder = AutoencoderEncoder(config)
+        self.decoder = AutoencoderDecoder(config)
 
     def _validate(self, values: Tensor, channels: int) -> None:
         if values.ndim != 4 or min(values.shape) < 1 or values.shape[1] != channels or values.dtype != torch.float32:

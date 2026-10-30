@@ -18,6 +18,7 @@ from unitunner.config.cache import CacheConfig
 from unitunner.config.calibration import CalibrationConfig
 from unitunner.config.generation import GenerationConfig
 from unitunner.config.loading import (
+    VideoGenerationConfig,
     load_cache_config,
     load_calibration_config,
     load_generation_config,
@@ -27,7 +28,6 @@ from unitunner.config.loading import (
 )
 from unitunner.config.restoration_inference import RestorationInferenceConfig
 from unitunner.config.training import TrainingConfig
-from unitunner.config.video_generation import VideoGenerationConfig
 from unitunner.logging import (
     configure_logging,
     get_logger,

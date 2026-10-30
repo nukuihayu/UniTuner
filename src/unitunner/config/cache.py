@@ -5,13 +5,19 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from unitunner.config.cache_options import CacheOptions
 from unitunner.config.datasets import CacheDataConfig, CacheDatasetConfig, DatasetConfig
 from unitunner.config.diagnostics import ConfigRuleError
 from unitunner.config.features import RepaConfig
 from unitunner.config.model import EncoderModelConfig
 from unitunner.config.runtime import RuntimeConfig
 from unitunner.models.catalog import ModelFamily
+
+
+class CacheOptions(BaseModel):
+    """Set cache encoder batch size independently of training microbatches."""
+
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+    batch_size: int = Field(default=1, gt=0)
 
 
 class CacheConfig(BaseModel):

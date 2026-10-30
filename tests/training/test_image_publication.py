@@ -2,6 +2,7 @@
 
 import importlib.util
 import sys
+from importlib import import_module
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -52,11 +53,21 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
                 mask=None,
             )
         monkeypatch.setitem(sys.modules, conditioning.__name__, conditioning)
-    path = Path(__file__).parents[2] / f"src/unitunner/training/integrations/{family}/previews.py"
+    relative = "training/previews/flow.py" if cached else f"training/integrations/{family}/previews.py"
+    path = Path(__file__).parents[2] / "src/unitunner" / relative
     spec = importlib.util.spec_from_file_location(f"preview_contract_{family}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    model = nn.Linear(1, 1)
+    if cached:
+        stem = {"flux": "Flux", "flux2": "Flux2", "flux3": "Flux3", "moss_image": "MossImage", "z_image": "ZImage"}[
+            family
+        ]
+        cls = getattr(import_module(f"unitunner.models.{family}.transformer"), stem + "Transformer")
+        model = cls.__new__(cls)
+        nn.Module.__init__(model)
+        model.register_parameter("device_marker", nn.Parameter(torch.zeros(1)))
+    else:
+        model = nn.Linear(1, 1)
     model.config = SimpleNamespace(
         variant="base",
         version="dev",
@@ -129,3 +140,47 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
                 suffix = "" if layer == 0 else f".layer-{layer:03d}"
                 expected.append((f"step-{update:08d}-{index:02d}{suffix}.png", rounding))
     assert saved == expected
+
+
+@pytest.mark.parametrize(
+    "family,stem,variant,negative,expected_negative",
+    [
+        ("flux", "Flux", "dev", "ignored", None),
+        ("flux2", "Flux2", "base", None, " "),
+        ("flux2", "Flux2", "distilled", None, None),
+        ("flux2", "Flux2", "distilled", "", ""),
+        ("flux3", "Flux3", "base", None, ""),
+        ("flux3", "Flux3", "distilled", None, None),
+        ("flux3", "Flux3", "distilled", "negative", "negative"),
+        ("moss_image", "MossImage", "base", None, ""),
+        ("moss_image", "MossImage", "edit", "negative", "negative"),
+        ("z_image", "ZImage", "turbo", None, None),
+        ("z_image", "ZImage", "base", None, None),
+        ("z_image", "ZImage", "turbo", "", ""),
+    ],
+)
+def test_cached_preview_keeps_native_negative_prompt_policy(
+    monkeypatch, family, stem, variant, negative, expected_negative
+):
+    from unitunner.training.previews import flow
+
+    cls = getattr(import_module(f"unitunner.models.{family}.transformer"), stem + "Transformer")
+    model = cls.__new__(cls)
+    nn.Module.__init__(model)
+    model.config = SimpleNamespace(variant=variant, version="dev")
+    calls = []
+    caption = Caption(torch.zeros(1, 2, 4))
+
+    def encode(prompt):
+        calls.append(prompt)
+        return caption
+
+    text = SimpleNamespace(encode_prompt=encode, encode=lambda prompts: encode(prompts[0]))
+    monkeypatch.setattr(flow, "load_image_text", lambda *a, **k: text)
+    config = SimpleNamespace(
+        model=SimpleNamespace(family=family.replace("_", "-"), variant=variant, version="dev", text_encoder="text"),
+        preview=SimpleNamespace(samples=[SimpleNamespace(prompt="positive", negative_prompt=negative)]),
+    )
+    captions = flow.ImagePreviews(config, model).load_captions()
+    assert calls == (["positive"] if expected_negative is None else ["positive", expected_negative])
+    assert captions == ((caption, None if expected_negative is None else caption),)

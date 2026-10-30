@@ -18,8 +18,7 @@ from unitunner.models.flux3.conditioning import (
 from unitunner.models.flux3.projections import adapter_projections
 from unitunner.models.flux3.restoration import restore_latents
 from unitunner.models.flux3.transformer import Flux3Transformer
-from unitunner.training.contracts import StepResult
-from unitunner.training.integrations.common.image_flow import ImageFlowPrediction
+from unitunner.training.contracts import ImageFlowPrediction, StepResult
 from unitunner.training.losses.wavelet import WaveletLoss, image_flow_loss
 
 

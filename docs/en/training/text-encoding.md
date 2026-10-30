@@ -50,7 +50,7 @@ Omit `source` to use the defaults above, or `revision` to use the repository def
 
 FLUX accepts a separate `[model.text.clip_tokenizer]` table; Qwen Image accepts `[model.text.processor]`, both with the same fields. When omitted, these sources inherit the primary offline flag; set revisions separately. An explicit Qwen Image primary `source` also supplies its processor unless the processor table is provided, so that directory must contain complete processor assets. Other multimodal families use the primary tokenizer table for their complete processor.
 
-MOSS Image, FLUX3 and Qwen Image 2.1 retain their local text directory defaults and accept explicit overrides. Wan no longer requires `model.assets/tokenizer`. MiniMaxH3 `text_processor` is optional; prefer the tokenizer table in new configurations. Cache identity includes actual vocabulary, template and processor contents: rerun cache after changing them.
+MOSS Image, FLUX3 and Qwen Image 2.1 retain their local text directory defaults and accept explicit overrides. Wan selects vocabulary through the tokenizer table. MiniMaxH3 `text_processor` is optional. Cache identity includes actual vocabulary, template and processor contents: rerun cache after changing them.
 
 ## Quantize before encoding
 

@@ -45,11 +45,7 @@ def load_flux3(
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
 ) -> Flux3Transformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError("FLUX3 native loading supports FP32, FP16 or BF16")
     config = resolve_transformer_config(

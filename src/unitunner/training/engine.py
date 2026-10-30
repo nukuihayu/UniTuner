@@ -1,7 +1,8 @@
-"""Run sample-correct optimizer phases and shared local flow update scheduling."""
+"""Run sample-correct optimizer phases and shared training update scheduling."""
 
 import math
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
+from contextlib import closing, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
@@ -11,17 +12,18 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 
 from unitunner.artifacts.formats.precision import FloatingPrecision
+from unitunner.checkpoints.saving import OptimizerSet, optimizer_roles
 from unitunner.checkpoints.schema import ResumeIdentity
 from unitunner.config.training import TrainingConfig
 from unitunner.logging import set_context
 from unitunner.precision import FLOAT_DTYPES
+from unitunner.progress import status
 from unitunner.training.checkpointing import save_training_update
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.optimizers.gradients import normalize_gradients
 from unitunner.training.optimizers.schedules import apply_learning_rate
 from unitunner.training.progress import TrainingProgress
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 from unitunner.training.telemetry import TrainingTelemetry
 from unitunner.training.update_schedule import UpdateSchedule
 
@@ -179,16 +181,16 @@ def update_phases(
     }
 
 
-def run_flow_updates(
+def run_updates(
     config: TrainingConfig,
     steps: Callable[[], Iterable[StepResult]],
     *,
-    optimizer: Optimizer,
+    optimizer: OptimizerSet,
     modules: Mapping[str, nn.Module],
     state: RunState,
     identity: ResumeIdentity,
     device: torch.device,
-    weights_writer: Callable[[int], None],
+    weights_writer: Callable[[int], object],
     preview_writer: Callable[[int], None] | None = None,
 ) -> RunState:
     """Advance a restored local run without owning model loading or noise sampling.
@@ -204,33 +206,39 @@ def run_flow_updates(
     output = Path(config.output.directory)
     output.mkdir(parents=True, exist_ok=True)
     schedule = UpdateSchedule.from_config(config)
+    optimizers = optimizer_roles(optimizer)
     with TrainingSession() as session:
         telemetry = session.own(
             TrainingTelemetry(
                 config.output.tensorboard, state, name=config.output.name, run_name=config.output._run_name
             )
         )
+        if schedule.initial_preview_due(state.updates) and preview_writer is not None:
+            status("[train] Rendering initial preview")
+            preview_writer(0)
+        status(f"[train] Ready; accumulation={config.train.accumulation_steps}, max_updates={config.train.max_updates}")
         progress = session.own(
             TrainingProgress(config.train.max_updates, initial=state.updates, interval=config.output.log_every_seconds)
         )
-        if schedule.initial_preview_due(state.updates) and preview_writer is not None:
-            preview_writer(0)
         while state.updates < config.train.max_updates:
             if device.type == "cuda":
                 torch.cuda.reset_peak_memory_stats(device)
             started = monotonic()
-            apply_learning_rate(config.train, state.updates, (optimizer,))
-            result = update_phase(
-                steps(),
-                optimizer,
-                state,
-                max_grad_norm=config.train.max_grad_norm,
-                precision=precision,
-                fp16_loss_scale=config.execution.fp16_loss_scale,
-            )
-            scalars = telemetry.record({"main": result}, {"main": optimizer}, state, monotonic() - started, device)
+            apply_learning_rate(config.train, state.updates, optimizers.values())
+            group = steps()
+            with closing(group) if isinstance(group, Generator) else nullcontext(group) as update_steps:
+                results = update_phases(
+                    update_steps,
+                    optimizers,
+                    state,
+                    max_grad_norm=config.train.max_grad_norm,
+                    precision=precision,
+                    fp16_loss_scale=config.execution.fp16_loss_scale,
+                )
+            scalars = telemetry.record(results, optimizers, state, monotonic() - started, device)
             progress.report(state.updates, state.samples, scalars)
             if schedule.save_due(state.updates):
+                status(f"[train] Saving checkpoint at update {state.updates}")
                 save_training_update(
                     config,
                     modules=modules,
@@ -241,6 +249,7 @@ def run_flow_updates(
                     weights_writer=weights_writer,
                 )
             if schedule.preview_due(state.updates) and preview_writer is not None:
+                status(f"[train] Rendering preview at update {state.updates}")
                 preview_writer(state.updates)
     return state
 

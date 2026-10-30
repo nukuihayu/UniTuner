@@ -22,8 +22,8 @@ def timestep_embedding(timesteps: Tensor) -> Tensor:
     return torch.cat((angles.cos(), angles.sin()), dim=-1).to(timesteps)
 
 
-def rotary_embedding(ids: Tensor, axes: tuple[int, int, int], theta: int) -> Tensor:
-    """Return Bx1xLx(D/2)x2x2 rotation matrices from BxLx3 positions.
+def rotary_embedding(ids: Tensor, axes: tuple[int, ...], theta: int) -> Tensor:
+    """Return Bx1xLx(D/2)x2x2 rotation matrices from per-axis positions.
 
     Native frequencies and trigonometry are FP64, then matrices are rounded to
     FP32. Position tensors and their gradients remain caller-owned.

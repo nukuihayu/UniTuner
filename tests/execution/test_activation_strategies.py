@@ -12,9 +12,9 @@ from unitunner.config.execution import ExecutionConfig
 from unitunner.execution.activations import AttentionActivations
 from unitunner.execution.allocator_bootstrap import vbar_initialized
 from unitunner.execution.installation import ExecutionInstallation
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 
 @pytest.mark.parametrize("family", FAMILIES)

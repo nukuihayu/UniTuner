@@ -12,8 +12,7 @@ from unitunner.models.qwen_image_2_1.data.cache.storage import QwenImage21CacheR
 from unitunner.models.qwen_image_2_1.projections import adapter_projections
 from unitunner.models.qwen_image_2_1.restoration import restore_latents
 from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unitunner.training.contracts import StepResult
-from unitunner.training.integrations.common.image_flow import ImageFlowPrediction
+from unitunner.training.contracts import ImageFlowPrediction, StepResult
 from unitunner.training.losses.wavelet import WaveletLoss, image_flow_loss
 
 

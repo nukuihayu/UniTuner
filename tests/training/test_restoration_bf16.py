@@ -27,6 +27,7 @@ from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
 from unitunner.models.z_image.config.vae import ZImageVAEConfig
 from unitunner.models.z_image.loading import save_z_image_vae
 from unitunner.models.z_image.vae import ZImageVAE
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.losses.adversarial import frozen_discriminator, gan_loss
 from unitunner.training.losses.frequency_distribution import FrequencyDistributionLoss
@@ -34,7 +35,6 @@ from unitunner.training.losses.perceptual import DinoPerceptualLoss
 from unitunner.training.methods.discriminator import MultilevelDiscriminator
 from unitunner.training.methods.restoration import RestorationMethod
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 FAMILIES = ["z-image", "flux", "flux2", "flux3", "moss-image", "qwen-image", "qwen-image-2-1", "krea2"]
 

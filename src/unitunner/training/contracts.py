@@ -1,8 +1,38 @@
-"""Describe one loss phase without coupling methods to parameter selection."""
+"""Define shared image-flow data, update results and training counters."""
 
 from dataclasses import dataclass, field
 
 from torch import Tensor
+
+
+@dataclass(slots=True)
+class RunState:
+    """Count consumed microbatches, samples and successful optimizer updates."""
+
+    updates: int = 0
+    microbatches: int = 0
+    samples: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ImageFlowRequest:
+    """Carry normalized BCHW latents, B noise fractions and BLD captions."""
+
+    latents: Tensor
+    noise: Tensor
+    sigma: Tensor
+    captions: Tensor
+    caption_mask: Tensor | None = None
+    references: tuple[Tensor, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ImageFlowPrediction:
+    """Carry native velocity, target and timesteps without detaching."""
+
+    prediction: Tensor
+    target: Tensor
+    timesteps: Tensor
 
 
 @dataclass(frozen=True, slots=True)
@@ -10,8 +40,8 @@ class StepResult:
     """Carry a scalar mean loss and actual sample count for one update phase.
 
     The caller retains the graph only until backward. Unequal microbatch sizes
-    are normalized by sample count. GAN phases call the engine separately for
-    their respective optimizer; no multi-phase restoration method is implied.
+    are normalized by sample count. Named phases select disjoint optimizers
+    within the same completed data update.
     """
 
     loss: Tensor

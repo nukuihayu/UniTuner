@@ -1,4 +1,4 @@
-"""Validate restoration sources once without retaining payloads or changing resume hashes."""
+"""Validate restoration sources without reading cached tensor payloads."""
 
 import hashlib
 
@@ -14,7 +14,7 @@ from unitunner.data.degradation.config import DegradationConfig
 
 @pytest.fixture
 def dataset(tmp_path):
-    high, low, entries, records = [], [], [], []
+    high, low, entries = [], [], []
     cache = tmp_path / "cache"
     for index in range(3):
         hq, lq = tmp_path / f"{index}.png", tmp_path / f"{index}.jpg"
@@ -32,18 +32,15 @@ def dataset(tmp_path):
         entries.append(entry)
         high.append(hq)
         low.append(lq)
-        records.append({"high": source, "low": file_sha256(lq), "cache": entry.sha256})
     storage.save_latent_manifest(storage.LatentManifest(entries=tuple(entries)), cache)
-    return tuple(high), tuple(low), cache, records
+    return tuple(high), tuple(low), cache
 
 
 @pytest.mark.parametrize("synthetic", (False, True))
 @pytest.mark.parametrize("workers", (1, 4))
-def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(dataset, monkeypatch, synthetic, workers):
-    high, low, cache, records = dataset
+def test_streaming_index_validates_each_header_once(dataset, monkeypatch, synthetic, workers):
+    high, low, cache = dataset
     degradation = DegradationConfig(enabled=True) if synthetic else None
-    if synthetic:
-        records = [{**row, "low": None} for row in records]
     reader = storage.TensorReader
     opened = []
     scanned = []
@@ -64,25 +61,18 @@ def test_streaming_index_preserves_legacy_digest_and_validates_each_header_once(
     monkeypatch.setattr(reader, "read", no_payload)
     monkeypatch.setattr(storage, "file_sha256", scan)
     monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
-    pairs, digest = index_restoration_pairs(
+    pairs, _ = index_restoration_pairs(
         high, None if synthetic else low, cache, family="z-image", degradation=degradation, validation_workers=workers
     )
     assert len(opened) == len(high)
     assert len(scanned) == len(high) * (2 if synthetic else 3)
     assert [pair.high for pair in pairs] == list(high)
     assert [pair.low for pair in pairs] == ([None] * len(high) if synthetic else list(low))
-    assert digest == canonical_sha256(
-        {
-            "schema": "restoration-images-random-delivery-3" if synthetic else "restoration-images-2",
-            "entries": records,
-            "degradation": None if degradation is None else degradation.model_dump(mode="json"),
-        }
-    )
 
 
 @pytest.mark.parametrize("changed", ("image", "caption", "record", "count", "duplicate", "family", "layout"))
 def test_index_still_rejects_invalid_sources_and_caches(dataset, changed):
-    high, low, cache, _ = dataset
+    high, low, cache = dataset
     family = "z-image"
     if changed == "image":
         high[0].write_bytes(b"changed")
@@ -112,11 +102,11 @@ def test_index_still_rejects_invalid_sources_and_caches(dataset, changed):
 
 
 @pytest.mark.parametrize("synthetic", (False, True))
-def test_trusted_index_skips_full_scans_and_preserves_resume_digest(dataset, monkeypatch, synthetic):
-    high, low, cache, _ = dataset
+def test_trusted_index_skips_full_scans(dataset, monkeypatch, synthetic):
+    high, low, cache = dataset
     degradation = DegradationConfig(enabled=True) if synthetic else None
     kwargs = {"family": "z-image", "degradation": degradation}
-    expected, digest = index_restoration_pairs(high, None if synthetic else low, cache, **kwargs)
+    expected, _ = index_restoration_pairs(high, None if synthetic else low, cache, **kwargs)
     scans = []
 
     def scan(path, **options):
@@ -134,16 +124,14 @@ def test_trusted_index_skips_full_scans_and_preserves_resume_digest(dataset, mon
     monkeypatch.setattr("unitunner.data.datasets.restoration.file_sha256", scan)
     monkeypatch.setattr("unitunner.data.datasets.restoration.validate_latent_entry", no_validation)
     monkeypatch.setattr(storage.TensorReader, "read", no_validation)
-    actual, actual_digest = index_restoration_pairs(
-        high, None if synthetic else low, cache, skip_validation=True, **kwargs
-    )
-    assert actual == expected and actual_digest == digest
+    actual, _ = index_restoration_pairs(high, None if synthetic else low, cache, skip_validation=True, **kwargs)
+    assert actual == expected
     assert sorted(scans) == ([] if synthetic else sorted(low))
 
 
 @pytest.mark.parametrize("changed", ("count", "duplicate", "family"))
 def test_trusted_index_keeps_structural_checks(dataset, changed):
-    high, low, cache, _ = dataset
+    high, low, cache = dataset
     family = "z-image"
     if changed == "count":
         high, low = high[:-1], low[:-1]
@@ -159,7 +147,7 @@ def test_trusted_cached_image_index_skips_hashes_but_preserves_batches(dataset, 
     from unitunner.config.datasets import DataConfig, DatasetConfig
     from unitunner.data.datasets import cached_images
 
-    _, _, cache, _ = dataset
+    _, _, cache = dataset
     config = DataConfig(groups={"main": DatasetConfig(source="unused", cache_directory=str(cache))})
     kwargs = {"family": "z-image", "variant": "turbo", "version": None}
     expected = cached_images.index_cached_images(config, **kwargs)

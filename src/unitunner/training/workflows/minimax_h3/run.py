@@ -34,8 +34,8 @@ from unitunner.models.minimax_h3.data.cache.storage import (
 )
 from unitunner.models.minimax_h3.loading import load_minimax_h3, save_minimax_h3
 from unitunner.precision import FLOAT_DTYPES
-from unitunner.training.contracts import StepResult
-from unitunner.training.engine import run_flow_updates
+from unitunner.training.contracts import RunState, StepResult
+from unitunner.training.engine import run_updates
 from unitunner.training.integrations.minimax_h3.binding import MiniMaxH3Binding
 from unitunner.training.integrations.minimax_h3.inputs import sample_minimax_h3_request
 from unitunner.training.objectives import align_steps, install_objectives
@@ -44,7 +44,6 @@ from unitunner.training.output import publish_latest_weights, weights_path
 from unitunner.training.parameters import ParameterGroup, ParameterInstallation
 from unitunner.training.publishing import publish_adapter
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 if TYPE_CHECKING:
     from unitunner.training.integrations.minimax_h3.previews import AudioVideoPreviews
@@ -229,7 +228,7 @@ def train_minimax_h3(config: TrainingConfig, *, device: torch.device, resume: Pa
 
             publish_latest_weights(config, update)
 
-        run_flow_updates(
+        run_updates(
             config,
             lambda: align_steps(steps, alignment),
             optimizer=optimizer,

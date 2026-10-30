@@ -10,12 +10,11 @@ from unitunner.checkpoints.restore import restore_checkpoint
 from unitunner.checkpoints.schema import build_resume_identity
 from unitunner.config.loading import load_training_config
 from unitunner.training import checkpointing
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.engine import update_phases
 from unitunner.training.optimizers.adamw import create_adamw
 from unitunner.training.output import resume_path
 from unitunner.training.parameters import ParameterGroup
-from unitunner.training.state import RunState
 
 EXAMPLE = Path(__file__).parents[2] / "docs/examples/full.toml"
 

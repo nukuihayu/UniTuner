@@ -113,6 +113,6 @@ def test_adapter_publication_matches_explicit_assembly(tmp_path, algorithm, layo
             alpha=7.0,
             lora_module_identifier="networks.test",
         )
-        info.update({"layout": layout, "modelspec.title": "override"})
+        info.update({"layout": layout, "modelspec.title": "override", "unitunner.adapter.format": "comfyui"})
         with TensorReader(path) as reader:
             assert reader.metadata() == info

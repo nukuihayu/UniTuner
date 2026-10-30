@@ -26,10 +26,7 @@ def save_minimax_h3(
     metadata: Mapping[str, str] | None = None,
     dtype: torch.dtype | None = None,
 ) -> None:
-    """Atomically export native tensors, provenance and authoritative topology metadata.
-
-    Optional dtype casts only published floating tensors; live weights stay intact.
-    """
+    """Atomically export native weights and topology, casting only published floating tensors."""
     save_tensors(
         model.state_dict(),
         path,
@@ -47,11 +44,7 @@ def load_minimax_h3(
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
 ) -> MiniMaxH3Transformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError("MiniMaxH3 transformer requires FP32/FP16/BF16 loading")
     config = resolve_transformer_config(

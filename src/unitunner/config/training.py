@@ -4,7 +4,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from unitunner.config.cache_options import CacheOptions
+from unitunner.config.cache import CacheOptions
 from unitunner.config.datasets import DataConfig
 from unitunner.config.diagnostics import ConfigRuleError
 from unitunner.config.execution import ExecutionConfig

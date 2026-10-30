@@ -32,7 +32,7 @@ def test_omitted_directory_shares_execution_name_with_logs_and_tensorboard(tmp_p
     executions = []
 
     def run(config, **kwargs):
-        from unitunner.training.state import RunState
+        from unitunner.training.contracts import RunState
         from unitunner.training.telemetry import TrainingTelemetry
 
         output = Path(config.output.directory)

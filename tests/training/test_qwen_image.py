@@ -15,11 +15,11 @@ from unitunner.execution.recompute import RecomputeInstallation
 from unitunner.models.qwen_image.conditioning import pack_latents, unpack_latents
 from unitunner.models.qwen_image.config.model import QwenImageConfig
 from unitunner.models.qwen_image.transformer import QwenImageTransformer
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.qwen_image.binding import QwenImageBinding, QwenImageFlowRequest
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

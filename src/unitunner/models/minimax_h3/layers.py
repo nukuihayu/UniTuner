@@ -26,7 +26,6 @@ class TimeEmbedder(nn.Module):
         *,
         device: torch.device | str | None = None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.input_dim = input_dim
         self.proj_in = nn.Linear(input_dim, hidden_size, dtype=torch.float32, device=device)
@@ -61,7 +60,6 @@ class AdalnProj(nn.Module):
         apply_silu: bool = True,
         device: torch.device | str | None = None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.expand = expand
         self.modalities = modalities
@@ -78,7 +76,6 @@ class AdalnProj(nn.Module):
         self.activation = nn.SiLU()
 
     def project(self, timestep_embeddings: Tensor) -> tuple[Tensor, ...]:
-        """Apply native ordered projection groups without changing tensor ownership."""
         if self.apply_silu:
             timestep_embeddings = self.activation(timestep_embeddings)
         projected = self.linear(timestep_embeddings)
@@ -126,7 +123,6 @@ class Attention(nn.Module):
         dtype: torch.dtype,
         device: torch.device | str | None = None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = head_dim
@@ -181,14 +177,12 @@ class MLP(nn.Module):
         dtype: torch.dtype,
         device: torch.device | str | None = None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.fc1 = nn.Linear(hidden_size, ffn_hidden_size * 2, bias=False, dtype=dtype, device=device)
         self.fc2 = nn.Linear(ffn_hidden_size, hidden_size, bias=False, dtype=dtype, device=device)
         self.activation = nn.SiLU()
 
     def project(self, hidden_states: Tensor) -> Tensor:
-        """Apply native ordered projection groups without changing tensor ownership."""
         gate, values = self.fc1(hidden_states).chunk(2, dim=-1)
         return self.fc2(self.activation(gate) * values)
 
@@ -205,7 +199,6 @@ class RefinerBlock(nn.Module):
         dtype: torch.dtype,
         device: torch.device | str | None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.norm1 = nn.RMSNorm(config.hidden_size, eps=config.norm_eps, dtype=dtype, device=device)
         self.norm2 = nn.RMSNorm(config.hidden_size, eps=config.norm_eps, dtype=dtype, device=device)
@@ -220,7 +213,6 @@ class RefinerBlock(nn.Module):
         self.mlp = MLP(config.hidden_size, config.ffn_hidden_size, dtype=dtype, device=device)
 
     def refine(self, hidden_states: Tensor) -> Tensor:
-        """Apply native residual updates in their original arithmetic order."""
         hidden_states = hidden_states + self.attn(self.norm1(hidden_states))
         return hidden_states + self.mlp(self.norm2(hidden_states))
 
@@ -237,7 +229,6 @@ class TokenRefiner(nn.Module):
         dtype: torch.dtype,
         device: torch.device | str | None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.blocks = nn.ModuleList(
             [RefinerBlock(config, dtype=dtype, device=device) for _ in range(config.token_refiner_num_layers)]
@@ -245,7 +236,6 @@ class TokenRefiner(nn.Module):
         self.final_norm = nn.RMSNorm(config.hidden_size, eps=config.final_norm_eps, dtype=dtype, device=device)
 
     def refine(self, hidden_states: Tensor) -> Tensor:
-        """Apply native residual updates in their original arithmetic order."""
         for block in self.blocks:
             hidden_states = block(hidden_states)
         return self.final_norm(hidden_states)
@@ -297,7 +287,6 @@ class DiTBlock(nn.Module):
         dtype: torch.dtype,
         device: torch.device | str | None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.norm1 = nn.RMSNorm(config.hidden_size, eps=config.norm_eps, dtype=dtype, device=device)
         self.norm2 = nn.RMSNorm(config.hidden_size, eps=config.norm_eps, dtype=dtype, device=device)
@@ -327,7 +316,6 @@ class DiTBlock(nn.Module):
         modulation_segments: tuple[tuple[int, int, int], ...],
         rotation_table: Tensor,
     ) -> Tensor:
-        """Apply native residual updates in their original arithmetic order."""
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaln_proj(timestep_embeddings)
         normalized = _mod_scale_shift(self.norm1(hidden_states), shift_msa, scale_msa, modulation_segments)
         hidden_states = _mod_gate(
@@ -357,7 +345,6 @@ class FinalLayer(nn.Module):
         apply_silu: bool = True,
         device: torch.device | str | None = None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.norm = nn.RMSNorm(hidden_size, eps=norm_eps, dtype=dtype, device=device)
         self.adaln_proj = AdalnProj(
@@ -382,7 +369,6 @@ class FinalLayer(nn.Module):
         video_timestep_index: int,
         audio_timestep_index: int,
     ) -> tuple[Tensor, Tensor]:
-        """Apply native ordered projection groups without changing tensor ownership."""
         shift, scale = self.adaln_proj(timestep_embeddings)
         video = self.norm(hidden_states[:, video_slice])
         video = video * (1.0 + scale[video_timestep_index]) + shift[video_timestep_index]
@@ -400,7 +386,6 @@ class RotationFrequencies(nn.Module):
     inv_freq: Tensor
 
     def __init__(self, length: int, device: torch.device | str | None) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.register_buffer(
             "inv_freq", 10000.0 ** (-torch.arange(length, dtype=torch.float32, device=device) / length)

@@ -6,7 +6,7 @@
 
 UniTunner separates native model computation, training methods, execution policies, and external artifacts. Models share orchestration while retaining native conditioning, time units, prediction direction, and weight semantics.
 
-Training and output schemas live in `config/train.py` and `config/output.py`; `config/training.py` composes them. `training_validation.py` checks run policy and previews once, then validates each dataset group. Floating precision names are compute-free contracts in `artifacts/formats/precision.py`, with runtime dtypes and contexts in `precision.py`. Image training assembly and publication belong to `training/integrations/image_models.py` and `image_publication.py`. Shared previews import only the selected family when needed, keeping text providers optional for restoration previews.
+Training and output schemas live in `config/train.py` and `config/output.py`; `config/training.py` composes them. `training_validation.py` checks run policy and previews once, then validates each dataset group. Floating precision names are compute-free contracts in `artifacts/formats/precision.py`, with runtime dtypes and contexts in `precision.py`. Image model loading lives in `models/image.py`; training bindings and publication live in `training/integrations/image_models.py` and `image_publication.py`. Shared previews import only the selected family when needed, keeping text providers optional for restoration previews.
 
 <details>
 <summary>On this page</summary>
@@ -18,7 +18,7 @@ Training and output schemas live in `config/train.py` and `config/output.py`; `c
 - [Configuration, caches, and artifacts](#configuration-caches-and-artifacts)
 - [Weight quantization ownership](#weight-quantization-ownership)
 - [Resource lifecycle](#resource-lifecycle)
-- [Validation scope](#validation-scope)
+- [Validation](#validation)
 
 </details>
 
@@ -42,7 +42,7 @@ src/unitunner/
 tests/
 ├── config/          # Configuration boundaries and combinations
 ├── models/          # Native formulas, layouts, and gradients
-├── comparison/      # External format checks and optional allocator test entry
+├── comparison/      # Optional allocator test entry
 └── support/         # Shared test assets and assertions
 
 docs/
@@ -125,15 +125,10 @@ Recomputation, compilation, and residency install through named native regions a
 
 Feature capture covers only the current forward, without duplicate capture during recomputation or graph retention across updates. Previews isolate RNG and do not advance the training cursor. Checkpoints are saved at completed update boundaries; restore validates model, configuration, and cache identity before restoring live state.
 
-## Validation scope
+## Validation
 
-Tests cover formulas, gradients, updates, and resource lifecycles. Model and execution changes should cover their numerical formulas, gradients, and resource cleanup.
+Tests cover model formulas, gradients, weight formats, training updates and resource cleanup.
 
-`models/components/text_loading.py` owns shared text loading: validate complete source inventories and logical shapes, materialize selected branches, and reuse quantized linears and GPU preparation. Family loaders retain namespace, tied-weight, rotary-buffer, and feature-selection ownership. Independent `config/text.py` settings enter conditioning-cache identity without changing VAE precision. T5 output projections inspect logical floating dtypes when casting activations.
-
-`data/build.py` owns publication staging and dispatch. `data/production/` separates image, Wan and H3 assembly, while `image_encoders.py` owns image encoder resources. `models/components/text_artifacts.py` selects numerical text-policy identity fields. Restoration text encoding lives in `inference/restoration/text.py` and loads only the selected native provider.
-
-`config/optimizer.py` owns AdamW numerical and backend options for all four construction sites. `training/update_schedule.py` decides initial, periodic and final publication/preview boundaries. `training/checkpointing.py` orders weights, resume snapshot and retention pruning. The engine retains gradient mathematics and phase order; workflows retain logging and model-specific preview callbacks.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Describe provenance without reading legacy CLI attributes or controlling training."""
+"""Serialize training provenance for published artifacts."""
 
 from typing import Literal
 

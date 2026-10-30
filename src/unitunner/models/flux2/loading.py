@@ -6,14 +6,14 @@ from typing import Literal
 
 import torch
 
-from unitunner.artifacts.formats.autoencoder import native_autoencoder_key
 from unitunner.artifacts.formats.transformer import convert_transformer
-from unitunner.artifacts.tensors import TensorReader, iter_tensors, save_tensors
+from unitunner.artifacts.tensors import TensorReader, save_tensors
 from unitunner.models.components.state_loading import load_model_state
 from unitunner.models.components.transformer_artifacts import (
     resolve_transformer_config,
     transformer_tensors,
 )
+from unitunner.models.components.vae_loading import flux_vae_tensors, load_vae_state
 from unitunner.models.flux2.config.model import Flux2Config
 from unitunner.models.flux2.config.vae import Flux2VAEConfig
 from unitunner.models.flux2.transformer import Flux2Transformer
@@ -58,46 +58,17 @@ def load_flux2_vae(
         raise ValueError("Explicit FLUX.2 vae topology differs from artifact metadata")
     with torch.device("meta"):
         vae = Flux2VAE(config)
-    expected = vae.state_dict()
-    tensors: dict[str, torch.Tensor] = {}
-    source = dict(iter_tensors(path))
-    if source_format == "auto":
-        if not prefix and source and all(key.startswith("vae.") for key in source):
-            prefix = "vae."
-        source_format = "diffusers" if prefix + "encoder.down_blocks.0.resnets.0.norm1.weight" in source else "native"
-    for original, tensor in source.items():
-        if not original.startswith(prefix):
-            raise ValueError(f"FLUX.2 vae key lacks selected prefix: {original}")
-        key = original[len(prefix) :]
-        if source_format == "diffusers":
-            key = native_autoencoder_key(key, len(config.channel_multipliers))
-            if ".attn_1." in key and tensor.ndim == 2:
-                tensor = tensor[:, :, None, None]
-        if key in tensors:
-            raise ValueError(f"Duplicate converted FLUX.2 vae tensor: {key}")
-        tensors[key] = tensor
+    tensors, source_format = flux_vae_tensors(
+        path,
+        stages=len(config.channel_multipliers),
+        source_format=source_format,
+        prefix=prefix,
+        label="FLUX.2 vae",
+    )
     if source_format == "diffusers" and "bn.num_batches_tracked" not in tensors:
         tensors["bn.num_batches_tracked"] = torch.tensor(0, dtype=torch.int64, device="cpu")
-    if tensors.keys() != expected.keys():
-        raise ValueError(
-            f"FLUX.2 vae keys differ: missing={sorted(expected.keys() - tensors.keys())}, extra={sorted(tensors.keys() - expected.keys())}"
-        )
-    for key, value in tensors.items():
-        if value.shape != expected[key].shape:
-            raise ValueError(f"FLUX.2 vae tensor shape mismatch: {key}")
-        if key == "bn.num_batches_tracked":
-            if value.dtype != torch.int64 or value < 0:
-                raise ValueError("FLUX.2 vae BN update counter must be a nonnegative int64 scalar")
-        elif (
-            not value.is_floating_point() or not torch.isfinite(value).all() or not torch.isfinite(value.float()).all()
-        ):
-            raise ValueError(f"FLUX.2 vae requires finite FP32-convertible weights: {key}")
-        if key == "bn.running_var" and (value < 0).any():
-            raise ValueError("FLUX.2 vae running variance must be nonnegative")
-    vae.load_state_dict(
-        {key: value.to(device=device, dtype=expected[key].dtype) for key, value in tensors.items()},
-        strict=True,
-        assign=True,
+    load_vae_state(
+        vae, tensors, device=device, label="FLUX.2 vae", nonnegative=("bn.running_var", "bn.num_batches_tracked")
     )
     return vae
 
@@ -131,11 +102,7 @@ def load_flux2(
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
 ) -> Flux2Transformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError("FLUX.2 native loading supports FP32, FP16 or BF16")
     config = resolve_transformer_config(

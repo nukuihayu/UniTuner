@@ -30,6 +30,7 @@ from unitunner.models.krea2.transformer import Krea2Transformer
 from unitunner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
 from unitunner.models.qwen_image_2_1.config.model import QwenImage21Config
 from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.krea2.binding import Krea2Binding, Krea2FlowRequest
 from unitunner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding, QwenImage21FlowRequest
@@ -37,7 +38,6 @@ from unitunner.training.integrations.wan.binding import WanFlowRequest
 from unitunner.training.integrations.z_image.binding import ZImageBinding
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 FAMILIES = [
     "flux",

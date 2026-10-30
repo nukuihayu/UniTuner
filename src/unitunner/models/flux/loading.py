@@ -6,14 +6,14 @@ from typing import Literal
 
 import torch
 
-from unitunner.artifacts.formats.autoencoder import native_autoencoder_key
 from unitunner.artifacts.formats.transformer import convert_transformer
-from unitunner.artifacts.tensors import TensorReader, iter_tensors, save_tensors
+from unitunner.artifacts.tensors import TensorReader, save_tensors
 from unitunner.models.components.state_loading import load_model_state
 from unitunner.models.components.transformer_artifacts import (
     resolve_transformer_config,
     transformer_tensors,
 )
+from unitunner.models.components.vae_loading import flux_vae_tensors, load_vae_state
 from unitunner.models.flux.config.model import FluxConfig
 from unitunner.models.flux.config.vae import FluxVAEConfig
 from unitunner.models.flux.transformer import FluxTransformer
@@ -49,11 +49,7 @@ def load_flux(
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
 ) -> FluxTransformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError("FLUX native loading supports FP32, FP16 or BF16")
     config = resolve_transformer_config(
@@ -110,36 +106,12 @@ def load_flux_vae(
         raise ValueError("Explicit FLUX vae topology differs from artifact metadata")
     with torch.device("meta"):
         vae = FluxVAE(config)
-    expected, tensors = vae.state_dict(), {}
-    source = dict(iter_tensors(path))
-    if source_format == "auto":
-        if not prefix and source and all(key.startswith("vae.") for key in source):
-            prefix = "vae."
-        source_format = "diffusers" if prefix + "encoder.down_blocks.0.resnets.0.norm1.weight" in source else "native"
-    for original, value in source.items():
-        if not original.startswith(prefix):
-            raise ValueError(f"FLUX vae key lacks selected prefix: {original}")
-        key = original[len(prefix) :]
-        if source_format == "diffusers":
-            key = native_autoencoder_key(key, len(config.channel_multipliers))
-            if ".attn_1." in key and value.ndim == 2:
-                value = value[:, :, None, None]
-        if key in tensors:
-            raise ValueError(f"Duplicate converted FLUX vae tensor: {key}")
-        tensors[key] = value
-    if tensors.keys() != expected.keys():
-        raise ValueError(
-            f"FLUX vae keys differ: missing={sorted(expected.keys() - tensors.keys())}, extra={sorted(tensors.keys() - expected.keys())}"
-        )
-    for key, value in tensors.items():
-        if (
-            value.shape != expected[key].shape
-            or not value.is_floating_point()
-            or not torch.isfinite(value).all()
-            or not torch.isfinite(value.float()).all()
-        ):
-            raise ValueError(f"FLUX vae tensor shape/type/values invalid: {key}")
-    vae.load_state_dict(
-        {key: value.to(device=device, dtype=torch.float32) for key, value in tensors.items()}, strict=True, assign=True
+    tensors, source_format = flux_vae_tensors(
+        path,
+        stages=len(config.channel_multipliers),
+        source_format=source_format,
+        prefix=prefix,
+        label="FLUX vae",
     )
+    load_vae_state(vae, tensors, device=device, label="FLUX vae")
     return vae

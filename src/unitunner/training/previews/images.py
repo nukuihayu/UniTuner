@@ -92,20 +92,19 @@ def build_flow_preview(
 ) -> ImagePreview:
     """Select the native image publisher explicitly without a fallback model family."""
     providers = (
-        (FluxTransformer, "flux"),
-        (Flux2Transformer, "flux2"),
-        (Flux3Transformer, "flux3"),
-        (MossImageTransformer, "moss_image"),
-        (ZImageTransformer, "z_image"),
-        (QwenImageTransformer, "qwen_image"),
-        (QwenImage21Transformer, "qwen_image_2_1"),
-        (Krea2Transformer, "krea2"),
+        (
+            FluxTransformer | Flux2Transformer | Flux3Transformer | MossImageTransformer | ZImageTransformer,
+            "unitunner.training.previews.flow",
+        ),
+        (QwenImageTransformer, "unitunner.training.integrations.qwen_image.previews"),
+        (QwenImage21Transformer, "unitunner.training.integrations.qwen_image_2_1.previews"),
+        (Krea2Transformer, "unitunner.training.integrations.krea2.previews"),
     )
-    for model_type, family in providers:
+    for model_type, module in providers:
         if isinstance(model, model_type):
             factory = cast(
                 Callable[[TrainingConfig, ImageModel], ImagePreview],
-                import_module(f"unitunner.training.integrations.{family}.previews").ImagePreviews,
+                import_module(module).ImagePreviews,
             )
             return factory(config, model)
     raise TypeError("No image preview publisher for this model type")

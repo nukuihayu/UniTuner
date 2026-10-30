@@ -8,8 +8,7 @@ from unitunner.models.components.conditioning import Caption
 from unitunner.models.moss_image.projections import adapter_projections
 from unitunner.models.moss_image.restoration import restore_latents
 from unitunner.models.moss_image.transformer import MossImageTransformer
-from unitunner.training.contracts import StepResult
-from unitunner.training.integrations.common.image_flow import ImageFlowPrediction, ImageFlowRequest
+from unitunner.training.contracts import ImageFlowPrediction, ImageFlowRequest, StepResult
 from unitunner.training.losses.wavelet import WaveletLoss, image_flow_loss
 
 

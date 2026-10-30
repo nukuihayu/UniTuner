@@ -1,20 +1,14 @@
-"""Bind native image model loading to training contracts."""
+"""Bind loaded native image models to their training contracts."""
 
-from pathlib import Path
-
-import torch
-
-from unitunner.config.model import ModelConfig
-from unitunner.models.catalog import ModelFamily
-from unitunner.models.flux.loading import load_flux
-from unitunner.models.flux2.loading import load_flux2
-from unitunner.models.flux3.loading import load_flux3
+from unitunner.models.flux.transformer import FluxTransformer
+from unitunner.models.flux2.transformer import Flux2Transformer
+from unitunner.models.flux3.transformer import Flux3Transformer
 from unitunner.models.image import ImageModel
-from unitunner.models.krea2.loading import load_krea2
-from unitunner.models.moss_image.loading import load_moss_image
-from unitunner.models.qwen_image.loading import load_qwen_image
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21
-from unitunner.models.z_image.loading import load_z_image
+from unitunner.models.krea2.transformer import Krea2Transformer
+from unitunner.models.moss_image.transformer import MossImageTransformer
+from unitunner.models.qwen_image.transformer import QwenImageTransformer
+from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
+from unitunner.models.z_image.transformer import ZImageTransformer
 from unitunner.training.integrations.flux.binding import FluxBinding
 from unitunner.training.integrations.flux2.binding import Flux2Binding
 from unitunner.training.integrations.flux3.binding import Flux3Binding
@@ -36,42 +30,22 @@ type ImageBinding = (
 )
 
 
-def load_image_model(
-    config: ModelConfig, *, device: torch.device, dtype: torch.dtype
-) -> tuple[ImageModel, ImageBinding]:
-    """Construct the declared family and validate model-specific artifact versions."""
-    if config.family == ModelFamily.FLUX:
-        model = load_flux(Path(config.weights), variant=config.variant, device=device, dtype=dtype)
-        binding = FluxBinding(model)
-    elif config.family == ModelFamily.FLUX2:
-        model = load_flux2(
-            Path(config.weights),
-            variant=config.variant,
-            version=config.version,
-            device=device,
-            dtype=dtype,
-        )
-        binding = Flux2Binding(model)
-        if model.config.version != config.version:
-            raise ValueError("Training FLUX.2 version differs from artifact topology")
-    elif config.family == ModelFamily.FLUX3:
-        model = load_flux3(Path(config.weights), variant=config.variant, device=device, dtype=dtype)
-        binding = Flux3Binding(model)
-    elif config.family == ModelFamily.KREA2:
-        model = load_krea2(Path(config.weights), variant=config.variant, device=device, dtype=dtype)
-        binding = Krea2Binding(model)
-    elif config.family == ModelFamily.MOSS_IMAGE:
-        model = load_moss_image(Path(config.weights), variant=config.variant, device=device, dtype=dtype)
-        binding = MossImageBinding(model)
-    elif config.family == ModelFamily.QWEN_IMAGE:
-        model = load_qwen_image(Path(config.weights), variant=config.variant, device=device, dtype=dtype)
-        binding = QwenImageBinding(model)
-    elif config.family == ModelFamily.QWEN_IMAGE_2_1:
-        model = load_qwen_image_21(Path(config.weights), device=device, dtype=dtype)
-        binding = QwenImage21Binding(model)
-    elif config.family == ModelFamily.Z_IMAGE:
-        model = load_z_image(Path(config.weights), variant=config.variant, device=device, dtype=dtype)
-        binding = ZImageBinding(model)
-    else:
-        raise ValueError(f"No image training integration for {config.family}")
-    return model, binding
+def bind_image_model(model: ImageModel) -> ImageBinding:
+    """Borrow a native model without loading or changing its weights."""
+    if isinstance(model, FluxTransformer):
+        return FluxBinding(model)
+    if isinstance(model, Flux2Transformer):
+        return Flux2Binding(model)
+    if isinstance(model, Flux3Transformer):
+        return Flux3Binding(model)
+    if isinstance(model, Krea2Transformer):
+        return Krea2Binding(model)
+    if isinstance(model, MossImageTransformer):
+        return MossImageBinding(model)
+    if isinstance(model, QwenImageTransformer):
+        return QwenImageBinding(model)
+    if isinstance(model, QwenImage21Transformer):
+        return QwenImage21Binding(model)
+    if isinstance(model, ZImageTransformer):
+        return ZImageBinding(model)
+    raise TypeError(f"No image training binding for {type(model).__name__}")

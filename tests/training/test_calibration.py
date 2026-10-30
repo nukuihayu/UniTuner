@@ -12,7 +12,7 @@ from unitunner.config.loading import load_calibration_config, load_training_conf
 from unitunner.data.cache.storage import CacheEntry
 from unitunner.data.datasets.restoration import AlignedImagePair, RestorationDataset
 from unitunner.data.media.restoration import read_restoration_pair
-from unitunner.inference.restoration.vae import load_restoration_vae
+from unitunner.models.components.image_encoders import load_image_vae
 from unitunner.models.z_image.config.vae import ZImageVAEConfig
 from unitunner.models.z_image.loading import save_z_image_vae
 from unitunner.models.z_image.vae import ZImageVAE
@@ -108,7 +108,7 @@ kind = "restoration"
         )
         # Calibration needs only frozen VAE state, not the denoiser or loss networks.
         method = RestorationMethod.__new__(RestorationMethod)
-        method.vae = load_restoration_vae(tmp_path / "vae.safetensors", family="z-image", device=torch.device("cpu"))
+        method.vae = load_image_vae(tmp_path / "vae.safetensors", family="z-image", device=torch.device("cpu"))
         method.encoder = None
         method.posterior = "sample"
         method.state = torch.nn.Module()

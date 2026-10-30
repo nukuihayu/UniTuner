@@ -13,6 +13,7 @@ from unitunner.models.minimax_h3.config.training import MiniMaxH3FlowConfig
 from unitunner.models.minimax_h3.layout import build_layout
 from unitunner.models.minimax_h3.packing import MiniMaxH3Targets
 from unitunner.models.minimax_h3.transformer import MiniMaxH3Transformer
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.minimax_h3.binding import (
     MiniMaxH3Binding,
@@ -20,7 +21,6 @@ from unitunner.training.integrations.minimax_h3.binding import (
     build_noisy_inputs,
 )
 from unitunner.training.parameters import ParameterInstallation
-from unitunner.training.state import RunState
 
 
 def _request():

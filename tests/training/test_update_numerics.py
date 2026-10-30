@@ -5,11 +5,10 @@ import torch
 
 from unitunner.models.components.autoencoder import swish
 from unitunner.models.z_image.vae import ResidualBlock
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.engine import update_phase
 from unitunner.training.optimizers.adamw import create_adamw
 from unitunner.training.parameters import ParameterGroup
-from unitunner.training.state import RunState
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])

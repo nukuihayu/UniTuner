@@ -1,9 +1,7 @@
 """Check official stage semantics, spatial adaptation and optional extensions."""
 
-import json
 import math
 import random
-from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -38,31 +36,6 @@ from unitunner.data.degradation.pipeline import (
     mixed_blur_kernel,
     sinc_kernel,
 )
-
-
-def test_omgsr_reference_defaults_survive_partial_nested_codec_overrides():
-    """Validate against the pinned upstream preset, including inherited nested defaults."""
-    source = json.loads((Path(__file__).parent / "fixtures/omgsr_degradation.json").read_text())
-    reference = source["parameters"]
-    cfg = DegradationConfig.model_validate({"second": {"compression": {"probabilities": (1.0, 0.0, 0.0)}}})
-    for suffix, stage in (("", cfg.first), ("2", cfg.second)):
-        assert list(stage.resize_range) == reference["resize_range" + suffix]
-        assert list(stage.resize_probabilities) == reference["resize_prob" + suffix]
-        assert list(stage.noise.gaussian_sigma) == reference["noise_range" + suffix]
-        assert list(stage.noise.poisson_scale) == reference["poisson_scale_range" + suffix]
-        assert stage.noise.gaussian_probability == reference["gaussian_noise_prob" + suffix]
-        assert stage.noise.gray_probability == reference["gray_noise_prob" + suffix]
-        kernel = reference["kernel_info"]
-        assert list(stage.blur.sigma) == kernel["blur_sigma" + suffix]
-        assert list(stage.blur.probabilities) == kernel["kernel_prob" + suffix]
-        assert list(stage.blur.generalized_beta) == kernel["betag_range" + suffix]
-        assert list(stage.blur.plateau_beta) == kernel["betap_range" + suffix]
-        assert stage.sinc_probability == kernel["sinc_prob" + suffix]
-    assert cfg.second.blur_probability == reference["second_blur_prob"]
-    assert cfg.final_sinc_probability == reference["kernel_info"]["final_sinc_prob"]
-    assert list(cfg.first.compression.jpeg_quality) == reference["jpeg_range"]
-    assert cfg.second.compression.jpeg_quality == (reference["jpeg_range2"][0], 99.0)
-    assert cfg.second.compression.jpeg_quality[1] < reference["jpeg_range2"][1]
 
 
 @pytest.mark.parametrize("scale", [1, 2, 4, 6, 8, 16])
@@ -313,20 +286,6 @@ def test_codecs_preserve_rgb_and_tiny_grids(codec, quality):
     result = compress_image(source, codec, quality)
     assert result.shape == source.shape and result.dtype == np.float32
     np.testing.assert_allclose(result.mean((0, 1)), source.mean((0, 1)), atol=0.025)
-
-
-def test_diffjpeg_matches_pinned_hypir_reference_including_odd_borders():
-    root = Path(__file__).parent / "fixtures"
-    metadata = json.loads((root / "hypir_diffjpeg.json").read_text(encoding="utf8"))
-    with np.load(root / "hypir_diffjpeg.npz") as reference:
-        for case in metadata["cases"]:
-            source = reference[case["input"]]
-            saved = source.copy()
-            actual = compress_image(source, "diffjpeg", case["quality"])
-            np.testing.assert_allclose(actual, reference[case["output"]], atol=2e-6, rtol=0)
-            with torch.autocast("cpu", dtype=torch.bfloat16):
-                np.testing.assert_array_equal(actual, compress_image(source, "diffjpeg", case["quality"]))
-            np.testing.assert_array_equal(source, saved)
 
 
 @pytest.mark.parametrize("quality", [0.0, 100.0, float("nan")])

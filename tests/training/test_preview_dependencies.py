@@ -48,7 +48,12 @@ def test_factory_loads_only_selected_native_preview(monkeypatch, module, stem, o
     monkeypatch.setattr(images, "import_module", load)
     publisher = images.build_flow_preview(config, model)
     publisher(7)
-    assert seen == [f"unitunner.training.integrations.{module}.previews", 7]
+    provider = (
+        "unitunner.training.previews.flow"
+        if module in ("flux", "flux2", "flux3", "moss_image", "z_image")
+        else f"unitunner.training.integrations.{module}.previews"
+    )
+    assert seen == [provider, 7]
     with pytest.raises(TypeError, match="No image preview"):
         images.build_flow_preview(config, nn.Linear(1, 1))
     assert len(seen) == 2

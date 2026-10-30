@@ -59,7 +59,8 @@ def test_missing_metadata_uses_published_topology_and_still_rejects_missing_weig
     "family",
     ["z-image", "z-image-prefixed", "z-image-native-prefixed", "qwen-rgb", "qwen-rgba", "wan-pth", "flux", "flux2"],
 )
-def test_auto_layout_preserves_every_tensor_and_rejects_incomplete_weights(tmp_path, family):
+@pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+def test_auto_layout_preserves_every_tensor_and_rejects_incomplete_weights(tmp_path, family, default_dtype):
     if family.startswith("z-image"):
         model = ZImageVAE(ZImageVAEConfig(block_channels=(8, 16), norm_groups=4, latent_channels=2))
         mapping = zimage_key_map(tuple(model.state_dict()), num_blocks=2)
@@ -112,7 +113,12 @@ def test_auto_layout_preserves_every_tensor_and_rejects_incomplete_weights(tmp_p
     save(external)
     before = path.read_bytes()
     rng = torch.get_rng_state().clone()
-    loaded = loader(path, config=model.config)
+    previous_dtype = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(default_dtype)
+        loaded = loader(path, config=model.config)
+    finally:
+        torch.set_default_dtype(previous_dtype)
     assert path.read_bytes() == before and torch.equal(rng, torch.get_rng_state())
     for key, value in model.state_dict().items():
         assert torch.equal(value, loaded.state_dict()[key]), key

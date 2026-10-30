@@ -19,7 +19,7 @@ from unitunner.models.components.transformer_artifacts import (
     resolve_transformer_config,
     transformer_tensors,
 )
-from unitunner.models.components.vae_loading import vae_tensors
+from unitunner.models.components.vae_loading import load_vae_state, vae_tensors
 from unitunner.models.qwen_image.config.model import QwenImageConfig
 from unitunner.models.qwen_image.config.vae import QwenImageVAEConfig
 from unitunner.models.qwen_image.transformer import QwenImageTransformer
@@ -72,7 +72,7 @@ def load_qwen_image_vae(
         raise ValueError("Qwen Image vae input channels differ from the requested variant")
     with torch.device("meta"):
         vae = QwenImageVAE(config)
-    expected, tensors = vae.state_dict(), dict(vae_tensors(path))
+    tensors = dict(vae_tensors(path))
     if source_format == "auto":
         if not prefix and tensors and all(key.startswith("vae.") for key in tensors):
             prefix = "vae."
@@ -83,24 +83,13 @@ def load_qwen_image_vae(
         tensors = convert_vae_tensors(
             remove_prefix(tensors, prefix),
             vae_key_map(
-                tuple(expected),
+                tuple(vae.state_dict()),
                 num_blocks=len(config.channel_multipliers),
                 layers_per_block=config.layers_per_block,
             ),
             to_native=True,
         )
-    if expected.keys() != tensors.keys():
-        raise ValueError(
-            f"Qwen Image vae artifact keys differ: missing={sorted(expected.keys() - tensors.keys())}, extra={sorted(tensors.keys() - expected.keys())}"
-        )
-    for key, value in tensors.items():
-        if value.shape != expected[key].shape or not value.is_floating_point() or not torch.isfinite(value).all():
-            raise ValueError(f"Qwen Image vae invalid tensor shape/type/values: {key}")
-        if not torch.isfinite(value.float()).all():
-            raise ValueError(f"Qwen Image vae tensor exceeds FP32 range: {key}")
-    vae.load_state_dict(
-        {key: value.to(device=device, dtype=torch.float32) for key, value in tensors.items()}, strict=True, assign=True
-    )
+    load_vae_state(vae, tensors, device=device, label="Qwen Image vae")
     return vae
 
 
@@ -136,11 +125,7 @@ def load_qwen_image(
     source_format: Literal["auto", "native", "diffusers", "comfyui"] = "auto",
     prefix: Literal["", "model.diffusion_model.", "diffusion_model."] = "",
 ) -> QwenImageTransformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError("Qwen Image weights support FP32/FP16/BF16 floating loading")
     if (

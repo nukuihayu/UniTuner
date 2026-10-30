@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 import torch
 from torch.optim import Optimizer
 
+from unitunner.training.contracts import RunState
 from unitunner.training.output import create_run_directory
-from unitunner.training.state import RunState
 
 if TYPE_CHECKING:
     from unitunner.training.engine import UpdateResult

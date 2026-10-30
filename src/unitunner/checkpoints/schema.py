@@ -23,12 +23,9 @@ def build_resume_identity(
 ) -> ResumeIdentity:
     """Include seed, method, horizon, accumulation, data and execution in identity.
 
-    Exclude output and preview settings. The horizon is pinned because schedules can depend on
-    it. This schema does not convert old optimizer/RNG/teacher state or claim
-    old checkpoints can resume in the new project.
+    Exclude output and preview settings; include the horizon because schedules depend on it.
     """
-    # These defaults made previously implicit behavior explicit. Omit only the
-    # listed values to retain established hashes; pin all numerical overrides.
+    # Omit default policies; include numerical overrides.
     default_policies = {
         "train": {"include_layers": ((),), "exclude_layers": ((),), "optimizer": (DEFAULT_ADAMW_CONFIG,)},
         "method": {"layersync": (None,), "tread": (None,), "repa": (None,), "wavelet": (None,)},

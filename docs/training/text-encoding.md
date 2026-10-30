@@ -57,7 +57,7 @@ offline = false
 
 FLUX 可用同样字段的 `[model.text.clip_tokenizer]` 独立指定 CLIP 来源；Qwen Image 可用 `[model.text.processor]` 独立指定图像处理器来源。未指定这些表时沿用主 tokenizer 的离线开关；revision 分别设置。Qwen Image 显式指定主 tokenizer 的 `source` 且省略 processor 表时，使用同一来源，目录需包含完整处理器资产。其他多模态模型直接在 tokenizer 表选择完整 processor 目录。
 
-MOSS Image、FLUX3、Qwen Image 2.1 暂保留本地文本目录作为默认来源，也支持上述显式覆盖。Wan 不再需要 `model.assets/tokenizer`；MiniMaxH3 的 `text_processor` 可省略，新配置优先使用 tokenizer 表。缓存身份包含实际词表、模板、processor 内容，切换来源或 revision 后需重新运行 cache。
+MOSS Image、FLUX3、Qwen Image 2.1 暂保留本地文本目录作为默认来源，也支持上述显式覆盖。Wan 通过 tokenizer 表选择词表；MiniMaxH3 的 `text_processor` 可省略。缓存身份包含实际词表、模板、processor 内容，切换来源或 revision 后需重新运行 cache。
 
 ## 缓存前逐层量化
 

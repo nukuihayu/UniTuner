@@ -1,14 +1,24 @@
 """Encode tensor-bearing state as typed JSON nodes and safetensors, never pickle."""
 
+import hashlib
 import math
 from collections.abc import Mapping
 
+import torch
 from pydantic import JsonValue
 from torch import Tensor
 
 type StateValue = (
     Tensor | str | int | float | bool | list[StateValue] | tuple[StateValue, ...] | dict[str | int, StateValue] | None
 )
+
+
+def frozen_tensor_sha256(value: Tensor) -> str:
+    """Hash dtype, shape and contiguous CPU bytes without a second byte buffer."""
+    data = value.detach().cpu().contiguous()
+    digest = hashlib.sha256(f"{data.dtype}:{tuple(data.shape)}:".encode())
+    digest.update(memoryview(data.reshape(-1).view(dtype=torch.uint8).numpy()))
+    return digest.hexdigest()
 
 
 def encode_state(value: StateValue, tensors: dict[str, Tensor]) -> JsonValue:

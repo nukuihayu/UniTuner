@@ -12,14 +12,13 @@ from unitunner.models.z_image.config.model import ZImageConfig
 from unitunner.models.z_image.config.vae import ZImageVAEConfig
 from unitunner.models.z_image.transformer import ZImageTransformer
 from unitunner.models.z_image.vae import ZImageVAE
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.z_image.binding import ZImageBinding
 from unitunner.training.losses.adversarial import frozen_discriminator, gan_loss
 from unitunner.training.losses.histogram import _normalized_lab, histogram_loss
 from unitunner.training.losses.restoration import generator_loss
 from unitunner.training.methods.mid_timestep import flow_target, one_step
-from unitunner.training.state import RunState
 
 
 @pytest.fixture(autouse=True, scope="module")

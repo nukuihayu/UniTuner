@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, ValidationError
 
 from unitunner.config.cache import CacheConfig, cache_document
 from unitunner.config.calibration import CalibrationConfig, calibration_document
@@ -21,9 +21,14 @@ from unitunner.config.diagnostics import (
 from unitunner.config.generation import GenerationConfig
 from unitunner.config.restoration_inference import RestorationInferenceConfig
 from unitunner.config.training import TrainingConfig
-from unitunner.config.video_generation import VideoGenerationConfig
 from unitunner.models.minimax_h3.config.generation import MiniMaxH3GenerationConfig
 from unitunner.models.wan.config.generation import WanGenerationConfig
+
+
+class VideoGenerationConfig(RootModel[WanGenerationConfig | MiniMaxH3GenerationConfig]):
+    """Validate a Wan or MiniMaxH3 generation document."""
+
+    model_config = ConfigDict(frozen=True, strict=True)
 
 
 def merge_config_overrides(document: dict[str, JsonValue], overrides: Mapping[str, JsonValue]) -> dict[str, JsonValue]:

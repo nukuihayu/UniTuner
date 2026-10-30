@@ -13,7 +13,8 @@ from unitunner.artifacts.tensors import TensorReader, iter_tensors
 from unitunner.config.model import ModelConfig
 from unitunner.config.output import OutputConfig
 from unitunner.models.catalog import ModelFamily
-from unitunner.training.integrations.image_models import load_image_model
+from unitunner.models.image import load_image_model
+from unitunner.training.integrations.image_models import bind_image_model
 from unitunner.training.integrations.image_publication import publish_image_model
 from unitunner.training.parameters import ParameterInstallation
 
@@ -39,7 +40,8 @@ def test_image_loading_and_publication_roundtrip(tmp_path, module, stem, options
         weights=str(source),
     )
     before_rng = torch.get_rng_state().clone()
-    model, binding = load_image_model(selection, device=torch.device("cpu"), dtype=torch.float32)
+    model = load_image_model(selection, device=torch.device("cpu"), dtype=torch.float32)
+    binding = bind_image_model(model)
     assert torch.equal(before_rng, torch.get_rng_state())
     assert binding.model is model
     assert model.config == original.config

@@ -1,8 +1,16 @@
 # Adapted from Black Forest Labs FLUX, Apache-2.0; see THIRD_PARTY_NOTICES.md.
 """Compute native FLUX convolutional residual, attention and resampling blocks."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from torch import Tensor, nn
 from torch.nn import functional as F
+
+if TYPE_CHECKING:
+    from unitunner.models.flux.config.vae import FluxVAEConfig
+    from unitunner.models.flux2.config.vae import Flux2VAEConfig
 
 
 def swish(value: Tensor) -> Tensor:
@@ -119,3 +127,72 @@ class AutoencoderStage(nn.Module):
         return pixels
 
     forward = transform
+
+
+class AutoencoderEncoder(nn.Module):
+    """Build native FLUX posterior convolutions with optional FLUX.2 quantization convolution."""
+
+    def __init__(self, config: FluxVAEConfig | Flux2VAEConfig, *, quant_conv: bool = False) -> None:
+        super().__init__()
+        self.quant_conv = nn.Conv2d(2 * config.latent_channels, 2 * config.latent_channels, 1) if quant_conv else None
+        self.conv_in = nn.Conv2d(config.in_channels, config.base_channels, 3, padding=1)
+        self.down = nn.ModuleList()
+        width = config.base_channels
+        for index, multiplier in enumerate(config.channel_multipliers):
+            output_width = config.base_channels * multiplier
+            blocks = nn.ModuleList()
+            for _ in range(config.layers_per_block):
+                blocks.append(ResidualConvBlock(width, output_width, config.norm_groups))
+                width = output_width
+            self.down.append(
+                AutoencoderStage(
+                    blocks, downsample=Downsample2d(width) if index < len(config.channel_multipliers) - 1 else None
+                )
+            )
+        self.mid = AutoencoderMiddle(width, config.norm_groups)
+        self.norm_out = nn.GroupNorm(config.norm_groups, width, eps=1e-6)
+        self.conv_out = nn.Conv2d(width, 2 * config.latent_channels, 3, padding=1)
+
+    def encode(self, pixels: Tensor) -> Tensor:
+        """Return BCHW posterior moments without sampling or normalization."""
+        hidden = self.conv_in(pixels)
+        for stage in self.down:
+            hidden = stage(hidden)
+        moments = self.conv_out(swish(self.norm_out(self.mid(hidden))))
+        return moments if self.quant_conv is None else self.quant_conv(moments)
+
+    forward = encode
+
+
+class AutoencoderDecoder(nn.Module):
+    """Build native FLUX decoding stages in checkpoint resolution order."""
+
+    def __init__(self, config: FluxVAEConfig | Flux2VAEConfig, *, post_quant_conv: bool = False) -> None:
+        super().__init__()
+        self.post_quant_conv = nn.Conv2d(config.latent_channels, config.latent_channels, 1) if post_quant_conv else None
+        width = config.base_channels * config.channel_multipliers[-1]
+        self.conv_in = nn.Conv2d(config.latent_channels, width, 3, padding=1)
+        self.mid = AutoencoderMiddle(width, config.norm_groups)
+        self.up = nn.ModuleList()
+        for index in reversed(range(len(config.channel_multipliers))):
+            output_width = config.base_channels * config.channel_multipliers[index]
+            blocks = nn.ModuleList()
+            for _ in range(config.layers_per_block + 1):
+                blocks.append(ResidualConvBlock(width, output_width, config.norm_groups))
+                width = output_width
+            self.up.insert(0, AutoencoderStage(blocks, upsample=Upsample2d(width) if index else None))
+        self.norm_out = nn.GroupNorm(config.norm_groups, width, eps=1e-6)
+        self.conv_out = nn.Conv2d(width, config.out_channels, 3, padding=1)
+
+    def decode(self, latents: Tensor) -> Tensor:
+        """Return unclipped BCHW pixels from raw VAE latents."""
+        if self.post_quant_conv is not None:
+            latents = self.post_quant_conv(latents)
+        hidden = self.mid(self.conv_in(latents))
+        if self.post_quant_conv is not None:
+            hidden = hidden.to(next(self.up.parameters()).dtype)
+        for stage in reversed(self.up):
+            hidden = stage(hidden)
+        return self.conv_out(swish(self.norm_out(hidden)))
+
+    forward = decode

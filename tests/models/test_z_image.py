@@ -21,12 +21,11 @@ from unitunner.models.z_image.layers import ZImageAttention, apply_rotary_embedd
 from unitunner.models.z_image.loading import load_z_image, load_z_image_vae, save_z_image, save_z_image_vae
 from unitunner.models.z_image.transformer import ZImageTransformer
 from unitunner.models.z_image.vae import SpatialAttention, ZImageVAE
+from unitunner.training.contracts import ImageFlowRequest, RunState
 from unitunner.training.engine import update_phase
-from unitunner.training.integrations.common.image_flow import ImageFlowRequest
 from unitunner.training.integrations.z_image.binding import ZImageBinding
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 
 @pytest.fixture(autouse=True, scope="module")

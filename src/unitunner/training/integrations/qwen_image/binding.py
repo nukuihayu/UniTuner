@@ -13,8 +13,7 @@ from unitunner.models.qwen_image.positions import ImageGrid
 from unitunner.models.qwen_image.projections import adapter_projections
 from unitunner.models.qwen_image.restoration import restore_latents
 from unitunner.models.qwen_image.transformer import QwenImageTransformer
-from unitunner.training.contracts import StepResult
-from unitunner.training.integrations.common.image_flow import ImageFlowPrediction
+from unitunner.training.contracts import ImageFlowPrediction, StepResult
 from unitunner.training.losses.wavelet import WaveletLoss, image_flow_loss
 
 

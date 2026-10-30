@@ -1,19 +1,27 @@
 """Validate image groups and assemble native image/text cache production."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 
 from unitunner.artifacts.hashing import canonical_sha256
 from unitunner.artifacts.tensors import weight_artifact_sha256
 from unitunner.config.cache import CacheConfig
+from unitunner.config.model import EncoderModelConfig
 from unitunner.data.cache.feature_encoding import RepaCacheWriter
 from unitunner.data.media.buckets import ImageBuckets
 from unitunner.data.media.image import discover_images, index_conditions
-from unitunner.data.production.image_encoders import load_image_encoders
 from unitunner.models.catalog import ModelFamily
+from unitunner.models.components.image_encoders import ImageVAE, load_image_text, load_image_vae
 from unitunner.models.components.text_artifacts import text_artifact_sha256, text_encoding_identity
+from unitunner.models.qwen_image.config.model import QwenImageConfig
 from unitunner.progress import status
+
+if TYPE_CHECKING:
+    from unitunner.models.components.image_encoders import ImageTextEncoder
 
 
 def produce_images(
@@ -154,3 +162,28 @@ def produce_images(
             )
         count += len(manifest.entries)
     return count
+
+
+def load_image_encoders(model: EncoderModelConfig, *, device: torch.device) -> tuple[ImageVAE, ImageTextEncoder]:
+    """Load frozen FP32 cache VAEs before the native text provider."""
+    if model.vae is None or model.text_encoder is None:
+        raise ValueError("Cache production requires model.vae and model.text_encoder")
+    if model.family == ModelFamily.FLUX:
+        model.asset_path("clip_text")
+    if model.family == ModelFamily.QWEN_IMAGE:
+        QwenImageConfig.model_validate({"variant": model.variant})
+    if model.family == ModelFamily.FLUX2 and model.version not in ("dev", "klein-4b", "klein-9b"):
+        raise ValueError("FLUX.2 requires model.version")
+    family = model.family.value.replace("-", " ")
+    status(f"[cache] Loading {family} vae")
+    vae = load_image_vae(
+        Path(model.vae),
+        family=model.family,
+        device=device,
+        input_channels=(4 if model.variant == "layered" else 3) if model.family == ModelFamily.QWEN_IMAGE else None,
+    )
+    status(f"[cache] Loaded {family} vae")
+    status(f"[cache] Loading {family} text")
+    text = load_image_text(model, device=device)
+    status(f"[cache] Loaded {family} text")
+    return vae, text

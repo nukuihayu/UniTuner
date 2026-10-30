@@ -1,23 +1,15 @@
 """Bind differentiable RGB restoration images to native normalized VAE layouts."""
 
-from pathlib import Path
 from typing import Literal
 
 import torch
 from torch import Tensor
 
-from unitunner.models.flux.loading import load_flux_vae
+from unitunner.models.components.image_encoders import ImageVAE
 from unitunner.models.flux.vae import FluxVAE
-from unitunner.models.flux2.loading import load_flux2_vae
 from unitunner.models.flux2.vae import Flux2VAE
-from unitunner.models.qwen_image.loading import load_qwen_image_vae
 from unitunner.models.qwen_image.vae import QwenImageVAE
-from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21_vae
 from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
-from unitunner.models.z_image.loading import load_z_image_vae
-from unitunner.models.z_image.vae import ZImageVAE
-
-type RestorationVAE = ZImageVAE | QwenImageVAE | QwenImage21VAE | FluxVAE | Flux2VAE
 
 
 def restoration_posterior(family: str, posterior: Literal["mean", "sample"] | None) -> Literal["mean", "sample"]:
@@ -35,31 +27,8 @@ def restoration_posterior(family: str, posterior: Literal["mean", "sample"] | No
     return selected
 
 
-def load_restoration_vae(path: Path, *, family: str, device: torch.device) -> RestorationVAE:
-    """Load an FP32 frozen native image VAE without text or denoiser weights.
-
-    Family selects exact VAE geometry/normalization. The caller owns the
-    returned eval module and its device storage; no adapters are installed.
-    Unsupported families fail before artifact IO.
-    """
-    match family:
-        case "z-image":
-            vae = load_z_image_vae(path, device=device)
-        case "flux":
-            vae = load_flux_vae(path, device=device)
-        case "flux2" | "flux3" | "moss-image":
-            vae = load_flux2_vae(path, device=device)
-        case "qwen-image" | "krea2":
-            vae = load_qwen_image_vae(path, device=device)
-        case "qwen-image-2-1":
-            vae = load_qwen_image_21_vae(path, device=device)
-        case _:
-            raise ValueError("Mid-timestep estimation requires a supported image restoration family")
-    return vae.eval().requires_grad_(False)
-
-
 def encode_restoration_image(
-    vae: ZImageVAE | QwenImageVAE | QwenImage21VAE | FluxVAE | Flux2VAE,
+    vae: ImageVAE,
     pixels: Tensor,
     *,
     posterior: Literal["mean", "sample"] = "mean",
@@ -109,9 +78,7 @@ def encode_restoration_image(
     return vae.normalize(raw)
 
 
-def decode_restoration_latents(
-    vae: ZImageVAE | QwenImageVAE | QwenImage21VAE | FluxVAE | Flux2VAE, latents: Tensor
-) -> Tensor:
+def decode_restoration_latents(vae: ImageVAE, latents: Tensor) -> Tensor:
     """Decode normalized native image latents to RGB BCHW without detaching gradients."""
     if isinstance(vae, FluxVAE | Flux2VAE):
         return vae.decode(latents)

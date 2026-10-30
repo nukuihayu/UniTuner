@@ -12,8 +12,7 @@ from unitunner.models.flux2.conditioning import build_image_inputs, pack_text, u
 from unitunner.models.flux2.projections import adapter_projections
 from unitunner.models.flux2.restoration import restore_latents
 from unitunner.models.flux2.transformer import Flux2Transformer
-from unitunner.training.contracts import StepResult
-from unitunner.training.integrations.common.image_flow import ImageFlowPrediction
+from unitunner.training.contracts import ImageFlowPrediction, StepResult
 from unitunner.training.losses.wavelet import WaveletLoss, image_flow_loss
 
 

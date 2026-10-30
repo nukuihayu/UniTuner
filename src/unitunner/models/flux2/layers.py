@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from unitunner.execution.attention import scaled_dot_product_attention
+from unitunner.models.flux.layers import rotary_embedding as rotary_embedding
 from unitunner.models.flux.layers import rotate, split_qkv
 
 type ModulationValues = tuple[Tensor, Tensor, Tensor]
@@ -24,18 +25,6 @@ def timestep_embedding(timesteps: Tensor) -> Tensor:
     frequencies = torch.exp(-math.log(10000) * torch.arange(128, device=timesteps.device, dtype=torch.float32) / 128)
     angles = (1000 * timesteps)[:, None].float() * frequencies[None]
     return torch.cat((angles.cos(), angles.sin()), dim=-1).to(timesteps)
-
-
-def rotary_embedding(ids: Tensor, axes: tuple[int, int, int, int], theta: int) -> Tensor:
-    """Return Bx1xLx(D/2)x2x2 matrices using FP64 frequencies then FP32 rounding."""
-    matrices = []
-    for index, width in enumerate(axes):
-        scale = torch.arange(0, width, 2, dtype=torch.float64, device=ids.device) / width
-        angles = torch.einsum("...n,d->...nd", ids[..., index], 1.0 / (theta**scale))
-        matrices.append(
-            torch.stack((angles.cos(), -angles.sin(), angles.sin(), angles.cos()), dim=-1).reshape(*angles.shape, 2, 2)
-        )
-    return torch.cat(matrices, dim=-3).float().unsqueeze(1)
 
 
 def attention(q: Tensor, k: Tensor, v: Tensor, positions: Tensor) -> Tensor:

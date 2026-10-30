@@ -114,30 +114,10 @@ def generate_latents(
     references: tuple[Tensor, ...] = (),
     inpainting_mask: Tensor | None = None,
 ) -> Tensor:
-    """Initialize native Krea2 noise and sample without changing model mode.
+    """Initialize native Krea2 noise and sample.
 
-    Args:
-        model: Borrowed native transformer; the caller owns eval mode and residency.
-        positive: Native selected-layer BLD features with host prefix lengths.
-            Features keep their encoder dtype until the native sampler places them.
-        sampling: Pixel width/height, local noise seed, steps, guidance and native
-            solver controls. Defaults and validation follow this model family.
-        negative: Native unconditional features, or None when guidance does not
-            require them. FLUX accepts no negative conditioning.
-        vae_factor: Pixel-to-latent spatial factor, or None for the native default.
-        condition: Packed FLUX image condition; other families reject it.
-        references: Ordered native clean reference means; only reference-capable
-            models accept nonempty tuples. Each mean retains its native layout.
-        inpainting_mask: Native latent-grid repaint mask for Qwen models, or None;
-            other families reject it rather than silently ignoring it.
-
-    Returns:
-        Model-native BCHW latents on the model device without a gradient graph.
-        Seed-local noise draw order, BF16 rounding where native, solver defaults
-        and input tensors remain unchanged; no global RNG is advanced.
-
-    Raises:
-        ValueError: Features, conditions or dimensions violate the native contract.
+    Return native latents on the model device using seed-local CPU noise.
+    The caller owns eval mode and model residency.
     """
     validate_image_sampling(sampling, family="krea2", variant=model.config.variant)
     if not isinstance(positive, Krea2TextFeatures) or (

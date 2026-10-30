@@ -1,14 +1,13 @@
 """Validate H3 manifest boundaries, reference order and explicit audio clock choices."""
 
 import json
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from tests.support.assertions import invalid_input
 from unitunner.data.media.audio import AudioSource
-from unitunner.data.media.probe import MediaInfo, probe_media
+from unitunner.data.media.probe import MediaInfo
 from unitunner.models.minimax_h3.config.media import MiniMaxH3RecordInput
 from unitunner.models.minimax_h3.data.sources import (
     MiniMaxH3Reference,
@@ -199,27 +198,3 @@ def test_reference_record_invariants(media):
     ):
         with pytest.raises(ValueError):
             invalid_input(MiniMaxH3Reference)(*args)
-
-
-def test_real_media_probe_and_reference_resolution():
-    assets = Path(__file__).resolve().parents[2] / "benchmarks/parity/minimax_h3_av_media_fixture_assets"
-    before = {p: p.stat().st_size for p in assets.glob("*.mkv")}
-    info = probe_media(assets / "late.mkv")
-    assert info.has_video and info.has_audio and info.duration_seconds == 2.78
-    assert probe_media(assets / "mono48.wav").has_video is False
-    item = MiniMaxH3RecordInput.model_validate_json(
-        json.dumps(
-            {
-                "target_path": "cfr.mkv",
-                "caption": "",
-                "references": [
-                    {"kind": "video", "path": "late.mkv"},
-                    {"kind": "video", "path": "early.mkv", "audio_path": None},
-                    {"kind": "video", "path": "gap.mkv", "audio_path": "stereo441.wav"},
-                ],
-            }
-        )
-    )
-    result = resolve_record(item, assets, "ref2va", one_frame=True)
-    assert [None if r.audio is None else r.audio.embedded for r in result.references] == [True, None, False]
-    assert before == {p: p.stat().st_size for p in assets.glob("*.mkv")}

@@ -7,7 +7,7 @@ import torch
 from safetensors.torch import save_file
 from transformers import AutoConfig
 
-from unitunner.models.components.text_artifacts import text_artifact_sha256, text_config_path
+from unitunner.models.components.text_artifacts import text_config_path
 from unitunner.models.components.text_loading import text_weight_path
 
 
@@ -36,35 +36,16 @@ def test_bare_weight_defaults_are_typed_local_configs(tmp_path, family, version,
     assert text_weight_path(path) == path
 
 
-def test_sidecars_override_defaults_and_change_identity(tmp_path):
+def test_sidecars_override_defaults(tmp_path):
     path = tmp_path / "qwen.safetensors"
     save_file({"weight": torch.ones(1)}, path)
-    original = text_artifact_sha256(path, "z-image")
     common = tmp_path / "config.json"
     common.write_text(json.dumps({"model_type": "qwen3", "hidden_size": 16}))
     assert text_config_path(path, "z-image") == common
-    configured = text_artifact_sha256(path, "z-image")
-    assert configured != original
     specific = path.with_suffix(".json")
     specific.write_text(common.read_text())
     assert text_config_path(path, "z-image") == specific
-    assert text_artifact_sha256(path, "z-image") == configured
     specific.write_text(json.dumps({"model_type": "qwen3", "hidden_size": 32}))
-    assert text_artifact_sha256(path, "z-image") != configured
-
-
-def test_cache_identity_covers_every_shard_and_rejects_missing_shards(tmp_path):
-    first = tmp_path / "text-00001-of-00002.safetensors"
-    second = tmp_path / "text-00002-of-00002.safetensors"
-    save_file({"a": torch.ones(1)}, first)
-    save_file({"b": torch.ones(1)}, second)
-    before = text_artifact_sha256(first, "z-image")
-    assert before == text_artifact_sha256(second, "z-image")
-    save_file({"b": torch.zeros(1)}, second)
-    assert text_artifact_sha256(first, "z-image") != before
-    second.unlink()
-    with pytest.raises(FileNotFoundError):
-        text_artifact_sha256(first, "z-image")
 
 
 def test_variable_topology_requires_config_and_missing_paths_fail_clearly(tmp_path):

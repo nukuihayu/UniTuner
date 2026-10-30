@@ -1,19 +1,16 @@
 """Own the native Qwen Image 2.1 image generation stages and artifact validation."""
 
-from contextlib import ExitStack
 from pathlib import Path
 
 import torch
 
-from unitunner.adapters.loading import LoadedAdapter
-from unitunner.artifacts.formats.adapters import adapter_prefixes
 from unitunner.config.generation import GenerationConfig
+from unitunner.inference.adapters import image_adapter
 from unitunner.inference.decoding import decode_on_device
 from unitunner.inference.publication import publish_images
 from unitunner.inference.sampling import generate_latents
 from unitunner.models.qwen_image_2_1.inference.conditioning import build_qwen_image_21_conditions
 from unitunner.models.qwen_image_2_1.loading import load_qwen_image_21, load_qwen_image_21_vae
-from unitunner.models.qwen_image_2_1.projections import adapter_projections as qwen21_adapter_projections
 from unitunner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
 
 
@@ -37,19 +34,7 @@ def run(config: GenerationConfig, *, device: torch.device) -> int:
         or model.config.out_channels != vae.config.latent_channels
     ):
         raise ValueError("Qwen Image2.1 generation model/vae channels differ")
-    adapter = None
-    targets = None
-    with ExitStack() as owners:
-        owners.enter_context(torch.autocast(device.type, enabled=False))
-        if config.adapter is not None:
-            targets = qwen21_adapter_projections(model)
-            adapter = LoadedAdapter(
-                Path(config.adapter.weights),
-                config.adapter.config,
-                targets,
-                external_prefixes=adapter_prefixes(targets, algorithm=config.adapter.config.algorithm),
-            )
-            owners.callback(adapter.close)
+    with torch.autocast(device.type, enabled=False), image_adapter(model, config.adapter):
         latents = generate_latents(
             model,
             conditions.positive,
@@ -59,8 +44,6 @@ def run(config: GenerationConfig, *, device: torch.device) -> int:
             inpainting_mask=conditions.mask,
             vae_factor=vae.config.spatial_factor,
         ).cpu()
-    if config.adapter is not None:
-        del adapter, targets
     del model
     pixels = decode_on_device(vae, latents, device=device)
     return publish_images(pixels, Path(config.output), rounding="truncate")

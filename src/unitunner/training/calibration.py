@@ -14,9 +14,9 @@ from unitunner.data.media.restoration import iter_aligned_images
 from unitunner.execution.runtime import runtime_scope
 from unitunner.inference.restoration.vae import (
     encode_restoration_image,
-    load_restoration_vae,
     restoration_posterior,
 )
+from unitunner.models.components.image_encoders import load_image_vae
 from unitunner.training.methods.snr_calibration import calibration_rng, estimate_mid_timestep
 
 
@@ -40,7 +40,7 @@ def run(config: CalibrationConfig, *, device: str) -> int:
         selected = torch.device("cuda", torch.cuda.current_device())
     devices = [selected.index or 0] if selected.type == "cuda" else []
     with torch.random.fork_rng(devices=devices):
-        vae = load_restoration_vae(Path(config.model.vae), family=config.model.family, device=selected)
+        vae = load_image_vae(Path(config.model.vae), family=config.model.family, device=selected)
         posterior = restoration_posterior(config.model.family, config.posterior)
 
         def latent_pairs() -> Iterator[tuple[Tensor, Tensor]]:

@@ -23,10 +23,10 @@ from unitunner.data.cache.representation import (
 )
 from unitunner.data.cache.storage import CacheEntry
 from unitunner.execution.installation import ExecutionInstallation
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.objectives import install_objectives
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 
 @pytest.mark.parametrize("family", FAMILIES)

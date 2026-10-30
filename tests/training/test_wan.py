@@ -14,11 +14,11 @@ from unitunner.execution.recompute import RecomputeInstallation
 from unitunner.models.wan.config.model import WanConfig
 from unitunner.models.wan.data.cache.storage import WanCacheRecord
 from unitunner.models.wan.transformer import WanTransformer
+from unitunner.training.contracts import RunState
 from unitunner.training.engine import update_phase
 from unitunner.training.integrations.wan.binding import WanBinding, WanFlowRequest
 from unitunner.training.parameters import ParameterInstallation
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

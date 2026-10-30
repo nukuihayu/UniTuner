@@ -8,12 +8,11 @@ import torch
 from unitunner.checkpoints.restore import restore_checkpoint
 from unitunner.checkpoints.schema import build_resume_identity
 from unitunner.config.loading import load_training_config
-from unitunner.training.contracts import StepResult
-from unitunner.training.engine import run_flow_updates
+from unitunner.training.contracts import RunState, StepResult
+from unitunner.training.engine import run_updates
 from unitunner.training.optimizers.adamw import create_adamw
 from unitunner.training.output import resume_path
 from unitunner.training.parameters import ParameterGroup
-from unitunner.training.state import RunState
 from unitunner.training.update_schedule import UpdateSchedule
 
 EXAMPLE = Path(__file__).parents[2] / "docs/examples/full.toml"
@@ -76,7 +75,7 @@ def test_shared_loop_publication_order_and_resume_match_continuous_training(tmp_
                 assert resume_path(current_config, update).is_file()
             events.append(("preview", update))
 
-        run_flow_updates(
+        run_updates(
             current_config,
             steps,
             optimizer=optimizer,
@@ -102,3 +101,71 @@ def test_shared_loop_publication_order_and_resume_match_continuous_training(tmp_
         torch.testing.assert_close(
             resumed_optimizer.state[resumed.weight][name], optimizer.state[continuous.weight][name], atol=0, rtol=0
         )
+
+
+@pytest.mark.parametrize("phases", [("main",), ("generator", "discriminator")])
+@pytest.mark.parametrize("fail", [False, True])
+def test_shared_loop_closes_steps_and_preserves_optimizer_roles(tmp_path, phases, fail):
+    config = load_training_config(
+        EXAMPLE,
+        overrides={
+            "train": {"max_updates": 1},
+            "execution": {"precision": "fp32"},
+            "preview": {"at_start": False, "every_updates": 1, "samples": [{"prompt": ""}]},
+            "output": {"directory": str(tmp_path), "save_every_updates": 1},
+        },
+    )
+    identity = build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)
+    modules = {phase: torch.nn.Linear(1, 1, bias=False) for phase in phases}
+    optimizers = {
+        phase: torch.optim.SGD(module.parameters(), lr=0.1, momentum=0.9) for phase, module in modules.items()
+    }
+    optimizer = optimizers["main"] if phases == ("main",) else optimizers
+    state = RunState()
+    events = []
+
+    def steps():
+        try:
+            for phase, module in modules.items():
+                yield StepResult(module(torch.ones(1, 1)).square().mean(), 1, phase="unknown" if fail else phase)
+        finally:
+            events.append("closed")
+
+    def preview(update):
+        assert update == 1
+        assert all(parameter.grad is None for module in modules.values() for parameter in module.parameters())
+        assert resume_path(config, update).is_file()
+        events.append("preview")
+
+    def run():
+        return run_updates(
+            config,
+            steps,
+            optimizer=optimizer,
+            modules=modules,
+            state=state,
+            identity=identity,
+            device=torch.device("cpu"),
+            weights_writer=lambda update: events.append("weights"),
+            preview_writer=preview,
+        )
+
+    if fail:
+        with pytest.raises(ValueError, match="Unexpected optimizer phase"):
+            run()
+        assert events == ["closed"]
+        assert state == RunState()
+        assert not resume_path(config, 1).exists()
+        assert all(parameter.grad is None for module in modules.values() for parameter in module.parameters())
+    else:
+        assert run() == RunState(updates=1, microbatches=1, samples=1)
+        assert events == ["closed", "weights", "preview"]
+        expected = {phase: module.weight.detach().clone() for phase, module in modules.items()}
+        for module in modules.values():
+            with torch.no_grad():
+                module.weight.zero_()
+        cursor = restore_checkpoint(resume_path(config, 1), modules, optimizer, identity)
+        assert cursor.updates == 1
+        for phase, module in modules.items():
+            torch.testing.assert_close(module.weight, expected[phase], atol=0, rtol=0)
+            assert "momentum_buffer" in optimizers[phase].state[module.weight]

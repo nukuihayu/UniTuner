@@ -40,7 +40,7 @@ src/unitunner/
 tests/
 ├── config/          # 配置边界与实际组合约束
 ├── models/          # 原生模型公式、布局与梯度
-├── comparison/      # 外部格式兼容检查及可选分配器测试入口
+├── comparison/      # 可选分配器测试入口
 └── support/         # 正式测试共用的资产与断言
 
 docs/
@@ -147,17 +147,10 @@ VBAR 的进程级初始化必须发生在 Torch 导入前，其他限制见[执�
 预览隔离随机状态，不推进训练数据游标。Checkpoint 在没有未完成计算的更新边界保存，
 恢复先验证模型、配置与缓存身份，再恢复活动状态。
 
-## 验证边界
+## 验证
 
-普通测试覆盖公式、梯度、更新和资源生命周期。
-外部训练器使用独立快照与进程，不成为运行依赖。
-模型与执行策略改动应检查对应公式、梯度和资源释放。
+测试覆盖模型公式、梯度、权重格式、训练更新和资源释放。
 
-文本编码的共享加载边界位于 `models/components/text_loading.py`：先验证完整源清单与逻辑尺寸，再物化所需分支，复用量化线性层和逐层 GPU 准备。各家族继续负责命名空间、共享权重、旋转缓冲与特征选择。`config/text.py` 的独立选项进入 conditioning 缓存身份；VAE 精度不受影响。T5 的输出投影使用逻辑浮点 dtype，避免将打包存储 dtype 用于激活转换。
-
-缓存入口 `data/build.py` 只负责发布事务和分派；`data/production/` 分开图像、Wan、H3 生产组装，`image_encoders.py` 负责图像编码器资源。文本数值策略的缓存身份由 `models/components/text_artifacts.py` 统一筛选。修复推理文本位于 `inference/restoration/text.py`，按实际家族加载可选提供器。
-
-`config/optimizer.py` 统一 AdamW 数值和后端选项；四个优化器构造入口复用它。`training/update_schedule.py` 只负责初始、周期和末步的保存／预览判断，`training/checkpointing.py` 固定“发布权重 → 保存续训快照 → 保留策略清理”的顺序。更新引擎继续拥有梯度数学与 phase 顺序，日志和模型专属预览仍由 workflow 持有。
 
 ---
 

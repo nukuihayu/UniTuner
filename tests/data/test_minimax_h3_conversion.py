@@ -61,7 +61,9 @@ def inputs(tmp_path):
 
 def test_exact_promotion_metadata_identity_and_public_command(inputs, tmp_path):
     latent, text, document, write, path = inputs
-    original = {name: file_sha256(tmp_path / name) for name in ["latent.safetensors", "text.safetensors", "target.png"]}
+    original = {
+        name: (tmp_path / name).read_bytes() for name in ["latent.safetensors", "text.safetensors", "target.png"]
+    }
     rng = torch.get_rng_state().clone()
     directory = tmp_path / "cache"
     assert main_with_local_tokenizers(["caches", "import", str(path), str(directory)]) == 0
@@ -75,7 +77,7 @@ def test_exact_promotion_metadata_identity_and_public_command(inputs, tmp_path):
     with TensorReader(directory / manifest.entries[0].file) as reader:
         assert set(reader.metadata()) == {"unitunner.cache.identity", "unitunner.cache.item", "unitunner.cache.format"}
         assert not any("ss_" in key or "rcm" in key for key in reader.keys())
-    assert original == {name: file_sha256(tmp_path / name) for name in original}
+    assert original == {name: (tmp_path / name).read_bytes() for name in original}
     assert torch.equal(rng, torch.get_rng_state())
     document["entries"][0]["source"]["caption"] = "changed caption"
     write()

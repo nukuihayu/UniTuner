@@ -54,11 +54,7 @@ def load_moss_image(
     prefix: Literal["", "model.diffusion_model.", "diffusion_model."] = "",
     fused_qkv: bool = False,
 ) -> MossImageTransformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if source_format not in ("auto", "native", "external"):
         raise ValueError("MOSS source_format must be native or external")
     if source_format == "native" and (prefix or fused_qkv):

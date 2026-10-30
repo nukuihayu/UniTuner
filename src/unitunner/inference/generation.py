@@ -25,11 +25,11 @@ def run(config: GenerationConfig, *, device: str) -> int:
     if selected.type not in {"cpu", "cuda"}:
         raise ValueError("Generation entry supports CPU and CUDA devices")
     module = {
-        ModelFamily.FLUX: "unitunner.models.flux.inference.run",
-        ModelFamily.FLUX2: "unitunner.models.flux2.inference.run",
-        ModelFamily.FLUX3: "unitunner.models.flux3.inference.run",
-        ModelFamily.MOSS_IMAGE: "unitunner.models.moss_image.inference.run",
-        ModelFamily.Z_IMAGE: "unitunner.models.z_image.inference.run",
+        ModelFamily.FLUX: "unitunner.inference.images",
+        ModelFamily.FLUX2: "unitunner.inference.images",
+        ModelFamily.FLUX3: "unitunner.inference.images",
+        ModelFamily.MOSS_IMAGE: "unitunner.inference.images",
+        ModelFamily.Z_IMAGE: "unitunner.inference.images",
         ModelFamily.QWEN_IMAGE: "unitunner.models.qwen_image.inference.run",
         ModelFamily.QWEN_IMAGE_2_1: "unitunner.models.qwen_image_2_1.inference.run",
         ModelFamily.KREA2: "unitunner.models.krea2.inference.run",

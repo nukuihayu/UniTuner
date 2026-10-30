@@ -39,7 +39,6 @@ class AudioSnake(nn.Module):
         self.alpha = nn.Parameter(torch.empty(1, channels, 1))
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         return audio_snake(x, self.alpha, self.alpha)
 
     forward = transform
@@ -54,7 +53,6 @@ class AudioSnakeBeta(nn.Module):
         self.beta = nn.Parameter(torch.empty(in_features))
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         alpha = torch.exp(self.alpha).view(1, -1, 1)
         beta = torch.exp(self.beta).view(1, -1, 1)
         return audio_snake(x, alpha, beta)
@@ -109,7 +107,6 @@ class AudioUpsample(nn.Module):
         )
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         _, C, _ = x.shape
         x = F.pad(x, (self.pad, self.pad), mode="replicate")
         x = F.conv_transpose1d(x, self.filter.expand(C, -1, -1).to(x.dtype), stride=self.stride, groups=C).mul_(
@@ -134,7 +131,6 @@ class AudioLowPassFilter(nn.Module):
         self.register_buffer("filter", kaiser_sinc_filter(cutoff, half_width, kernel_size))
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         _, C, _ = x.shape
         x = F.pad(x, (self.pad_left, self.pad_right), mode="replicate")
         return F.conv1d(x, self.filter.expand(C, -1, -1).to(x.dtype), stride=self.stride, groups=C)
@@ -157,7 +153,6 @@ class AudioDownsample(nn.Module):
         )
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         return self.lowpass(x)
 
     forward = transform
@@ -180,7 +175,6 @@ class AudioAntialiasedActivation(nn.Module):
         self.downsample = AudioDownsample(down_ratio, down_kernel_size)
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         x = self.upsample(x)
         x = self.act(x)
         x = self.downsample(x)
@@ -203,7 +197,6 @@ class AudioResidualUnit(nn.Module):
         )
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         y = self.block(x)
         pad = (x.shape[-1] - y.shape[-1]) // 2
         if pad > 0:
@@ -233,7 +226,6 @@ class AudioEncoderBlock(nn.Module):
         )
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         return self.block(x)
 
     forward = transform
@@ -255,7 +247,6 @@ class AudioEncoder(nn.Module):
         self.block = nn.Sequential(*block)
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         return self.block(x)
 
     forward = transform
@@ -376,7 +367,6 @@ class AudioVocoderResidualBlock(nn.Module):
         )
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         acts1, acts2 = self.activations[::2], self.activations[1::2]
         for c1, c2, a1, a2 in zip(self.convs1, self.convs2, acts1, acts2, strict=True):
             xt = a1(x)
@@ -444,7 +434,6 @@ class AudioVocoder(nn.Module):
         self.conv_post = nn.Conv1d(ch, 1, 7, 1, padding=3, bias=False)
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer without drawing RNG."""
         x = self.conv_pre(x)
 
         for i in range(self.num_upsamples):
@@ -651,7 +640,6 @@ class VideoCausalConv3d(nn.Conv3d):
         self.causal_padding = (padding,) * 3 if isinstance(padding, int) else tuple(padding)
 
     def transform(self, input: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer output without changing its inputs."""
         temporal, height, width = self.causal_padding
         if height or width:
             input = F.pad(input, (width, width, height, height, 0, 0), mode="reflect")
@@ -707,7 +695,6 @@ class VideoDownsample(nn.Module):
         )
 
     def transform(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer output without changing its inputs."""
         if self.space_stride == 2:
             hidden_states = F.pad(hidden_states, (0, 1, 0, 1, 0, 0), mode="reflect")
         return self.conv(hidden_states)
@@ -733,7 +720,6 @@ class VideoResnetBlock(nn.Module):
         )
 
     def transform(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer output without changing its inputs."""
         residual = hidden_states
         hidden_states = self.conv1(F.silu(self.norm1(hidden_states)))
         hidden_states = self.conv2(F.silu(self.norm2(hidden_states)))
@@ -811,7 +797,6 @@ class VideoEncoder(nn.Module):
         self.conv_out = VideoCausalConv3d(block_channels[-1], output_channels, kernel_size=3, padding=1)
 
     def transform(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer output without changing its inputs."""
         hidden_states = self.conv_in(hidden_states)
         for down in self.down:
             hidden_states = down(hidden_states)
@@ -842,7 +827,6 @@ class VideoRotaryEmbedding(nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def transform(self, position_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Compute the native layer output without changing its inputs."""
         angles = 2.0 * math.pi * position_ids[:, :, :, None].float() * self.inv_freq[None, None, None, :]
         angles = angles.flatten(2, 3).tile(2).unsqueeze(2)
         return angles.cos(), angles.sin()
@@ -933,7 +917,6 @@ class VideoDecoderBlock(nn.Module):
         hidden_states: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
-        """Compute the native layer output without changing its inputs."""
         normalized = F.rms_norm(
             hidden_states.float(),
             (hidden_states.shape[-1],),
@@ -989,7 +972,6 @@ class VideoDecoder(nn.Module):
         self.proj_out = nn.Linear(dim, out_channels * patch_size_t * patch_size * patch_size)
 
     def transform(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """Compute the native layer output without changing its inputs."""
         batch_size, channels, frames, height, width = hidden_states.shape
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1).reshape(batch_size, frames * height * width, channels)
         hidden_states = self.x_embedder(hidden_states)

@@ -12,10 +12,9 @@ from torch.nn.utils import spectral_norm
 from unitunner.checkpoints.restore import restore_checkpoint
 from unitunner.checkpoints.saving import save_checkpoint
 from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.engine import update_phases
 from unitunner.training.losses.adversarial import frozen_discriminator, gan_loss
-from unitunner.training.state import RunState
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 

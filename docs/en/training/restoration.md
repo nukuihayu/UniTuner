@@ -59,7 +59,7 @@ For large datasets, startup indexing validates source images, captions, and cach
 
 Linux system/container RAM counters may also include file page cache. After fully hashing each HQ, LQ, and cache file, restoration indexing automatically requests release of its scanned pages with `POSIX_FADV_DONTNEED`, reducing cache buildup from the one-time scan. No configuration or administrator privileges are required. This is a best-effort kernel/filesystem hint; mapped, active, or dirty pages may remain. Unsupported platforms continue validation normally. Global caches are never flushed and content validation is never skipped. Later training reads may need to fetch these files from disk again.
 
-Restoration training also applies this policy when hashing model, VAE, and feature artifacts, including sharded weights, without changing digests or resume compatibility. DINO/VGG ZIP-format PyTorch checkpoints use private source-file memory mappings when loading onto an accelerator, avoiding a complete anonymous CPU checkpoint copy. Legacy pickle files retain ordinary loading. Touched mapped pages may still count toward container RAM.
+Restoration training also applies this policy when hashing model, VAE, and feature artifacts, including sharded weights. DINO/VGG ZIP-format PyTorch checkpoints use private source-file memory mappings when loading onto an accelerator, avoiding a complete anonymous CPU checkpoint copy. Legacy pickle files retain ordinary loading. Touched mapped pages may still count toward container RAM.
 
 All eight image families (Z-Image, FLUX.1, FLUX.2, FLUX3, MOSS, Qwen Image, Qwen Image2.1, and Krea2) share these optimizations: training/previews read only cached text conditions, plus FLUX.1 pooled features, preserving Krea2 selected-layer text without transferring unused image/reference latents; RGB decoding avoids extra full-image PIL copies, pads only when necessary, and creates a single HQ crop for synthetic degradation; batch size one avoids an extra image stack, and CPU crops are released after device transfer; generator latent/graph references are cleared before the discriminator phase once backward has completed. No configuration changes are needed. Crop/degradation RNG, loss weights, and model equations are preserved. Model, optimizer, and necessary activation storage are still required.
 
@@ -221,13 +221,13 @@ With `recompute = "block"`, restoration also checkpoints stateless VAE residual,
 
 Training Inductor compilation scopes `triton.cudagraphs=false` and `epilogue_fusion=true` per graph, avoiding CUDA Graph private pools while retaining pointwise fusion without mutating process-global settings. The current compilation entry point targets DiT, not VAE/DINO. Maximum GEMM autotuning, coordinate-descent tuning and 1x1-convolution-to-matmul conversion are not enabled by default: benefits depend on the graph and hardware and can increase initial compilation time.
 
-The paper's 244 comes from FLUX.1-dev at 1K; its SD2.1-base result is 273. The reference Trainer's Z-Image default 121 is not a paper conclusion for Z-Image. UniTunner uses 244 as a common initial configuration value. Recalibrate when changing model, resolution, VAE, data, or degradation distribution.
+`midtimestep = 244` is an initial default. Recalibrate when changing model, resolution, VAE, data or degradation distribution. Restoration uses the FM Euler formula.
 
-DDPM equation 7 uses alpha-bar reconstruction and cannot be replaced with the FM Euler formula. These entry points do not introduce DDPM support.
 
-The project recipe keeps LRR/Dv3D/L1/GAN/FDL weights of 5/3/0.5/0.5/0.5, with histogram loss defaulting to zero. FDL, histogram, and phase are recipe extensions rather than original OMGSR losses or evidence of reproduced paper quality.
 
-FDL uses orthonormal FFTs (`norm="ortho"`) to normalize amplitude scaling for each feature-map size. Phase, all 256 projections, and the sum over levels are preserved. This is a variant of the original unnormalized FDL and is not bounded to [0,1]. Old FDL values are not directly comparable; reassess `losses.fdl` when continuing an older run.
+Default LRR/Dv3D/L1/GAN/FDL weights are 5/3/0.5/0.5/0.5. Histogram and phase losses are disabled by default.
+
+FDL uses orthonormal FFTs (`norm="ortho"`) to control amplitude scaling, with a phase term, 256 projections and a sum over levels. The loss is not bounded to [0,1]; set its weight with `losses.fdl`.
 
 Calibration uses the unadapted VAE with the configured posterior. FLUX defaults to sample, matching the official implementation. Isolated seeded posterior RNG leaves training RNG unchanged. Explicit mean is a deterministic variant. Candidate grids exclude endpoints 0 and 1, where SNR is undefined. SNR errors are averaged per image rather than calculated over a mixed batch. Effective sigma is saved in checkpoints and publications; resume does not recalibrate and inference reads the saved value.
 
@@ -270,11 +270,11 @@ enabled = true
 
 In a minimal calibration-only TOML, put `calibration_sampling`, `calibration_pairs`, and `posterior` at the top level; training TOMLs use `[method.restoration]`. All groups must still share a resolution to avoid mixing FLUX resolution-dependent time grids. These are independent calibration crops, not tiled VAE encoding with stitched latents, and they do not change normal training's random crop policy.
 
-Standalone and pre-training calibration share `estimate_mid_timestep`, accumulating equations 18/19 statistics without retaining all latents. Each pair needs two VAE encodings and a vectorized candidate-error evaluation; the network is not rerun per timestep. All eight current restoration families use their native normalized latent space. New architectures with different schedules need an explicit candidate mapping.
+Standalone and pre-training calibration share `estimate_mid_timestep`, accumulating equations 18/19 statistics without retaining all latents. Each pair needs two VAE encodings and a vectorized candidate-error evaluation; the network is not rerun per timestep. All eight current restoration families use their native normalized latent space.
 
 The restoration objective uses the [OMGSR method](https://github.com/wuer5/OMGSR). Project loss defaults are listed in [parameters](parameters.md#losses); configure coefficients explicitly when using a different recipe.
 
-FDL retains all 256 projections and full spatial sorting, processing eight projection channels at a time. Backward recomputes projections and sorting instead of retaining all sort indices. The generated-image VGG branch also recomputes activations, trading compute for memory without extra configuration.
+FDL retains all 256 projections and full spatial sorting, processing eight projection channels at a time. Backward recomputes projections and sorting instead of retaining all sort indices. The generated-image VGG branch also recomputes activations, trading compute for memory .
 
 
 ---

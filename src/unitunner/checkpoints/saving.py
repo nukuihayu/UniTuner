@@ -11,9 +11,8 @@ from torch import nn
 from torch.optim import Optimizer
 
 from unitunner.artifacts.tensors import save_tensors
-from unitunner.checkpoints.frozen_state import frozen_tensor_sha256
 from unitunner.checkpoints.schema import CheckpointCursor, ResumeIdentity
-from unitunner.checkpoints.state_tree import StateValue, encode_state
+from unitunner.checkpoints.state_tree import StateValue, encode_state, frozen_tensor_sha256
 
 type OptimizerSet = Optimizer | Mapping[str, Optimizer]
 

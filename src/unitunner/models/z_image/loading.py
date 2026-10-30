@@ -14,6 +14,7 @@ from unitunner.models.components.transformer_artifacts import (
     resolve_transformer_config,
     transformer_tensors,
 )
+from unitunner.models.components.vae_loading import load_vae_state
 from unitunner.models.z_image.config.model import ZImageConfig
 from unitunner.models.z_image.config.vae import ZImageVAEConfig
 from unitunner.models.z_image.transformer import ZImageTransformer
@@ -51,11 +52,7 @@ def load_z_image(
     device: torch.device = _CPU,
     dtype: torch.dtype | None = None,
 ) -> ZImageTransformer:
-    """Load published Diffusers/ComfyUI or native single/sharded transformer weights.
-
-    Use embedded topology, an explicit config, a local sidecar or published
-    defaults. Validate every key and shape before assigning owned parameters.
-    """
+    """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype is not None and not dtype.is_floating_point:
         raise ValueError("Z-Image load dtype must be floating")
     config = resolve_transformer_config(
@@ -115,21 +112,5 @@ def load_z_image_vae(
         tensors = convert_vae_tensors(
             tensors, vae_key_map(tuple(expected), num_blocks=len(config.block_channels)), to_native=True
         )
-    if tensors.keys() != expected.keys():
-        raise ValueError(
-            f"Z-Image vae artifact keys differ: missing={sorted(expected.keys() - tensors.keys())}, extra={sorted(tensors.keys() - expected.keys())}"
-        )
-    for key, tensor in tensors.items():
-        if (
-            tensor.shape != expected[key].shape
-            or not tensor.is_floating_point()
-            or not torch.isfinite(tensor).all()
-            or not torch.isfinite(tensor.float()).all()
-        ):
-            raise ValueError(f"Z-Image vae tensor shape/dtype/values invalid for {key}")
-    vae.load_state_dict(
-        {key: tensor.to(device=device, dtype=torch.float32) for key, tensor in tensors.items()},
-        strict=True,
-        assign=True,
-    )
+    load_vae_state(vae, tensors, device=device, label="Z-Image vae")
     return vae

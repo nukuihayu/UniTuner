@@ -41,7 +41,6 @@ class MiniMaxH3Transformer(nn.Module):
         dtype: torch.dtype = torch.float32,
         device: torch.device | str | None = None,
     ) -> None:
-        """Construct native parameters with explicit dtype and device ownership."""
         super().__init__()
         self.config = config
         self.feature_recorder: FeatureRecorder | None = None

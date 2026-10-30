@@ -51,7 +51,7 @@ def test_hub_filters_revision_and_offline(monkeypatch, tmp_path):
         assert not any(fnmatch("google/umt5-xxl/" + filename, pattern) for pattern in patterns)
 
 
-def test_local_override_and_content_fingerprint(monkeypatch, tmp_path):
+def test_local_override_stays_offline(monkeypatch, tmp_path):
     def unexpected(**kwargs):
         pytest.fail("Local tokenizer attempted Hub access")
 
@@ -60,14 +60,10 @@ def test_local_override_and_content_fingerprint(monkeypatch, tmp_path):
     assets.mkdir()
     (assets / "tokenizer.json").write_text("{}")
     config = TextEncodingConfig(tokenizer=TokenizerSourceConfig(source=str(tmp_path), subfolder="assets"))
-    pinned, digests = text_assets.pin_tokenizer_sources(config, "z-image")
+    pinned, _ = text_assets.pin_tokenizer_sources(config, "z-image")
     assert pinned.tokenizer.source is not None
     assert Path(pinned.tokenizer.source) == assets
     assert pinned.tokenizer.offline is True
-    (assets / "model.safetensors").write_bytes(b"irrelevant weights")
-    assert text_assets.tokenizer_sha256(assets) == digests["tokenizer"]
-    (assets / "chat_template.jinja").write_text("{{ messages }}")
-    assert text_assets.tokenizer_sha256(assets) != digests["tokenizer"]
 
 
 def test_qwen_and_flux_sources_are_independent(monkeypatch, tmp_path):

@@ -9,10 +9,9 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from torch import nn
 
 from unitunner.config.training import OutputConfig
-from unitunner.training.contracts import StepResult
+from unitunner.training.contracts import RunState, StepResult
 from unitunner.training.engine import update_phases
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
 from unitunner.training.telemetry import TrainingTelemetry
 
 

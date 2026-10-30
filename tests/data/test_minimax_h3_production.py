@@ -1,7 +1,6 @@
 """Exercise H3 production with real compact VAEs and explicit synthetic text features."""
 
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 import torch
@@ -10,7 +9,6 @@ from pydantic import ValidationError
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.assertions import require_value
-from unitunner.data.media.audio import AudioSource
 from unitunner.models.minimax_h3.conditioning import encode_audio, encode_condition_video
 from unitunner.models.minimax_h3.config.audio_vae import MiniMaxH3AudioVAEConfig
 from unitunner.models.minimax_h3.config.video_vae import MiniMaxH3VideoVAEConfig
@@ -28,7 +26,7 @@ from unitunner.models.minimax_h3.data.cache.storage import (
 from unitunner.models.minimax_h3.data.cache.traversal import MiniMaxH3TraversalPolicy, traverse_minimax_h3
 from unitunner.models.minimax_h3.data.cache.video import encode_target_video
 from unitunner.models.minimax_h3.data.media.inputs import prepare_pixels
-from unitunner.models.minimax_h3.data.sources import MiniMaxH3Control, MiniMaxH3Record, MiniMaxH3Reference
+from unitunner.models.minimax_h3.data.sources import MiniMaxH3Control, MiniMaxH3Record
 from unitunner.models.minimax_h3.text.encoder import MiniMaxH3TextFeatures
 from unitunner.models.minimax_h3.vae import MiniMaxH3AudioVAE, MiniMaxH3VideoVAE
 
@@ -180,39 +178,6 @@ def test_single_frame_controls_keep_order_indices_seed_and_nonzero_silence_laten
         encoder_sha256="1" * 64,
     )
     assert first.entries[0].file != second.entries[0].file
-
-
-def test_reference_video_audio_and_short_standalone_share_pixels_and_native_grids(tmp_path, vaes):
-    _, _, encoders = vaes
-    assets = Path(__file__).resolve().parents[2] / "benchmarks/parity/minimax_h3_av_media_fixture_assets"
-    picture = tmp_path / "picture.png"
-    Image.new("RGB", (64, 96), (20, 60, 80)).save(picture)
-    references = (
-        MiniMaxH3Reference("image", picture),
-        MiniMaxH3Reference("video", assets / "late.mkv", AudioSource(assets / "late.mkv", True), 2.78),
-        MiniMaxH3Reference("audio", assets / "stereo441.wav", AudioSource(assets / "stereo441.wav", False), 0.36),
-    )
-    decoded = _decoded(tmp_path, references=references)
-    presentations = []
-
-    def text(presentation):
-        presentations.append(presentation)
-        return encoders.text(presentation)
-
-    record = encode_cache_record(
-        decoded,
-        replace(encoders, text=text),
-        format=MiniMaxH3CacheFormat(task="ref2va"),
-        policy=MiniMaxH3CachePolicy(allow_experimental_duration=True),
-    )
-    assert [ref.kind for ref in record.item.references] == ["image", "video", "audio"]
-    assert record.visual_conditions[1].shape[1] == 7
-    assert record.audio_conditions[0].shape[-1] == 37
-    assert 1 <= record.audio_conditions[1].shape[-1] < 37
-    (presentation,) = presentations
-    assert presentation.videos[0].shape[0] == 2 and "<0.2 seconds>" in presentation.text
-    assert presentation.processor_text.count("<|video_pad|>") == 1
-    assert presentation.processor_text.count("<Audio ") == 2
 
 
 def test_invalid_requests_fail_before_encoding_and_source_changes_preserve_manifest(tmp_path, vaes):

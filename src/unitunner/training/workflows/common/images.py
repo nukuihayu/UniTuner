@@ -34,19 +34,17 @@ from unitunner.logging import set_context
 from unitunner.models.catalog import ModelFamily
 from unitunner.models.components.conditioning import batch_captions
 from unitunner.models.flux.transformer import FluxTransformer
-from unitunner.models.image import ImageModel
+from unitunner.models.image import ImageModel, load_image_model
 from unitunner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record
 from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
 from unitunner.precision import FLOAT_DTYPES
 from unitunner.progress import Progress, status
-from unitunner.training.checkpointing import save_training_update
-from unitunner.training.contracts import StepResult
-from unitunner.training.engine import update_phases
-from unitunner.training.integrations.common.image_flow import ImageFlowRequest
+from unitunner.training.contracts import ImageFlowRequest, RunState, StepResult
+from unitunner.training.engine import run_updates
 from unitunner.training.integrations.flux.binding import FluxBinding
 from unitunner.training.integrations.flux2.binding import Flux2Binding, Flux2FlowRequest
 from unitunner.training.integrations.flux3.binding import Flux3Binding, Flux3FlowRequest
-from unitunner.training.integrations.image_models import load_image_model
+from unitunner.training.integrations.image_models import bind_image_model
 from unitunner.training.integrations.image_publication import publish_image_model
 from unitunner.training.integrations.krea2.binding import Krea2Binding, Krea2FlowRequest
 from unitunner.training.integrations.qwen_image.binding import QwenImageBinding
@@ -55,14 +53,9 @@ from unitunner.training.losses.wavelet import WaveletLoss
 from unitunner.training.methods.restoration import RestorationMethod
 from unitunner.training.objectives import align_steps, install_objectives
 from unitunner.training.optimizers.adamw import create_adamw
-from unitunner.training.optimizers.schedules import apply_learning_rate
 from unitunner.training.output import publish_latest_weights, weights_path
 from unitunner.training.parameters import ParameterGroup, ParameterInstallation
-from unitunner.training.progress import TrainingProgress
 from unitunner.training.session import TrainingSession
-from unitunner.training.state import RunState
-from unitunner.training.telemetry import TrainingTelemetry
-from unitunner.training.update_schedule import UpdateSchedule
 
 type PreviewWriter = Callable[
     [
@@ -204,7 +197,8 @@ def train(
     base_dtype = training_base_dtype(execution, adapter=config.train.adapter is not None)
     storage = {torch.bfloat16: "BF16", torch.float16: "FP16", torch.float32: "FP32"}[base_dtype]
     status(f"[train] Loading denoiser weights: {config.model.weights} -> {load_device} ({storage} base storage)")
-    model, binding = load_image_model(config.model, device=load_device, dtype=base_dtype)
+    model = load_image_model(config.model, device=load_device, dtype=base_dtype)
+    binding = bind_image_model(model)
     status(
         f"[train] Denoiser loaded; preparing base weights (quantization={execution.quantization}, residency={execution.residency})"
     )
@@ -502,49 +496,21 @@ def train(
             publish_latest_weights(config, update)
             return artifact
 
-        telemetry = session.own(
-            TrainingTelemetry(
-                config.output.tensorboard, state, name=config.output.name, run_name=config.output._run_name
-            )
+        def preview(update: int) -> None:
+            if preview_writer is not None:
+                preview_writer(update, model, installation.branches, method)
+
+        run_updates(
+            config,
+            monitored_steps,
+            optimizer=optimizers if restoration else optimizer,
+            modules=modules,
+            state=state,
+            identity=identity,
+            device=device,
+            weights_writer=write_weights,
+            preview_writer=preview if preview_writer is not None else None,
         )
-        schedule = UpdateSchedule.from_config(config)
-        if schedule.initial_preview_due(state.updates) and preview_writer is not None:
-            status("[train] Rendering initial preview")
-            preview_writer(0, model, installation.branches, method)
-        status(f"[train] Ready; accumulation={config.train.accumulation_steps}, max_updates={config.train.max_updates}")
-        training_progress = session.own(
-            TrainingProgress(config.train.max_updates, initial=state.updates, interval=config.output.log_every_seconds)
-        )
-        while state.updates < config.train.max_updates:
-            if device.type == "cuda":
-                torch.cuda.reset_peak_memory_stats(device)
-            update_started = monotonic()
-            apply_learning_rate(config.train, state.updates, optimizers.values())
-            with closing(monitored_steps()) as update_steps:
-                results = update_phases(
-                    update_steps,
-                    optimizers,
-                    state,
-                    max_grad_norm=config.train.max_grad_norm,
-                    precision=precision,
-                    fp16_loss_scale=config.execution.fp16_loss_scale,
-                )
-            scalars = telemetry.record(results, optimizers, state, monotonic() - update_started, device)
-            training_progress.report(state.updates, state.samples, scalars)
-            if schedule.save_due(state.updates):
-                status(f"[train] Saving checkpoint at update {state.updates}")
-                save_training_update(
-                    config,
-                    modules=modules,
-                    optimizer=optimizers if restoration else optimizer,
-                    state=state,
-                    identity=identity,
-                    device=device,
-                    weights_writer=write_weights,
-                )
-            if schedule.preview_due(state.updates) and preview_writer is not None:
-                status(f"[train] Rendering preview at update {state.updates}")
-                preview_writer(state.updates, model, installation.branches, method)
         artifact = weights_path(config)
         if not artifact.is_file():
             write_weights(state.updates)

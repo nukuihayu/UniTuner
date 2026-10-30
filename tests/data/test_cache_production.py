@@ -3,15 +3,13 @@
 import os
 import subprocess
 import sys
-from importlib import import_module
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 import torch
 
-from unitunner.artifacts.hashing import canonical_sha256
-from unitunner.config.cache_options import CacheOptions
+from unitunner.config.cache import CacheOptions
 from unitunner.config.datasets import CacheDatasetConfig
 from unitunner.config.model import EncoderModelConfig
 from unitunner.config.text import TextEncodingConfig, TokenizerSourceConfig
@@ -60,9 +58,17 @@ def test_entry_and_image_assembly_do_not_import_optional_providers():
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("module,family,variant,version", CASES)
+@pytest.mark.parametrize(
+    "module,family,variant,version",
+    (
+        *CASES,
+        ("qwen_image", "qwen-image", "layered", None),
+        ("qwen_image", "qwen-image", "edit-2511", None),
+        ("flux2", "flux2", "base", "klein-4b"),
+    ),
+)
 def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, variant, version):
-    from unitunner.data.production import image_encoders
+    from unitunner.data.production import images as image_encoders
 
     calls = []
     vae = torch.nn.Linear(1, 1)
@@ -78,12 +84,13 @@ def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, var
 
     name = "load_qwen_image_21_text" if module == "qwen_image_2_1" else f"load_{module}_text"
     fake_module(monkeypatch, f"unitunner.models.{module}.text.encoder", **{name: load_text})
-    monkeypatch.setattr(image_encoders, "load_flux2_vae", load_vae)
-    monkeypatch.setattr(image_encoders, "load_qwen_image_vae", load_vae)
-    if module in ("flux", "z_image", "qwen_image_2_1"):
-        native = import_module(f"unitunner.models.{module}.loading")
-        name = "load_qwen_image_21_vae" if module == "qwen_image_2_1" else f"load_{module}_vae"
-        monkeypatch.setattr(native, name, load_vae)
+    from unitunner.models.components import image_encoders as native
+
+    vae_family = (
+        "flux2" if module in ("flux2", "flux3", "moss_image") else "qwen_image" if module == "krea2" else module
+    )
+    name = "load_qwen_image_21_vae" if vae_family == "qwen_image_2_1" else f"load_{vae_family}_vae"
+    monkeypatch.setattr(native, name, load_vae)
     model = model_config(family, variant, version)
     assert image_encoders.load_image_encoders(model, device=torch.device("cpu")) == (vae, text)
     assert not vae.training and not any(p.requires_grad for p in vae.parameters())
@@ -94,7 +101,8 @@ def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, var
     if module in ("krea2", "qwen_image_2_1", "qwen_image"):
         assert options["source_format"] == "auto"
     if module == "qwen_image":
-        assert calls[0][2]["input_channels"] == 3 and options["variant"] == "original"
+        assert calls[0][2]["input_channels"] == (4 if variant == "layered" else 3)
+        assert options["variant"] == variant
     if module == "flux":
         assert calls[1][1][1] == model.asset_path("clip_text")
     if module == "flux2":
@@ -143,12 +151,8 @@ def test_group_loop_preserves_identity_options_and_order(monkeypatch, tmp_path, 
     provider, name = providers.get(module, ("unitunner.data.cache.images", "cache_images"))
     fake_module(monkeypatch, provider, **{name: encode})
     assert images.produce_images(config, device="cpu", repa=repa, tokenizer_digests={"text": "tokenizer"}) == 4
-    identity = {"runtime": {}, "tokenizers": {"text": "tokenizer"}, "vae": "vae-hash", "text": "text-hash"}
-    if module == "flux":
-        identity["secondary_text"] = "text-hash"
     for (source, destination, options), data in zip(seen, groups.values(), strict=True):
         assert source == Path(data.source) and destination == Path(data.cache_directory)
-        assert options["encoder_sha256"] == canonical_sha256(identity)
         assert options["repa"] is repa
         buckets = options["buckets"]
         assert buckets.prompt == "" and buckets.no_upscale and buckets.enabled
@@ -213,3 +217,19 @@ def test_dispatch_preserves_shared_owners(monkeypatch, family, module, name):
 
     fake_module(monkeypatch, f"unitunner.data.production.{module}", **{name: produce})
     assert _run(config, device="cuda:1", repa=repa, tokenizer_digests=digests) == 13
+
+
+@pytest.mark.parametrize("family,variant,version", [("qwen-image", "original", None), ("flux2", "distilled", "dev")])
+def test_invalid_encoder_topology_fails_before_loading_weights(monkeypatch, family, variant, version):
+    from unitunner.data.production import images
+
+    model = model_config(family, variant, version)
+    model = model.model_copy(update={"variant": "unknown"} if family == "qwen-image" else {"version": None})
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Invalid configuration loaded encoder weights")
+
+    monkeypatch.setattr(images, "load_image_vae", forbidden)
+    monkeypatch.setattr(images, "load_image_text", forbidden)
+    with pytest.raises(ValueError):
+        images.load_image_encoders(model, device=torch.device("cpu"))
