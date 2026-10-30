@@ -30,6 +30,9 @@ def test_single_step_plain_cfg_mask_and_autocast_invariance():
         positive = QwenImage21TextFeatures(torch.randn(3, 6), (0,), ((2, 3),))
         negative = QwenImage21TextFeatures(torch.randn(5, 6), (2,), ((2, 3),))
         mask = torch.linspace(0, 1, 6).reshape(1, 6, 1)
+        default = sample_latents(model, noise, positive, references=(reference,), steps=1)
+        explicit = sample_latents(model, noise, positive, references=(reference,), steps=1, guidance=1.0)
+        assert torch.equal(default, explicit)
         rng = torch.get_rng_state().clone()
         original = noise.clone()
         with torch.no_grad():

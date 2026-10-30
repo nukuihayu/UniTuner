@@ -49,7 +49,7 @@ class ImagePreviews:
             config=config.model.text,
             source_format=config.model.text_source_format or "auto",
         )
-        captions = tuple(encode_krea2_prompts(text, sample) for sample in preview.samples)
+        captions = tuple(encode_krea2_prompts(text, sample, variant=model.config.variant) for sample in preview.samples)
         del text
         directory = Path(config.output.directory) / "previews"
         device = next(model.parameters()).device

@@ -38,6 +38,7 @@ from unitunner.training.output import publish_latest_weights, weights_path
 from unitunner.training.parameters import ParameterGroup, ParameterInstallation
 from unitunner.training.publishing import publish_adapter
 from unitunner.training.session import TrainingSession
+from unitunner.training.timesteps import sample_sigmas, training_sigma_grid
 
 
 @runtime_scope
@@ -52,7 +53,7 @@ def train_wan(
 
     Use shared full/adapter AdamW, optional block recompute, sample-correct
     accumulation and deterministic stable-grid buckets including short tails.
-    Uniform FP32 sigma draws preserve direct native sigma*1000 then addition1.
+    Model-specific FP32 sigma grids keep noise fractions and native times paired.
     Restore optimizer/RNG/data cursor before the next draw. Publish requested
     transformer.* LoRA or lycoris_* LoHa/LoKr names with alpha and unprefixed
     metadata. Raw names alone do not establish external ComfyUI compatibility.
@@ -117,6 +118,7 @@ def train_wan(
         model_artifact_sha256=weight_artifact_sha256(Path(config.model.weights)),
     )
     torch.manual_seed(config.train.seed)
+    sigma_grid = training_sigma_grid("wan", config.train.timestep_sampling, device=device)
     load_device = (
         torch.device("cpu") if execution.quantization != "none" or execution.offloads_frozen_weights else device
     )
@@ -190,7 +192,7 @@ def train_wan(
         consumed = state.microbatches
 
         def steps() -> Iterator[StepResult]:
-            """Read each exact equal-grid batch and draw noise then direct uniform sigma."""
+            """Read each equal-grid batch and draw noise followed by its training sigma."""
             nonlocal consumed
             for _ in range(config.train.accumulation_steps):
                 name, entries = plan.batch(consumed)
@@ -200,9 +202,10 @@ def train_wan(
                 if alignment is not None:
                     alignment.set_targets(tuple(entries), latents)
                 noise = torch.randn_like(latents)
-                sigma = torch.rand(latents.shape[0], device=device)
+                sigma = sample_sigmas(latents.shape[0], device=device, grid=sigma_grid)
                 timesteps = sigma * 1000
-                timesteps = timesteps + 1
+                if sigma_grid is None:
+                    timesteps = timesteps + 1
                 consumed += 1
                 yield binding.cached_step(records, noise, sigma, timesteps)
 

@@ -128,7 +128,10 @@ def train_minimax_h3(config: TrainingConfig, *, device: torch.device, resume: Pa
     prepare_base_weights(model, execution, family=config.model.family.value, device=device)
     if execution.residency == "resident" and load_device != device:
         model.to(device=device)
-    binding = MiniMaxH3Binding(model, config.method.minimax_h3 or MiniMaxH3FlowConfig())
+    flow_config = config.method.minimax_h3 or MiniMaxH3FlowConfig()
+    if config.train.timestep_sampling == "uniform":
+        flow_config = flow_config.model_copy(update={"video_shift": 1.0, "audio_shift": 1.0})
+    binding = MiniMaxH3Binding(model, flow_config)
     with TrainingSession() as session:
         alignment = install_objectives(
             model, binding.regions, config.method, session=session, targets=representation_targets, device=device

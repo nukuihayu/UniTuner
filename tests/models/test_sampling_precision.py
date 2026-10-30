@@ -173,6 +173,35 @@ def make_case(family, dtype):
     return model, args, kwargs
 
 
+def test_krea2_turbo_native_defaults_do_not_require_cfg():
+    from unitunner.models.krea2.inference.sampling import sample_latents
+
+    model, args, _ = make_case("krea2", torch.float32)
+    model.config = model.config.model_copy(update={"variant": "turbo"})
+    default = sample_latents(model, *args)
+    explicit = sample_latents(model, *args, steps=8, guidance=1, mu=1.15)
+    assert torch.equal(default, explicit)
+
+
+@pytest.mark.parametrize(
+    "variant,guidance,negative", [("raw", None, True), ("turbo", None, False), ("turbo", 2.0, True)]
+)
+def test_krea2_default_conditioning_follows_variant(variant, guidance, negative):
+    from unitunner.config.sampling import SamplingConfig
+    from unitunner.models.krea2.inference.conditioning import encode_krea2_prompts
+
+    calls = []
+
+    class Text:
+        def encode(self, prompts):
+            calls.extend(prompts)
+            return (torch.ones(3, 2, 16),)
+
+    _, uncond = encode_krea2_prompts(Text(), SamplingConfig(prompt="test", guidance=guidance), variant=variant)
+    assert calls == (["test", ""] if negative else ["test"])
+    assert (uncond is not None) == negative
+
+
 @pytest.mark.parametrize(
     "family",
     ["flux", "flux2", "flux3", "qwen_image", "qwen_image_2_1", "krea2", "moss_image", "z_image", "wan", "minimax_h3"],

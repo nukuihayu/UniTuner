@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 
 def validate_training_policy(config: "TrainingConfig") -> None:
     """Validate model/method/execution choices once for the whole run."""
+    if config.method.kind == "restoration" and config.train.timestep_sampling != "shifted":
+        raise ConfigRuleError(
+            "train.timestep_sampling",
+            "train.timestep_sampling requires flow-matching",
+            "Use method.restoration sigma/calibration for fixed-timestep restoration.",
+        )
     if config.output.adapter_format == "diffusers" and config.train.adapter is not None:
         if config.train.adapter.algorithm != "lora":
             raise ConfigRuleError(

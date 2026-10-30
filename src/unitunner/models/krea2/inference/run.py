@@ -27,7 +27,7 @@ def run(config: GenerationConfig, *, device: torch.device) -> int:
         config=config.model.text,
         source_format=config.model.text_source_format or "auto",
     )
-    positive, negative = encode_krea2_prompts(text, config.sampling)
+    positive, negative = encode_krea2_prompts(text, config.sampling, variant=config.model.variant)
     positive = Krea2TextFeatures(positive.features.cpu(), positive.lengths)
     if negative is not None:
         negative = Krea2TextFeatures(negative.features.cpu(), negative.lengths)

@@ -166,3 +166,19 @@ Training retains native MOSS explicit dtype conversions and residual arithmetic;
 ---
 
 [Documentation](../README.md) · [Parameter reference](parameters.md) · [Troubleshooting](../troubleshooting.md)
+
+## Native preview defaults
+
+Omit `steps` and `guidance` in `preview.samples` to use the selected model/variant defaults. Preview and standalone generation share the native sampler; training timestep shifts do not override inference schedules.
+
+| Model / 模型 | Steps | Guidance |
+| --- | --- | --- |
+| Qwen Image 2.1 | 25 | 1 |
+| Qwen Image / edit / layered | 25 | 4 |
+| Z-Image base / turbo | 50 / 9 | 4 / 0 |
+| FLUX Dev / Kontext / Fill | 25 | 3.5 / 2.5 / 30 |
+| FLUX.2 Dev / Klein base | 50 | 4 |
+| FLUX.2 Klein distilled | 4 | 1 |
+| FLUX3 base / distilled | 50 / 16 | 4 / no CFG |
+| MOSS Image | 50 | 3 |
+| Krea2 raw / turbo | 28 / 8 | 5.5 / 1 |

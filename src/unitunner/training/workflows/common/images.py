@@ -56,6 +56,7 @@ from unitunner.training.optimizers.adamw import create_adamw
 from unitunner.training.output import publish_latest_weights, weights_path
 from unitunner.training.parameters import ParameterGroup, ParameterInstallation
 from unitunner.training.session import TrainingSession
+from unitunner.training.timesteps import sample_sigmas, training_sigma_grid
 
 type PreviewWriter = Callable[
     [
@@ -121,6 +122,9 @@ def train(
     if device.type == "cuda" and device.index is None:
         device = torch.device("cuda", torch.cuda.current_device())
     torch.manual_seed(config.train.seed)
+    sigma_grid = (
+        None if restoration else training_sigma_grid(config.model.family, config.train.timestep_sampling, device=device)
+    )
     if not restoration and config.train.skip_dataset_validation:
         status("[train] Indexing trusted image caches (full dataset validation skipped)")
     cached_groups, batch_sizes, dataset_digest = (
@@ -359,7 +363,9 @@ def train(
                         )
                     consumed += latents21.shape[0]
                     yield binding.cached_step(
-                        records21, torch.randn_like(latents21), torch.rand(latents21.shape[0], device=device)
+                        records21,
+                        torch.randn_like(latents21),
+                        sample_sigmas(latents21.shape[0], device=device, grid=sigma_grid),
                     )
                     continue
                 records = [read_latent_record(item.directory, item.entry, device=device) for item in selected]
@@ -374,7 +380,7 @@ def train(
                     )
                 consumed += latents.shape[0]
                 noise = torch.randn_like(latents)
-                sigma = torch.rand(latents.shape[0], device=device)
+                sigma = sample_sigmas(latents.shape[0], device=device, grid=sigma_grid)
                 if isinstance(binding, QwenImageBinding):
                     yield binding.cached_step(
                         records,

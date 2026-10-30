@@ -158,6 +158,9 @@ Alternatively pass `--cache.batch-size 16` to the cache command. Shared training
 | `dataset_validation_workers` | integer; 1..32 | `4` | Concurrent validation workers; 1 is serial. Bounded prefetch preserves sample order and resume identity. |
 | `lr_schedule` | "constant", "linear", "cosine" | `"constant"` | constant, linear decay or cosine decay; all support warmup. |
 | `warmup_updates` | integer；≥ 0 | `0` | Effective updates for linear LR warmup; must be smaller than max_updates. |
+| `timestep_sampling` | "shifted", "uniform" | `"shifted"` | Flow training uses each model's fixed shifted schedule by default; uniform selects continuous unshifted sigma. Numeric shift overrides are not accepted. |
+
+Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. Defaults: FLUX.1/Z-Image shift=3, Wan=5, FLUX3=6.93, FLUX.2/Qwen/Qwen2.1/Krea2 μ=0.8 (factor exp(μ)), MOSS=1. Qwen grids end at σ=0.02. This option does not add loss weighting or change inference schedules. H3 keeps its paired video/audio shifts; uniform sets both effective training shifts to 1. Fixed-timestep restoration uses its own sigma/calibration settings. Sampling type is part of resume identity; keep it unchanged when resuming.
 
 ## `train.adapter`
 

@@ -39,9 +39,9 @@ def sample_latents(
     positive: Krea2TextFeatures,
     *,
     negative: Krea2TextFeatures | None = None,
-    steps: int = 28,
+    steps: int | None = None,
     mu: float | None = None,
-    guidance: float = 5.5,
+    guidance: float | None = None,
 ) -> Tensor:
     """Return floating BCHW from explicit noise and BSLD captions without ownership changes.
 
@@ -51,6 +51,13 @@ def sample_latents(
     Arithmetic uses Python FP32 schedule scalars in native Euler order. Preserve
     caller mode, RNG, residency and storage; do not decode or mutate parameters.
     """
+    turbo = model.config.variant == "turbo"
+    if steps is None:
+        steps = 8 if turbo else 28
+    if guidance is None:
+        guidance = 1.0 if turbo else 5.5
+    if mu is None and turbo:
+        mu = 1.15
     parameter = next(model.parameters())
     if (
         noise.ndim != 4
@@ -143,7 +150,7 @@ def generate_latents(
         noise.to(sampling_dtype(model)),
         positive,
         negative=negative,
-        steps=28 if sampling.steps is None else sampling.steps,
+        steps=sampling.steps,
         mu=sampling.shift,
-        guidance=5.5 if sampling.guidance is None else sampling.guidance,
+        guidance=sampling.guidance,
     )

@@ -195,3 +195,19 @@ max_frames 至少5，原生音频32kHz立体声。JSONL 是其 AV 记录格式�
 ---
 
 [文档首页](../README.md) · [参数参考](parameters.md) · [故障排查](../troubleshooting.md)
+
+## 预览默认参数
+
+省略 `preview.samples` 中的 `steps` 和 `guidance`，即可使用所选模型／变体的默认值。预览与独立生成共用原生采样入口；训练时间步移位不会覆盖推理时间表。
+
+| Model / 模型 | Steps | Guidance |
+| --- | --- | --- |
+| Qwen Image 2.1 | 25 | 1 |
+| Qwen Image / edit / layered | 25 | 4 |
+| Z-Image base / turbo | 50 / 9 | 4 / 0 |
+| FLUX Dev / Kontext / Fill | 25 | 3.5 / 2.5 / 30 |
+| FLUX.2 Dev / Klein base | 50 | 4 |
+| FLUX.2 Klein distilled | 4 | 1 |
+| FLUX3 base / distilled | 50 / 16 | 4 / no CFG |
+| MOSS Image | 50 | 3 |
+| Krea2 raw / turbo | 28 / 8 | 5.5 / 1 |

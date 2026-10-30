@@ -158,6 +158,9 @@ batch_size = 16
 | `dataset_validation_workers` | integer; 1..32 | `4` | 并行校验线程数，1 为串行；任务有界排队，不改变样本顺序和续训标识。 |
 | `lr_schedule` | "constant", "linear", "cosine" | `"constant"` | constant 固定、linear 线性衰减、cosine 余弦衰减；均支持 warmup。 |
 | `warmup_updates` | integer；≥ 0 | `0` | 学习率线性预热的有效更新数；必须小于 max_updates。 |
+| `timestep_sampling` | "shifted", "uniform" | `"shifted"` | Flow 训练默认使用各模型固定移位时间步；uniform 使用连续均匀 σ，不接受数值倍率。 |
+
+图像／Wan 的 shifted 模式从 1000 点 FP32 网格均匀抽索引。默认倍率：FLUX.1／Z-Image 为 3，Wan 为 5，FLUX3 为 6.93，FLUX.2／Qwen／Qwen2.1／Krea2 使用 μ=0.8（倍率 exp(μ)），MOSS 为 1；Qwen 网格末端 σ=0.02。此选项不添加 loss 加权，也不改变推理时间表。H3 保留成对的音视频 shift，uniform 将有效训练倍率均设为 1。固定时间步图像恢复使用自己的 σ／校准配置。时间步类型参与续训身份，恢复训练时应保持一致。
 
 ## `train.adapter`
 

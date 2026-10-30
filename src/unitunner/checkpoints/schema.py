@@ -45,6 +45,14 @@ def build_resume_identity(
     # Cache execution is already pinned by dataset records, not training policy.
     exclusions: dict[str, bool | set[str]] = {"output": True, "preview": True, "cache": True, **fields}
     values = config.model_dump(mode="json", exclude=exclusions)
+    if (
+        config.method.kind == "restoration"
+        or (config.model.family == ModelFamily.MINIMAX_H3 and config.train.timestep_sampling == "shifted")
+        or (config.model.family != ModelFamily.MINIMAX_H3 and config.train.timestep_sampling == "uniform")
+    ):
+        values["train"].pop("timestep_sampling")
+    elif config.model.family != ModelFamily.MINIMAX_H3:
+        values["training_sigma_policy"] = "model-grid/1000/uniform-index/fp32/1"
     # Paired geometry is unchanged; a newly explicit inactive option must not
     # invalidate existing runs. Independent budgets remain part of identity.
     for group in values["dataset"]["groups"].values():
@@ -106,7 +114,11 @@ def build_resume_identity(
         values["minimax_h3_time_policy"] = "video-initial-base/model-and-audio-recovered-multiply1000-add1/1"
     if config.model.family == ModelFamily.WAN:
         values["wan_batch_policy"] = "stable-grid-buckets/repeat-before-chunk/short-tails/1"
-        values["wan_time_policy"] = "separate-sigma/direct-multiply1000-add1/1"
+        values["wan_time_policy"] = (
+            "separate-sigma/direct-multiply1000-add1/1"
+            if config.train.timestep_sampling == "uniform"
+            else "sigma-grid/multiply1000/1"
+        )
     return ResumeIdentity(
         config_sha256=canonical_sha256(values),
         dataset_manifest_sha256=dataset_manifest_sha256,

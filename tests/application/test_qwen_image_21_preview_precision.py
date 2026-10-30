@@ -75,7 +75,6 @@ prompt = "edit"
 width = 32
 height = 32
 steps = 2
-guidance = 1.0
 conditioning_resize = "output"
 reference_images = ["{tmp_path.as_posix()}/reference.png"]
 mask_image = "{tmp_path.as_posix()}/mask.png"
@@ -92,6 +91,8 @@ mask_image = "{tmp_path.as_posix()}/mask.png"
         observed = []
 
         def capture(*args, **kwargs):
+            assert args[2].guidance is None
+            assert kwargs["negative"] is None
             latents = actual_generate(*args, **kwargs)
             observed.append(latents.dtype)
             return latents

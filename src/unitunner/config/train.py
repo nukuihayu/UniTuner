@@ -32,6 +32,10 @@ class TrainConfig(BaseModel):
     accumulation_steps: int = Field(default=1, gt=0, description="Microbatches accumulated per optimizer update")
     max_grad_norm: float = Field(default=1.0, ge=0, description="Maximum global gradient norm; 0 disables clipping")
     seed: int = 42
+    timestep_sampling: Literal["shifted", "uniform"] = Field(
+        default="shifted",
+        description="Flow training noise sampling: model-specific shifted timesteps or continuous uniform sigma",
+    )
     skip_dataset_validation: bool = Field(
         default=False, description="Trust existing image caches and skip full dataset content validation at startup"
     )
