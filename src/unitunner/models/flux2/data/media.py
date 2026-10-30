@@ -47,7 +47,7 @@ def reference_resolution(width: int, height: int, *, limit: int | None) -> tuple
 def read_reference_image(path: Path, *, count: int, original: bool = False) -> Tensor:
     """Return CPU FP32 RGB CHW[-1,1] pixels at the native aspect-preserving bucket.
 
-    Drop alpha before resampling, use Lanczos-up/area-down and half-up center crop.
+    Drop alpha before resampling, use Lanczos and half-up center crop.
     Preserve historical orientation without EXIF rotation. Reference count chooses
     the single/multiple area limit; explicit original mode preserves source area
     before stride alignment. Files are closed and no RNG is consumed.

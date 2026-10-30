@@ -25,7 +25,7 @@ def read_condition_image(path: Path, *, resolution: tuple[int, int]) -> Tensor:
     """Read owned CPU uint81HWC RGB using native cover resize and center crop.
 
     FL generation shares training bucket preprocessing. Convert to RGB before
-    resize; preserve native Lanczos-up/area-down and half-up dimension rounding.
+    resize; preserve native Lanczos and half-up dimension rounding.
     No EXIF transpose, alpha compositing or posterior target encoding occurs.
     """
     _validate_size(resolution)

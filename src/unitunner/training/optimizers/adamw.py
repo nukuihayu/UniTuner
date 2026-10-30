@@ -12,7 +12,7 @@ def create_adamw(
     groups: Iterable[ParameterGroup],
     *,
     lr: float,
-    weight_decay: float = 1e-4,
+    weight_decay: float = 0.01,
     config: AdamWConfig = DEFAULT_ADAMW_CONFIG,
 ) -> torch.optim.AdamW:
     """Preserve named groups and their learning-rate multipliers on every backend."""

@@ -76,9 +76,9 @@ def cache_qwen_image_21(
                 "enabled": False if buckets is None else buckets.enabled,
             },
             "reference_geometry": (
-                "independent-aspect-bucket/lanczos-up-area-down/half-up-center-crop"
+                "independent-aspect-bucket/lanczos/half-up-center-crop"
                 if data.reference_resolution is not None
-                else "independent-source-buckets/lanczos-up-area-down/half-up-center-crop"
+                else "independent-source-buckets/lanczos/half-up-center-crop"
             ),
             **(
                 {"independent_reference_resolution": list(data.reference_resolution), "reference_alignment": 32}
@@ -86,7 +86,7 @@ def cache_qwen_image_21(
                 else {}
             ),
             "reference_count": len(references),
-            "pixels": "RGBA-before-resize/native-Lanczos-up-area-down-half-up-center-crop/no-EXIF",
+            "pixels": "RGBA-before-resize/native-Lanczos-half-up-center-crop/no-EXIF",
             "vision": "same-pixels/white-alpha-composite/no-resize/patch16-merge2",
             "posterior": "mean/FP32/direct-divide-std",
             "vae_config": vae.config.model_dump(mode="json"),

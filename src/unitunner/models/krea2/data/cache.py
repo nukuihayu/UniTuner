@@ -65,7 +65,7 @@ def cache_krea2(
             **({"text_execution": text_execution(text.model)} if text_execution(text.model) else {}),
             "schema": "krea2/unified-image-text-1",
             "resolution_width_height": list(resolution),
-            "pixels": "RGB/native-Lanczos-up-area-down-half-up-center-crop/no-EXIF",
+            "pixels": "RGB/native-Lanczos-half-up-center-crop/no-EXIF",
             "posterior": "mode/(raw-mean)*reciprocal_std/FP32",
             "vae_config": vae.config.model_dump(mode="json"),
             "text_config": text.config.model_dump(mode="json"),

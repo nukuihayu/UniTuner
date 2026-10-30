@@ -88,7 +88,7 @@ reference_sources = ["/data/reference-a", "/data/reference-b"]
 
 Each source matches target file stems; list order defines reference order. References are conditions, not additional training examples. Use one entry if only one reference is needed.
 
-Targets and references independently select buckets from their own source dimensions, then resize and center-crop. Equal-sized aligned inputs naturally share scale and crop coordinates; differently composed references are not automatically registered. Upscaling uses Lanczos, downscaling uses area, and resized dimensions use half-up rounding. Qwen 2.1 also supports a separate reference area budget.
+Targets and references independently select buckets from their own source dimensions, then resize and center-crop. Equal-sized aligned inputs naturally share scale and crop coordinates; differently composed references are not automatically registered. Upscaling and downscaling use Lanczos, and resized dimensions use half-up rounding. Qwen 2.1 also supports a separate reference area budget.
 
 | Model | Reference constraints |
 | --- | --- |

@@ -18,8 +18,8 @@ def test_adamw_matches_native_updates_and_restores_state(device):
     actual = torch.nn.Parameter(torch.linspace(-1, 1, 64, device=device))
     expected = torch.nn.Parameter(actual.detach().clone())
     optimizer = create_adamw((ParameterGroup("model", (actual,)),), lr=0.002)
-    reference = torch.optim.AdamW([expected], lr=0.002, weight_decay=1e-4, fused=False, foreach=False)
-    assert optimizer.defaults["weight_decay"] == 1e-4
+    reference = torch.optim.AdamW([expected], lr=0.002, weight_decay=0.01, fused=False, foreach=False)
+    assert optimizer.defaults["weight_decay"] == 0.01
     assert optimizer.defaults["fused"] == (device == "cuda")
     for step in range(3):
         actual.grad = expected.grad = torch.sin(expected.detach() + step)

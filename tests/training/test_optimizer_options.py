@@ -104,7 +104,7 @@ def test_scaled_groups_match_native_updates_across_schedule_and_resume():
     optimizer = build()
     reference = torch.optim.AdamW(
         [{"params": [p], "lr": 0.01 * scale} for p, scale in zip(reference_parameters, scales, strict=True)],
-        weight_decay=1e-4,
+        weight_decay=0.01,
     )
     assert [group["lr"] for group in optimizer.param_groups] == [0.0025, 0.02]
     for update in range(6):

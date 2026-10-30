@@ -24,7 +24,7 @@ def test_resume_identity_pins_math_not_output():
     assert identity(config) == identity(preview)
     assert identity(config) == identity(output)
     assert identity(config) != identity(changed)
-    decay = load_training_config(EXAMPLE, overrides={"train": {"weight_decay": 0.01}})
+    decay = load_training_config(EXAMPLE, overrides={"train": {"weight_decay": 0.02}})
     assert identity(config) != identity(decay)
 
 

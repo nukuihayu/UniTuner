@@ -148,7 +148,7 @@ batch_size = 16
 | `include_layers` | [string, …] | `[]` | 原生层/模块/参数 glob；空数组选择所有合格目标，不使用 ComfyUI 导出键。 |
 | `exclude_layers` | [string, …] | `[]` | 在 include_layers 之后排除匹配目标，排除规则优先。 |
 | `learning_rate` | number；≥ 0 | `0.0001` | AdamW 基础学习率；先固定数据与 rank，再根据预览和损失调整。 |
-| `weight_decay` | number；≥ 0 | `0.0001` | AdamW 解耦权重衰减；0 关闭，不是学习率。 |
+| `weight_decay` | number；≥ 0 | `0.01` | AdamW 解耦权重衰减；0 关闭，不是学习率。 |
 | `optimizer` | object | `子表默认值` | AdamW 实现与数值选项子表，常规训练使用默认值。 |
 | `max_updates` | integer；> 0 | `1000` | 有效优化器更新总数；梯度累积的 microbatch 不单独计数。 |
 | `accumulation_steps` | integer；> 0 | `1` | 每次有效更新累计的 microbatch 数；降低单批显存需求但会增加一次更新耗时。 |

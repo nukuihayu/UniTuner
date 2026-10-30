@@ -149,7 +149,7 @@ save_precision = "fp32"
 [train]
 # AdamW 解耦权重衰减；0 关闭，不是学习率。
 # Decoupled AdamW weight decay; 0 disables it, independently of learning rate.
-weight_decay = 0.0001
+weight_decay = 0.01
 # 全局梯度范数裁剪阈值；0 关闭。
 # Global gradient-norm clipping threshold; 0 disables clipping.
 max_grad_norm = 1.0

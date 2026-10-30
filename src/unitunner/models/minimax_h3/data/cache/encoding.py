@@ -299,7 +299,7 @@ def cache_minimax_h3(
                     "canonical_item_key": _canonical_item_key(decoded, format),
                     "execution_sha256": encoders.execution_sha256,
                     "numeric_runtime": runtime,
-                    "pixels": "uint8FP32/127.5-1;floatingFP32*2-1;alpha-drop",
+                    "pixels": "Lanczos/half-up-center-crop;uint8FP32/127.5-1;floatingFP32*2-1;alpha-drop",
                     "posterior": "target-SHA256-CPU;condition42-FP16-FP32-before-normalization;audio-mean",
                     "reference": "native24Hz/17n+5/32-grid-Lanczos;image-target-area;single-cap360;text2Hz-shared-pixels",
                 }

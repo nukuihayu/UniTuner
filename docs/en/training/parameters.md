@@ -148,7 +148,7 @@ Alternatively pass `--cache.batch-size 16` to the cache command. Shared training
 | `include_layers` | [string, …] | `[]` | Native layer/module/parameter globs; empty selects all eligible targets, not ComfyUI export keys. |
 | `exclude_layers` | [string, …] | `[]` | Remove matching targets after include_layers; exclusions take precedence. |
 | `learning_rate` | number；≥ 0 | `0.0001` | Base AdamW learning rate; tune against previews and losses while holding data/rank fixed. |
-| `weight_decay` | number；≥ 0 | `0.0001` | Decoupled AdamW weight decay; 0 disables it, independently of learning rate. |
+| `weight_decay` | number；≥ 0 | `0.01` | Decoupled AdamW weight decay; 0 disables it, independently of learning rate. |
 | `optimizer` | object | `table defaults` | AdamW implementation and numerical options; defaults suit standard recipes. |
 | `max_updates` | integer；> 0 | `1000` | Total effective optimizer updates; accumulated microbatches do not count as separate updates. |
 | `accumulation_steps` | integer；> 0 | `1` | Microbatches per optimizer update; trades more work per update for smaller individual batches. |

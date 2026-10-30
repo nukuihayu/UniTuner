@@ -3,7 +3,6 @@
 from pathlib import Path
 from typing import Literal
 
-import cv2
 import numpy as np
 import torch
 from numpy.typing import NDArray
@@ -38,7 +37,7 @@ def index_conditions(targets: tuple[Path, ...], directory: Path) -> dict[str, Pa
 def resize_pixels(
     pixels: NDArray[np.uint8], resolution: tuple[int, int], *, resample: Literal["image", "mask"] = "image"
 ) -> NDArray[np.uint8]:
-    """Return owned uint8 HWC RGB(A) using native Lanczos-up/area-down bucket geometry.
+    """Return owned uint8 HWC RGB(A) using Lanczos resize and bucket geometry.
 
     Round resized extents half up and center-crop. Preserve alpha and channel
     order without compositing, EXIF handling or mutation of caller storage.
@@ -56,12 +55,9 @@ def resize_pixels(
         return pixels.copy()
     scale = max(bucket_width / width, bucket_height / height)
     width, height = int(width * scale + 0.5), int(height * scale + 0.5)
-    if scale > 1 or resample == "mask":
-        interpolation = Image.Resampling.NEAREST if resample == "mask" else Image.Resampling.LANCZOS
-        with Image.fromarray(pixels) as image, image.resize((width, height), interpolation) as resized:
-            values = np.array(resized)
-    else:
-        values = cv2.resize(pixels, (width, height), interpolation=cv2.INTER_AREA)
+    interpolation = Image.Resampling.NEAREST if resample == "mask" else Image.Resampling.LANCZOS
+    with Image.fromarray(pixels) as image, image.resize((width, height), interpolation) as resized:
+        values = np.array(resized)
     left, top = (width - bucket_width) // 2, (height - bucket_height) // 2
     return np.ascontiguousarray(values[top : top + bucket_height, left : left + bucket_width], dtype=np.uint8)
 
@@ -71,9 +67,9 @@ def read_image(
 ) -> Tensor:
     """Decode to CPU FP32 CHW [-1,1] at a (width,height) bucket.
 
-    Preserve historical orientation and alpha-removal order. Upscale with
-    Pillow Lanczos, downscale with OpenCV area, round resized dimensions half
-    up, then center crop. No EXIF rotation or alpha compositing is implicit.
+    Preserve orientation and alpha-removal order. Resize with Pillow Lanczos,
+    round dimensions half up, then center crop. No EXIF rotation or alpha
+    compositing is implicit.
     Return independent contiguous storage and close every decoded image.
     Set channels=4 to append opaque alpha before resize for RGB inputs and retain
     source alpha for RGBA inputs. Set rgb_before_resize for providers that discard alpha

@@ -80,7 +80,7 @@ Increasing accumulation from 1 to 4 makes each update contain four microbatches.
 ```toml
 [train]
 learning_rate = 5e-5
-weight_decay = 1e-4
+weight_decay = 0.01
 max_updates = 10000
 accumulation_steps = 4
 max_grad_norm = 1.0

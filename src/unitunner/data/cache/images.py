@@ -201,7 +201,7 @@ def cache_images(
                 "no_upscale": False if buckets is None else buckets.no_upscale,
                 "enabled": False if buckets is None else buckets.enabled,
             },
-            "resize": "lanczos-up/area-down/half-up/center-crop",
+            "resize": "lanczos/half-up/center-crop",
             "pixels": "RGB/drop-alpha/no-exif/float32/127.5-1",
             "posterior": posterior,
             "posterior_seed": seed if flux else None,

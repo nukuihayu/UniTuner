@@ -78,7 +78,7 @@ def traverse_minimax_h3(
 ) -> Iterator[MiniMaxH3DecodedItem]:
     """Yield native target windows without loading encoders or consuming global RNG.
 
-    Image/control pixels retain RGB(A) through shared Lanczos-up/area-down
+    Image/control pixels retain RGB(A) through shared Lanczos
     center cropping. Video uses shared nearest-PTS24Hz sampling and the same
     spatial resize. Decode target video/audio once per record; each yielded
     tensor owns storage, including overlapping/repeated windows. Embedded

@@ -157,7 +157,7 @@ def cache_wan(
             "kind": kind,
             "video_policy": None if kind == "image" else policy.model_dump(mode="json"),
             "single_frame": None if single_frame is None else single_frame.model_dump(mode="json"),
-            "pixels": "RGB-before-resize/native-Lanczos-up-area-down-half-up-center-crop/no-EXIF;FP32uint8/127.5-1",
+            "pixels": "RGB-before-resize/native-Lanczos-half-up-center-crop/no-EXIF;FP32uint8/127.5-1",
             "posterior": "per-row-mean/(raw-mean)*reciprocal_std/FP32",
             "control": "same-frame-grid/truncate-or-repeat-last/before-window",
             "vae": vae.config.model_dump(mode="json"),

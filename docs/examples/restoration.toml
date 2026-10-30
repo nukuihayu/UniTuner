@@ -115,7 +115,7 @@ histogram_bins = 32
 learning_rate = 5e-5
 # AdamW 解耦权重衰减；0 关闭，不是学习率。
 # Decoupled AdamW weight decay; 0 disables it, independently of learning rate.
-weight_decay = 1e-4
+weight_decay = 0.01
 
 # 全局梯度范数裁剪阈值；0 关闭。
 # Global gradient-norm clipping threshold; 0 disables clipping.

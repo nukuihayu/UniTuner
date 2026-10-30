@@ -62,7 +62,7 @@ def read_reference_image(
 
     Convert to RGBA before resize, then drop alpha only for RGB consumers. Output
     mode uses the explicit(width,height) for both consumers; original uses source
-    area buckets; preferred uses1024²/384². Native Lanczos-up/area-down, half-up
+    area buckets; preferred uses1024²/384². Native Lanczos, half-up
     resize and center crop match the image boundary. No input mutation or RNG.
     """
     if resize not in ("preferred", "original", "output") or channels not in (3, 4):

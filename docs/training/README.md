@@ -80,7 +80,7 @@ full 使用相同的选择入口；它决定哪些底模参数可训练。adapte
 ```toml
 [train]
 learning_rate = 5e-5
-weight_decay = 1e-4
+weight_decay = 0.01
 max_updates = 10000
 accumulation_steps = 4
 max_grad_norm = 1.0

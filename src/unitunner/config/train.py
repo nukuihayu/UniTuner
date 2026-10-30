@@ -26,7 +26,7 @@ class TrainConfig(BaseModel):
         ge=0,
         description="Base AdamW learning rate before schedule and parameter-group multipliers; 0 disables updates",
     )
-    weight_decay: float = Field(default=1e-4, ge=0, description="Decoupled AdamW weight decay; 0 disables decay")
+    weight_decay: float = Field(default=0.01, ge=0, description="Decoupled AdamW weight decay; 0 disables decay")
     optimizer: AdamWConfig = Field(default_factory=AdamWConfig)
     max_updates: int = Field(default=1000, gt=0, description="Number of effective optimizer updates, not microbatches")
     accumulation_steps: int = Field(default=1, gt=0, description="Microbatches accumulated per optimizer update")

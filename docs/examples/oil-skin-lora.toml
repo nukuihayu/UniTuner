@@ -77,7 +77,7 @@ parameter_mode = "adapter"
 learning_rate = 5e-5
 # AdamW 解耦权重衰减；0 关闭，不是学习率。
 # Decoupled AdamW weight decay; 0 disables it, independently of learning rate.
-weight_decay = 1e-4
+weight_decay = 0.01
 # 每次有效更新累计的 microbatch 数；降低单批显存需求但会增加一次更新耗时。
 # Microbatches per optimizer update; trades more work per update for smaller individual batches.
 accumulation_steps = 4

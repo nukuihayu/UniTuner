@@ -59,7 +59,7 @@ def build_qwen_image_21_conditions(
 
     Preferred reference area is1024²; original preserves source area before32
     alignment; output uses exact requested dimensions. Resizing keeps native
-    alpha-first Lanczos-up/area-down center crop, with no EXIF rotation. Mask
+    alpha-first Lanczos center crop, with no EXIF rotation. Mask
     uses first RGB channel/255 then bilinear latent-grid interpolation, without
     BF16 rounding. Caller owns frozen FP32 encoders and their selected devices.
     """

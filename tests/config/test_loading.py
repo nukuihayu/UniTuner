@@ -76,9 +76,9 @@ def test_override_is_explicit_and_nested():
 def test_optimizer_decay_default_and_restoration_recipe():
     config = load_training_config(EXAMPLES / "restoration.toml")
     assert config.train.learning_rate == 5e-5
-    assert config.train.weight_decay == 1e-4
+    assert config.train.weight_decay == 0.01
     config = load_training_config(EXAMPLES / "flow.toml")
-    assert config.train.weight_decay == 1e-4
+    assert config.train.weight_decay == 0.01
     config = load_training_config(EXAMPLES / "restoration.toml", overrides={"train": {"weight_decay": 0.0}})
     assert config.train.weight_decay == 0.0
 
