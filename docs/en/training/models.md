@@ -88,7 +88,7 @@ reference_sources = ["/data/reference-a", "/data/reference-b"]
 
 Each source matches target file stems; list order defines reference order. References are conditions, not additional training examples. Use one entry if only one reference is needed.
 
-Training reference geometry: select a bucket from the target, then resize and center-crop each reference into that same bucket. Aligned equal-sized pairs share scale and crop coordinates; differently composed references are not automatically registered. Upscaling uses Lanczos, downscaling uses area, and resized dimensions use half-up rounding. No separate reference resizing policy is exposed.
+Training reference geometry: select a bucket from the target, then resize and center-crop each reference into that same bucket. Aligned equal-sized pairs share scale and crop coordinates; differently composed references are not automatically registered. Upscaling uses Lanczos, downscaling uses area, and resized dimensions use half-up rounding. Qwen 2.1 also supports the explicit independent reference mode described below.
 
 | Model | Reference constraints |
 | --- | --- |
@@ -100,7 +100,15 @@ Training reference geometry: select a bucket from the target, then resize and ce
 | Qwen 2.1 | Ordered references with the target's bucket geometry |
 | Qwen original / layered | Reject edit-reference directories; layered uses `layer_sources` |
 
+Qwen 2.1 defaults to paired geometry: target and references convert to RGBA, then share the same resizing, half-up rounding and center-crop operators and target bucket. Equal source dimensions therefore produce equal output dimensions and aligned content. VAE and vision use the same processed reference pixels; only vision composites alpha over white, without another resize.
+
+To enable independent reference geometry, set `reference_resolution = [1024, 1024]` next to `reference_sources` in `[dataset.groups.main]`. This is an area budget (width × height), not a forced square shape. Each reference selects its own 32-aligned aspect bucket and uses the same resampler/crop operator. Portrait references use portrait buckets; alignment can still crop a small border. Omitting the field preserves paired geometry, without padding. This option currently supports Qwen 2.1 only. Changing mode or budget invalidates cache identity; rebuild the cache.
+
 These are training-cache rules. Generation is a separate preprocessing boundary. Rebuild caches after changing preprocessing. Old family-specific aliases such as `dataset.groups.main.flux2.reference_sources` are not used.
+
+For a fixed 1024×1024 target, set `resolution = [1024, 1024]` and `enable_bucket = false`; `reference_resolution = [1024, 1024]` still selects independent reference aspect buckets. Enabling target buckets allows target dimensions to vary with aspect ratio.
+
+For Qwen2.1 original-plus-region-mask conditions, use two ordered `reference_sources` directories and omit `reference_resolution`. Target, original and mask must already share source dimensions and coordinates. The mask is an image reference, not an automatic loss mask. FLUX Fill instead uses native `mask_source`: training and inference share uniform scaling and center cropping, with nearest interpolation for masks. Alpha used as a mask never participates in RGB resampling. Fill target, source and explicit mask must have equal dimensions. Rebuild Fill caches after this fix.
 
 ## Required family-specific settings
 

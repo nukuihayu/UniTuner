@@ -99,6 +99,7 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `prompt` | string / null | `null` | In a dataset group, overrides every caption sidecar, including with an empty string; in sampling, the generation prompt. |
 | `caption_extension` | string / null | `null` | Caption sidecar extension including the dot, e.g. .txt; used when prompt is omitted. |
 | `reference_sources` | [string, …] | `[]` | Ordered reference directories, stem-matched to targets; only for variants supporting references. |
+| `reference_resolution` | [int, int] / null | `null` | Qwen 2.1 independent reference area budget (width × height), with per-reference aspect buckets aligned to 32; omitted references share target geometry. |
 | `control_source` | string / null | `null` | Aligned Wan control directory; unsupported by other families. |
 | `mask_source` | string / null | `null` | FLUX Fill mask directory, stem-matched to targets. |
 | `layer_sources` | [string, …] | `[]` | Foreground-layer directories for Qwen layered, stem-matched to composite targets. |

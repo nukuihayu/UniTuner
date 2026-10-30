@@ -7,7 +7,7 @@ import torch
 from PIL import Image
 from torch import Tensor
 
-from unitunner.data.media.image import read_image
+from unitunner.data.media.image import read_image, resize_pixels
 
 
 def read_fill_condition(
@@ -24,25 +24,7 @@ def read_fill_condition(
     with Image.open(target) as high, Image.open(source) as image:
         if high.size != image.size:
             raise ValueError("Flux Fill target and condition require identical original dimensions")
-        original = image.size
-        if mask_path is None:
-            if image.mode != "RGBA":
-                raise ValueError("Flux Fill requires an explicit mask or RGBA condition")
-            mask = image.getchannel("A")
-        else:
-            with Image.open(mask_path) as supplied:
-                if supplied.size != original:
-                    raise ValueError("Flux Fill mask dimensions differ from condition")
-                mask = supplied.convert("L")
-    with mask:
-        width, height = original
-        scale = max(resolution[0] / width, resolution[1] / height)
-        resized_width, resized_height = int(width * scale + 0.5), int(height * scale + 0.5)
-        left, top = (resized_width - resolution[0]) // 2, (resized_height - resolution[1]) // 2
-        with mask.resize((resized_width, resized_height), Image.Resampling.NEAREST) as resized:
-            with resized.crop((left, top, left + resolution[0], top + resolution[1])) as cropped:
-                values = torch.from_numpy(np.array(cropped)).float().unsqueeze(0) / 255
-    return read_image(source, resolution) * (1 - values), values
+    return read_fill_image(source, mask_path, resolution)
 
 
 _KONTEXT_RESOLUTIONS = (
@@ -90,10 +72,10 @@ def read_reference_image(source: Path, *, preferred: bool) -> Tensor:
 def read_fill_image(source: Path, mask_path: Path | None, resolution: tuple[int, int]) -> tuple[Tensor, Tensor]:
     """Return native inference masked RGB CHW and 1HW white-repaint mask.
 
-    Unlike training buckets, inference stretches source RGB with Lanczos and
-    aligned masks with nearest-neighbor to the requested (width,height). An
-    explicit mask must match source dimensions; otherwise RGBA alpha is used.
-    Zero normalized pixels before encoding, retaining fractional repaint values.
+    Training and inference share uniform resize and center-crop geometry.
+    Masks use nearest interpolation to retain labels. An explicit mask must
+    match source dimensions; otherwise RGBA alpha is used only as the mask,
+    never as RGB transparency. Zero normalized pixels before encoding.
     """
     with Image.open(source) as image:
         if mask_path is None:
@@ -105,8 +87,7 @@ def read_fill_image(source: Path, mask_path: Path | None, resolution: tuple[int,
                 if supplied.size != image.size:
                     raise ValueError("Flux Fill mask dimensions differ from condition")
                 mask = supplied.convert("L")
-        with mask, mask.resize(resolution, Image.Resampling.NEAREST) as resized_mask:
-            values = torch.from_numpy(np.array(resized_mask)).float().unsqueeze(0) / 255
-        with image.convert("RGB") as rgb, rgb.resize(resolution, Image.Resampling.LANCZOS) as resized:
-            pixels = torch.from_numpy(np.array(resized)).permute(2, 0, 1).float() / 127.5 - 1
-    return pixels * (1 - values), values
+        with mask:
+            values = resize_pixels(np.array(mask.convert("RGB")), resolution, resample="mask")[..., 0].copy()
+            values = torch.from_numpy(values).float().unsqueeze(0) / 255
+    return read_image(source, resolution, rgb_before_resize=True) * (1 - values), values

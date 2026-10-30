@@ -18,6 +18,10 @@ from unitunner.models.qwen_image_2_1.transformer import QwenImage21Transformer
 from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
+def test_public_training_independent_reference_geometry(tmp_path):
+    test_public_training_three_updates_and_exact_resume(tmp_path, "lora", 2, independent=True)
+
+
 @pytest.mark.parametrize("algorithm,count", [("full", 0), ("lora", 2), ("loha", 1), ("lokr", 2)])
 def test_public_training_three_updates_and_exact_resume(
     tmp_path,
@@ -29,6 +33,7 @@ def test_public_training_three_updates_and_exact_resume(
     wavelet=False,
     recompute=None,
     attention_offload=False,
+    independent=False,
 ):
     previous = torch.get_num_threads()
     torch.set_num_threads(1)
@@ -68,15 +73,16 @@ def test_public_training_three_updates_and_exact_resume(
         body = f'''[model]
 family = "qwen-image-2-1"
 variant = "base"
-weights = "{tmp_path}/model.safetensors"
-vae = "{tmp_path}/vae.safetensors"
-text_encoder = "{tmp_path}/text"
+weights = "{tmp_path.as_posix()}/model.safetensors"
+vae = "{tmp_path.as_posix()}/vae.safetensors"
+text_encoder = "{tmp_path.as_posix()}/text"
 [dataset.groups.main]
-source = "{tmp_path}/images"
-cache_directory = "{tmp_path}/cache"
+source = "{tmp_path.as_posix()}/images"
+cache_directory = "{tmp_path.as_posix()}/cache"
 resolution = [64,32]
 batch_size = 2
 reference_sources = {json.dumps([str(tmp_path / f"ref{i}") for i in range(count)])}
+{"reference_resolution = [128,64]" if independent else ""}
 [train]
 parameter_mode = "{"full" if algorithm == "full" else "adapter"}"
 max_updates = 3
@@ -100,7 +106,7 @@ residency = "{residency}"
 attention_activation_offload = {str(attention_offload).lower()}
 [output]
 max_resume_checkpoints = 0
-directory = "{tmp_path}/run"
+directory = "{tmp_path.as_posix()}/run"
 name = "model"
 save_every_updates = 1
 '''
@@ -155,7 +161,7 @@ conditioning_resize = "output"
             Image.fromarray(np.arange(32 * 64 * 3, dtype=np.uint32).reshape(32, 64, 3).astype(np.uint8)).save(
                 tmp_path / "mask.png"
             )
-            sample += f'mask_image = "{tmp_path}/mask.png"\n'
+            sample += f'mask_image = "{tmp_path.as_posix()}/mask.png"\n'
         preview_config = tmp_path / "preview.toml"
         preview_config.write_text(
             body + "[preview]\nevery_updates = 1\nat_start = true\n[[preview.samples]]\n" + sample
@@ -164,11 +170,11 @@ conditioning_resize = "output"
         assert expected == (checkpoint.read_bytes(), artifact.read_bytes())
         header = body.split("[dataset.groups.main]")[0]
         if algorithm == "full":
-            header = header.replace(str(tmp_path / "model.safetensors"), str(artifact))
-        generation = f'output = "{tmp_path}/generated.png"\n' + header + "[sampling]\n" + sample
+            header = header.replace((tmp_path / "model.safetensors").as_posix(), artifact.as_posix())
+        generation = f'output = "{tmp_path.as_posix()}/generated.png"\n' + header + "[sampling]\n" + sample
         if algorithm != "full":
             generation += f'''[adapter]
-weights = "{artifact}"
+weights = "{artifact.as_posix()}"
 [adapter.config]
 algorithm = "{algorithm}"
 rank = 2

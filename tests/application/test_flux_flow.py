@@ -102,21 +102,21 @@ def write_training(root, variant, algorithm, *, residency="resident"):
     save_flux(model, root / "model.safetensors")
     text = f'''[model]
 family = "flux"
-assets = "{root}"
+assets = "{root.as_posix()}"
 variant = "{variant}"
-weights = "{root}/model.safetensors"
-vae = "{root}/vae.safetensors"
-text_encoder = "{root}/t5"
+weights = "{root.as_posix()}/model.safetensors"
+vae = "{root.as_posix()}/vae.safetensors"
+text_encoder = "{root.as_posix()}/t5"
 [model.text]
 max_length = {512 if variant == "dev" else 64}
 [dataset.groups.main]
-source = "{root}/images"
-cache_directory = "{root}/cache"
+source = "{root.as_posix()}/images"
+cache_directory = "{root.as_posix()}/cache"
 resolution = [32,16]
 batch_size = 2
 '''
     if variant != "dev":
-        text += f'reference_sources = ["{root}/conditions"]\n'
+        text += f'reference_sources = ["{root.as_posix()}/conditions"]\n'
     text += f'''[train]
 max_updates = 3
 seed = 73
@@ -134,7 +134,7 @@ residency = "{residency}"
 recompute = "block"
 [output]
 max_resume_checkpoints = 0
-directory = "{root}/run"
+directory = "{root.as_posix()}/run"
 save_every_updates = 1
 '''
     if algorithm == "full":
@@ -178,7 +178,7 @@ def test_flux_real_variant_cache_training_resume_and_content_identity(assets, va
     assert run(["cache", str(training)]) == 0
     assert load_latent_manifest(root / "cache") == manifest
     independent = root / "independent.toml"
-    independent.write_text(training.read_text().replace(str(root / "cache"), str(root / "cache-copy")))
+    independent.write_text(training.read_text().replace((root / "cache").as_posix(), (root / "cache-copy").as_posix()))
     assert run(["cache", str(independent)]) == 0
     assert load_latent_manifest(root / "cache-copy") == manifest
     for entry in manifest.entries:
@@ -203,17 +203,17 @@ steps = 2
 seed = 791
 """
     if variant != "dev":
-        sampling += f'conditioning_image = "{root}/conditions/a.png"\n'
+        sampling += f'conditioning_image = "{root.as_posix()}/conditions/a.png"\n'
     if variant == "kontext":
         sampling += 'conditioning_resize = "original"\n'
     generation = root / "generate.toml"
     model_section = training.read_text().split("[dataset.groups.main]")[0]
     generation.write_text(
-        f'output = "{root}/sample.png"\n'
+        f'output = "{root.as_posix()}/sample.png"\n'
         + model_section
         + sampling
         + f'''[adapter]
-weights = "{root}/run/weights/model.safetensors"
+weights = "{root.as_posix()}/run/weights/model.safetensors"
 [adapter.config]
 algorithm = "{algorithm}"
 rank = 2
@@ -224,7 +224,10 @@ alpha = 1.0
         generation.write_text(
             generation.read_text()
             .split("[adapter]")[0]
-            .replace(f'weights = "{root}/model.safetensors"', f'weights = "{root}/run/weights/model.safetensors"')
+            .replace(
+                f'weights = "{root.as_posix()}/model.safetensors"',
+                f'weights = "{root.as_posix()}/run/weights/model.safetensors"',
+            )
         )
     before_generation = torch.get_rng_state().clone()
     with torch.autocast("cpu", dtype=torch.bfloat16):
@@ -236,7 +239,9 @@ alpha = 1.0
     with Image.open(root / "sample.png") as image:
         assert image.size == (32, 16)
     plain = training.read_text()
-    expected_states = {index: (root / f"run/resume/model.state-{index:08d}.safetensors").read_bytes() for index in range(1, 4)}
+    expected_states = {
+        index: (root / f"run/resume/model.state-{index:08d}.safetensors").read_bytes() for index in range(1, 4)
+    }
     training.write_text(
         plain
         + "[preview]\nevery_updates = 1\nat_start = true\n"

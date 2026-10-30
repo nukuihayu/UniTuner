@@ -37,3 +37,17 @@ def test_text_overrides_preserve_native_budgets_and_feature_capabilities():
         text.validate_for("flux3")
     with pytest.raises(ValidationError, match="Extra inputs"):
         TextEncodingConfig.model_validate({"select_layers": (2, 0, 1)})
+
+
+def test_independent_reference_resolution_is_explicit_and_capability_checked():
+    assert DatasetInputConfig(reference_sources=("ref",)).reference_resolution is None
+    data = DatasetInputConfig(reference_sources=("ref",), reference_resolution=(1024, 768))
+    data.validate_for("qwen-image-2-1", "base")
+    for family in ("flux2", "qwen-image", "wan"):
+        with pytest.raises(ValueError, match=r"requires Qwen Image2\.1"):
+            data.validate_for(family, "base")
+    with pytest.raises(ValidationError, match="requires reference_sources"):
+        DatasetInputConfig(reference_resolution=(1024, 1024))
+    for size in ((0, 32), (32, -1), (1023, 1024)):
+        with pytest.raises(ValidationError, match="positive multiples"):
+            DatasetInputConfig(reference_sources=("ref",), reference_resolution=size)

@@ -16,6 +16,7 @@ from unitunner.data.cache.storage import CacheEntry, LatentManifest, load_latent
 from unitunner.data.media.buckets import ImageBuckets
 from unitunner.data.media.image import discover_images, index_conditions, resize_pixels
 from unitunner.models.components.text_loading import text_execution, validate_cache_text
+from unitunner.models.qwen_image.data.media import reference_resolution
 from unitunner.models.qwen_image_2_1.data.cache.storage import QwenImage21CacheRecord, save_qwen_image_21_record
 from unitunner.models.qwen_image_2_1.data.encoding import encode_images
 from unitunner.models.qwen_image_2_1.text.encoder import QwenImage21TextEncoder
@@ -38,9 +39,10 @@ def cache_qwen_image_21(
 ) -> LatentManifest:
     """Publish native FP32 64x1xHxW means, LD text and exact ordered reference metadata.
 
-    Targets use explicit (width,height)32-aligned buckets. References use either
-    the target bucket or original already32-aligned geometry. One RGBA byte array
-    feeds both encoders and reference hashing: VAE retains alpha, vision alone
+    Targets use explicit (width,height)32-aligned buckets. References share that
+    bucket and all resize/crop steps by default. An explicit reference_resolution
+    selects independent aspect buckets at that area, with the same resampler.
+    One RGBA byte array feeds both encoders and reference hashing: VAE retains alpha, vision alone
     composites white. No EXIF rotation or independent VLM resize occurs. Content
     identities include caption/source/reference contents, all numerical choices
     and supplied encoder artifact digest. Reuse validates the previous manifest;
@@ -68,7 +70,16 @@ def cache_qwen_image_21(
             **({"text_execution": text_execution(text.model)} if text_execution(text.model) else {}),
             "schema": "qwen-image-2-1/unified-image-text-1",
             "resolution_width_height": list(resolution),
-            "reference_geometry": "target-bucket/lanczos-up-area-down/half-up-center-crop",
+            "reference_geometry": (
+                "independent-aspect-bucket/lanczos-up-area-down/half-up-center-crop"
+                if data.reference_resolution is not None
+                else "target-bucket/lanczos-up-area-down/half-up-center-crop"
+            ),
+            **(
+                {"independent_reference_resolution": list(data.reference_resolution), "reference_alignment": 32}
+                if data.reference_resolution is not None
+                else {}
+            ),
             "reference_count": len(references),
             "pixels": "RGBA-before-resize/native-Lanczos-up-area-down-half-up-center-crop/no-EXIF",
             "vision": "same-pixels/white-alpha-composite/no-resize/patch16-merge2",
@@ -124,7 +135,15 @@ def cache_qwen_image_21(
         for group in references:
             with Image.open(group[path.stem]) as image:
                 rgba = np.array(image.convert("RGBA"), copy=True)
-            controls.append(resize_pixels(rgba, resolution))
+            control_size = resolution
+            if data.reference_resolution is not None:
+                control_size = reference_resolution(
+                    rgba.shape[1],
+                    rgba.shape[0],
+                    area=data.reference_resolution[0] * data.reference_resolution[1],
+                    alignment=32,
+                )
+            controls.append(resize_pixels(rgba, control_size))
         # Vision validates every original reference grid before either encoder runs.
         features = text.encode([prompt], references=[controls])[0]
         latents = encode_images(vae, [target, *controls])

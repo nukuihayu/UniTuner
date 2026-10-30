@@ -23,31 +23,31 @@ class QwenImageReference:
     vision_pixels: NDArray[np.uint8]
 
 
-def reference_resolution(width: int, height: int, *, area: int) -> tuple[int, int]:
-    """Choose the native16-aligned aspect bucket at the supplied positive area.
+def reference_resolution(width: int, height: int, *, area: int, alignment: int = 16) -> tuple[int, int]:
+    """Choose a native aligned aspect bucket at the supplied positive area.
 
     Search five neighboring width buckets; ties retain the first candidate.
     Official VAE/VL areas are1024²/384², original mode uses source area.
-    Reject geometries unable to form a nonempty16-aligned bucket.
+    Alignment defaults to16; Qwen2.1 uses32. Reject empty aligned buckets.
     """
-    if min(width, height, area) < 1:
+    if min(width, height, area, alignment) < 1:
         raise ValueError("Qwen reference size and bucket area must be positive")
     ratio = width / height
-    base = int(math.sqrt(area * ratio)) // 16 * 16
+    base = int(math.sqrt(area * ratio)) // alignment * alignment
     best = None
     error = math.inf
     for offset in range(-2, 3):
-        candidate_width = base + offset * 16
+        candidate_width = base + offset * alignment
         if candidate_width <= 0:
             continue
-        candidate_height = (area // candidate_width) // 16 * 16
+        candidate_height = (area // candidate_width) // alignment * alignment
         if candidate_height <= 0:
             continue
         difference = abs(candidate_width / candidate_height - ratio)
         if difference < error:
             best, error = (candidate_width, candidate_height), difference
     if best is None:
-        raise ValueError("Qwen reference cannot form a nonempty16-aligned aspect bucket")
+        raise ValueError(f"Qwen reference cannot form a nonempty{alignment}-aligned aspect bucket")
     return best
 
 

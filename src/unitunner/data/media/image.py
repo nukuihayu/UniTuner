@@ -35,24 +35,30 @@ def index_conditions(targets: tuple[Path, ...], directory: Path) -> dict[str, Pa
     return indexed
 
 
-def resize_pixels(pixels: NDArray[np.uint8], resolution: tuple[int, int]) -> NDArray[np.uint8]:
+def resize_pixels(
+    pixels: NDArray[np.uint8], resolution: tuple[int, int], *, resample: Literal["image", "mask"] = "image"
+) -> NDArray[np.uint8]:
     """Return owned uint8 HWC RGB(A) using native Lanczos-up/area-down bucket geometry.
 
     Round resized extents half up and center-crop. Preserve alpha and channel
     order without compositing, EXIF handling or mutation of caller storage.
+    Mask mode shares all geometry but uses nearest interpolation for labels.
     """
     if pixels.ndim != 3 or pixels.shape[-1] not in (3, 4) or pixels.dtype != np.uint8 or min(pixels.shape) < 1:
         raise ValueError("Resize pixels requires nonempty uint8 HWC RGB/RGBA")
     if min(resolution) < 1:
         raise ValueError("Image resolution dimensions must be positive")
+    if resample not in ("image", "mask"):
+        raise ValueError("Resample mode must be image or mask")
     bucket_width, bucket_height = resolution
     height, width = pixels.shape[:2]
     if (width, height) == resolution:
         return pixels.copy()
     scale = max(bucket_width / width, bucket_height / height)
     width, height = int(width * scale + 0.5), int(height * scale + 0.5)
-    if scale > 1:
-        with Image.fromarray(pixels) as image, image.resize((width, height), Image.Resampling.LANCZOS) as resized:
+    if scale > 1 or resample == "mask":
+        interpolation = Image.Resampling.NEAREST if resample == "mask" else Image.Resampling.LANCZOS
+        with Image.fromarray(pixels) as image, image.resize((width, height), interpolation) as resized:
             values = np.array(resized)
     else:
         values = cv2.resize(pixels, (width, height), interpolation=cv2.INTER_AREA)

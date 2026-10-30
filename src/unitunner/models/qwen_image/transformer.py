@@ -118,7 +118,10 @@ class QwenImageTransformer(nn.Module):
         )
         hidden = self.img_in(image)
         context = self.txt_in(self.txt_norm(text))
-        times = timesteps.to(hidden.dtype)
+        if hidden.dtype in (torch.bfloat16, torch.float16):
+            times = (timesteps * 1000).to(hidden.dtype) / 1000
+        else:
+            times = timesteps.to(hidden.dtype)
         zero_index = prod(grids[0]) if self.config.zero_reference_time else None
         if self.config.zero_reference_time:
             times = torch.cat((times, times * 0))

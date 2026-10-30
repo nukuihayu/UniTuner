@@ -94,9 +94,11 @@ class Flux3Transformer(nn.Module):
                 data[mode] = data[mode].new_zeros(1, data[mode].shape[1])
                 ids[mode] = ids[mode].new_zeros(1, 4)
                 times[mode] = times[mode].new_zeros(1)
-        vectors = {mode: self.time_in(timestep_embedding(times[mode])) for mode in MODES}
+        hidden = {mode: (self.txt_in if mode == "text" else self.emb_in[mode])(data[mode]) for mode in MODES}
+        dtype = hidden["image"].dtype
+        vectors = {mode: self.time_in(timestep_embedding(times[mode].to(dtype))) for mode in MODES}
         if timesteps_ref is not None and self.ref_time_in is not None:
-            reference = self.ref_time_in(timestep_embedding(timesteps_ref.to(times["image"].dtype)))
+            reference = self.ref_time_in(timestep_embedding(timesteps_ref.to(dtype)))
             for mode in MODES:
                 parts = [
                     reference[index].expand(end - start, -1)
@@ -111,7 +113,6 @@ class Flux3Transformer(nn.Module):
             key = "txt" if mode == "text" else mode
             early[mode] = self.early_stream_modulations[key](vectors[mode])
             single[mode] = self.single_stream_modulations[key](vectors[mode])
-        hidden = {mode: (self.txt_in if mode == "text" else self.emb_in[mode])(data[mode]) for mode in MODES}
         frequencies = {mode: rope_embed(ids[mode][None], self.config.axes_dim, self.config.theta) for mode in MODES}
         route = sample_token_route(
             self.token_routing,

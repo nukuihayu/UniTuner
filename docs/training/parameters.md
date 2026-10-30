@@ -99,6 +99,7 @@ uv run unitunner train train.toml --device cuda --set 'dataset.groups.main.batch
 | `prompt` | string / null | `null` | 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。 |
 | `caption_extension` | string / null | `null` | 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。 |
 | `reference_sources` | [string, …] | `[]` | 有序参考图目录列表；与目标同名主体匹配，仅供支持参考条件的变体使用。 |
+| `reference_resolution` | [int, int] / null | `null` | Qwen2.1 独立参考图面积预算（宽×高）；按参考长宽比分桶，32 对齐；省略时与目标共享几何预处理。 |
 | `control_source` | string / null | `null` | Wan 对齐控制目录；其他家族不使用。 |
 | `mask_source` | string / null | `null` | FLUX Fill 掩码目录；文件主体需匹配目标。 |
 | `layer_sources` | [string, …] | `[]` | Qwen layered 的前景层目录列表，与合成目标按主体对应。 |

@@ -156,7 +156,10 @@ class QwenImage21Transformer(nn.Module):
             target, text, grids, text_lengths=text_lengths, references=references, image_slots=image_slots
         )
         values = sequence.tokens
-        times = timesteps.to(values.dtype)
+        if values.dtype in (torch.bfloat16, torch.float16):
+            times = (timesteps * 1000).to(values.dtype) / 1000
+        else:
+            times = timesteps.to(values.dtype)
         time_features = self.time_text_embed(torch.cat((times, times.new_zeros(1))), values.dtype)
         modulation = self.modulation(time_features)
         route = sample_token_route(

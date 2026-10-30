@@ -204,6 +204,7 @@ def cache_images(
             "variant": variant,
             "version": version,
             "fill_mask": "nearest/bucket-aligned/white-repaint" if variant == "fill" else None,
+            **({"fill_rgb": "drop-alpha-before-resize/shared-mask-geometry-v2"} if variant == "fill" else {}),
             **normalization,
             "text": "Mistral3/system/layers10-20-30/left512"
             if flux2 and version == "dev"

@@ -14,7 +14,9 @@ from tests.support.qwen_image_21 import write_text_assets
 from tests.support.text_assets import local_text_config, main_with_local_tokenizers
 from unitunner.data.cache.schema import CacheIdentity
 from unitunner.data.cache.storage import load_latent_manifest
+from unitunner.data.media.buckets import ImageBuckets
 from unitunner.data.media.image import resize_pixels
+from unitunner.models.qwen_image.data.media import reference_resolution
 from unitunner.models.qwen_image_2_1.config.vae import QwenImage21VAEConfig
 from unitunner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record, save_qwen_image_21_record
 from unitunner.models.qwen_image_2_1.data.encoding import encode_images
@@ -23,8 +25,11 @@ from unitunner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
 from unitunner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
-@pytest.mark.parametrize("count", [0, 2, 1])
-def test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, count):
+@pytest.mark.parametrize(
+    "count,independent,bucketed",
+    [(0, False, False), (2, False, False), (2, False, True), (1, False, False), (2, True, False), (1, False, True)],
+)
+def test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, count, independent, bucketed):
     previous = torch.get_num_threads()
     torch.set_num_threads(1)
     try:
@@ -39,27 +44,44 @@ def test_public_cache_mean_text_metadata_reuse_and_invalidation(tmp_path, count)
         for directory in ["images", "ref0", "ref1"]:
             (tmp_path / directory).mkdir()
             for index, name in enumerate(["a", "b"]):
-                height, width = (35, 49) if directory == "images" else (32, 64) if directory == "ref0" else (64, 32)
+                height, width = (
+                    ((35, 49) if index == 0 else (95, 113))
+                    if directory == "images" or (not independent and count > 0)
+                    else (32, 64)
+                    if directory == "ref0"
+                    else (64, 32)
+                )
                 channels = 3 if index else 4
                 pixels = (
                     np.arange(height * width * channels, dtype=np.uint32).reshape(height, width, channels) * 17
                     + index * 11
                 ).astype(np.uint8)
-                Image.fromarray(pixels).save(tmp_path / directory / f"{name}.png")
+                if count == 2 and not independent:
+                    # A region landmark shared by target, original and grayscale
+                    # mask detects crop offsets and channel-conversion differences.
+                    pixels[..., 0] = 0
+                    pixels[height // 4 : height * 3 // 4, width // 3 : width * 2 // 3, 0] = 255
+                    if channels == 4:
+                        pixels[..., 3] = 255
+                Image.fromarray(pixels[..., 0] if directory == "ref1" and not independent else pixels).save(
+                    tmp_path / directory / f"{name}.png"
+                )
         (tmp_path / "images/a.txt").write_text("short")
         (tmp_path / "images/b.txt").write_text("longer caption about textures")
         config = tmp_path / "cache.toml"
         config.write_text(f'''[model]
 family = "qwen-image-2-1"
 variant = "base"
-weights = "{tmp_path}/not-loaded.safetensors"
-vae = "{tmp_path}/vae.safetensors"
-text_encoder = "{tmp_path}/text"
+weights = "{tmp_path.as_posix()}/not-loaded.safetensors"
+vae = "{tmp_path.as_posix()}/vae.safetensors"
+text_encoder = "{tmp_path.as_posix()}/text"
 [dataset.groups.main]
-source = "{tmp_path}/images"
-cache_directory = "{tmp_path}/cache"
+source = "{tmp_path.as_posix()}/images"
+cache_directory = "{tmp_path.as_posix()}/cache"
 resolution = [64,32]
+enable_bucket = {str(bucketed).lower()}
 reference_sources = {json.dumps([str(tmp_path / f"ref{i}") for i in range(count)])}
+{"reference_resolution = [128,64]" if independent else ""}
 [train]
 parameter_mode = "full"
 ''')
@@ -85,21 +107,41 @@ parameter_mode = "full"
         )
         for name, entry in zip(["a", "b"], manifest.entries, strict=True):
             record = read_qwen_image_21_record(destination, entry, device=device)
+            resolution = ImageBuckets((64, 32), alignment=32, enabled=bucketed).for_image(
+                tmp_path / "images" / f"{name}.png"
+            )
             with Image.open(tmp_path / "images" / f"{name}.png") as image:
-                target = resize_pixels(np.array(image.convert("RGBA"), copy=True), (64, 32))
+                target = resize_pixels(np.array(image.convert("RGBA"), copy=True), resolution)
             controls = []
             for i in range(count):
                 with Image.open(tmp_path / f"ref{i}" / f"{name}.png") as image:
                     rgba = np.array(image.convert("RGBA"), copy=True)
-                controls.append(resize_pixels(rgba, (64, 32)))
+                size = (
+                    reference_resolution(rgba.shape[1], rgba.shape[0], area=128 * 64, alignment=32)
+                    if independent
+                    else resolution
+                )
+                controls.append(resize_pixels(rgba, size))
             expected = encode_images(frozen, [target, *controls])
+            if count == 2 and not independent:
+                assert target.shape == controls[0].shape == controls[1].shape
+                assert np.array_equal(target, controls[0])
+                assert np.array_equal(target[..., 0], controls[1][..., 0])
             assert torch.equal(record.latents, expected[0])
             assert all(torch.equal(a, b) for a, b in zip(record.references, expected[1:], strict=True))
+            if count == 1:
+                # Identical target/control pixels must stay exactly aligned for
+                # both upsampling and downsampling, including the posterior mean.
+                assert torch.equal(record.latents, record.references[0])
             prompt = (tmp_path / "images" / f"{name}.txt").read_text()
             encoded = text.encode([prompt], references=[controls])[0]
             assert torch.equal(record.caption, encoded.features)
             assert record.image_slots.tolist() == list(encoded.image_slots)
             assert record.reference_grids.tolist() == [list(grid) for grid in encoded.image_shapes]
+            if count:
+                assert record.references[0].shape[-2:] == ((4, 8) if independent else record.latents.shape[-2:])
+            if count == 2:
+                assert record.references[1].shape[-2:] == ((8, 4) if independent else record.latents.shape[-2:])
             hashes = [
                 list(hashlib.sha256(f"{image.shape[1]}x{image.shape[0]}:".encode() + image.tobytes()).digest())
                 for image in controls
@@ -136,6 +178,17 @@ parameter_mode = "full"
         assert main_with_local_tokenizers(["cache", str(config), "--device", str(device)]) == 0
         updated = load_latent_manifest(destination)
         assert updated.entries[0] != manifest.entries[0] and updated.entries[1] == manifest.entries[1]
+        if independent:
+            # Switching back to paired geometry must not reuse independent caches.
+            config.write_text(config.read_text().replace("reference_resolution = [128,64]", ""))
+            assert main_with_local_tokenizers(["cache", str(config), "--device", str(device)]) == 0
+            paired = load_latent_manifest(destination)
+            assert all(a.file != b.file for a, b in zip(paired.entries, updated.entries, strict=True))
+            assert all(
+                ref.shape[-2:] == (2, 4)
+                for entry in paired.entries
+                for ref in read_qwen_image_21_record(destination, entry, device=device).references
+            )
         assert torch.equal(rng, torch.get_rng_state())
         if cuda_rng is not None:
             assert torch.equal(cuda_rng, torch.cuda.get_rng_state())

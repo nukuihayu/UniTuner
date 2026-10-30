@@ -41,6 +41,31 @@ def test_dataset_validation_policy_does_not_change_resume_identity():
     )
 
 
+@pytest.mark.parametrize(
+    "example,policy",
+    [
+        ("qwen-image-flow.toml", "qwen/native-clock-cast/divide1000/cast/1"),
+        ("qwen-image-2-1-flow.toml", "qwen21/native-clock-cast/divide1000/cast/1"),
+        ("flux3-flow.toml", "flux3/fraction-cast/multiply1000/1"),
+    ],
+)
+@pytest.mark.parametrize("precision", ["bf16", "fp16", "fp32"])
+def test_timestep_rounding_policy_is_pinned_only_for_low_precision(monkeypatch, example, policy, precision):
+    from unitunner.checkpoints import schema
+
+    config = load_training_config(EXAMPLE.with_name(example), overrides={"execution": {"precision": precision}})
+    captured = {}
+    original = schema.canonical_sha256
+
+    def capture(values):
+        captured.update(values)
+        return original(values)
+
+    monkeypatch.setattr(schema, "canonical_sha256", capture)
+    build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)
+    assert captured.get("timestep_precision_policy") == (None if precision == "fp32" else policy)
+
+
 def test_provenance_needs_no_deleted_cli_attributes():
     provenance = Provenance(
         model_family="z-image",

@@ -10,12 +10,17 @@ class DatasetInputConfig(BaseModel):
 
     Paths identify directories matched to target filename stems, not independent
     training samples. Repeated references retain their order. Training references
-    use the target bucket, matching the default Musubi dataset geometry.
+    use the target bucket by default, matching Musubi's paired dataset geometry.
+    Qwen2.1 can explicitly select an independent reference area budget.
     Capability checks reject unsupported conditions before artifact IO.
     """
 
     model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
     reference_sources: tuple[str, ...] = ()
+    reference_resolution: tuple[int, int] | None = Field(
+        default=None,
+        description="Qwen2.1 independent reference area budget (width,height); omitted references share the target bucket",
+    )
     control_source: str | None = Field(default=None, min_length=1)
     mask_source: str | None = Field(default=None, min_length=1)
     layer_sources: tuple[str, ...] = ()
@@ -27,11 +32,18 @@ class DatasetInputConfig(BaseModel):
             raise ValueError("dataset reference_sources/layer_sources require nonempty paths")
         if self.reference_sources and self.layer_sources:
             raise ValueError("dataset reference_sources and layer_sources are mutually exclusive")
+        if self.reference_resolution is not None:
+            if not self.reference_sources:
+                raise ValueError("dataset.reference_resolution requires reference_sources")
+            if any(value < 32 or value % 32 for value in self.reference_resolution):
+                raise ValueError("dataset.reference_resolution dimensions must be positive multiples of32")
         return self
 
     def validate_for(self, family: str, variant: str, *, kind: str = "image") -> None:
         """Check model capabilities without loading weights or touching source files."""
         references = self.reference_sources
+        if self.reference_resolution is not None and (family != "qwen-image-2-1" or kind != "image"):
+            raise ValueError("dataset.reference_resolution currently requires Qwen Image2.1 image data")
         if family == "flux":
             if references and (variant == "dev" or len(references) != 1):
                 raise ValueError("Flux Kontext/Fill accepts exactly one reference source; Dev accepts none")

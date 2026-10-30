@@ -48,6 +48,18 @@ def build_resume_identity(
     # Cache execution is already pinned by dataset records, not training policy.
     exclusions: dict[str, bool | set[str]] = {"output": True, "preview": True, "cache": True, **fields}
     values = config.model_dump(mode="json", exclude=exclusions)
+    # Paired geometry is unchanged; a newly explicit inactive option must not
+    # invalidate existing runs. Independent budgets remain part of identity.
+    for group in values["dataset"]["groups"].values():
+        if group.get("reference_resolution") is None:
+            group.pop("reference_resolution", None)
+    if config.execution.precision in ("bf16", "fp16"):
+        if config.model.family == ModelFamily.QWEN_IMAGE_2_1:
+            values["timestep_precision_policy"] = "qwen21/native-clock-cast/divide1000/cast/1"
+        elif config.model.family == ModelFamily.QWEN_IMAGE:
+            values["timestep_precision_policy"] = "qwen/native-clock-cast/divide1000/cast/1"
+        elif config.model.family == ModelFamily.FLUX3:
+            values["timestep_precision_policy"] = "flux3/fraction-cast/multiply1000/1"
     if any(group.degradation is not None and group.degradation.enabled for group in config.dataset.groups.values()):
         values["degradation_policy"] = "hypir-unattenuated-acquisition/fixed-scale-adaptation/post-alignment-grain/36"
     values["dataset_sampling_policy"] = "named-groups/independent-buckets/repeat-before-chunk/short-tail/2"
