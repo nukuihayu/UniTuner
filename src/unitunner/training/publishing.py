@@ -31,8 +31,18 @@ def publish_adapter(
     metadata: Mapping[str, str] | None = None,
     prefixes: Mapping[str, str] | None = None,
     published: Mapping[str, Tensor] | None = None,
+    adapter_format: Literal["comfyui", "diffusers"] = "comfyui",
+    family: str | None = None,
 ) -> None:
     """Save ordinary mapped adapters or tensors from an explicit sliced-layout publisher."""
+    if adapter_format == "diffusers":
+        from unitunner.artifacts.formats.diffusers_adapters import diffusers_lora_state
+
+        if adapter.algorithm != "lora" or family is None:
+            raise ValueError("Official Diffusers publication requires vanilla LoRA and an explicit model family")
+        published = diffusers_lora_state(branches.state_dict(), target_names, family=family)
+    elif adapter_format != "comfyui":
+        raise ValueError("Adapter format must be comfyui or diffusers")
     if published is None:
         if prefixes is None:
             prefixes = adapter_prefixes(target_names, algorithm=adapter.algorithm, namespace=namespace)
@@ -49,4 +59,9 @@ def publish_adapter(
         lora_module_identifier=module_identifier,
     )
     info.update(metadata or {})
+    info["unitunner.adapter.format"] = adapter_format
+    if adapter_format == "diffusers":
+        info["unitunner.adapter.layout"] = f"{family}-diffusers"
+        info["network_alpha"] = str(adapter.rank)
+        info["unitunner.adapter.scaling"] = "alpha/r baked into lora_B; consumer alpha=rank"
     save_tensors(published, path, metadata=info, dtype=dtype)

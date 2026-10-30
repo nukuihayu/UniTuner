@@ -248,7 +248,12 @@ Alternatively pass `--cache.batch-size 16` to the cache command. Shared training
 | `max_weight_checkpoints` | integer；≥ 0 | `0` | Keep the newest N weight sets; default 0 keeps all, including companion encoders. |
 | `tensorboard` | string / null | `null` | Event root directory; the trainer automatically creates a run subdirectory from the training name. |
 | `save_precision` | "fp32", "fp16", "bf16" | `"fp32"` | Export dtype fp32/bf16/fp16 for inference weights; resume retains training dtypes. |
+| `adapter_format` | "comfyui", "diffusers" | `"comfyui"` | ComfyUI-compatible adapters by default; diffusers exports official PEFT A/B tensors for vanilla LoRA only. |
 | `checkpoint_storage` | "complete", "frozen-reference" | `"complete"` | complete includes full training tensors; frozen-reference omits duplicate frozen parameters and requires the identical base. |
+
+Set `output.adapter_format = "diffusers"` in TOML or pass `--set output.adapter_format=diffusers`. Publication converts factors directly: it never merges LoRA into the base, combines independent layers or performs SVD. Keep consumer-supported split projections independent, including Qwen Image 2.1 `gate_layer/proj`. Where the official architecture splits a native fused projection, slice its output factor and reuse its input factor.
+
+Diffusers uses `transformer.<official projection>.lora_A.weight/lora_B.weight`, with the original `alpha/r` baked into B and consumer scaling of 1. Use a Diffusers/PEFT loader supporting the corresponding architecture; UniTunner native inference continues to use the default ComfyUI export. LoHa/LoKr use ComfyUI format. This option affects denoiser adapter exports only, not full weights, companion VAE encoder adapters or resume state.
 
 ## `preview`
 

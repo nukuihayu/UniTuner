@@ -231,6 +231,8 @@ def train_wan(
                     module_identifier="networks.lora_wan",
                     dtype=save_dtype,
                     namespace="diffusion_model",
+                    adapter_format=config.output.adapter_format,
+                    family="wan",
                     metadata={
                         **publication_metadata(config, identity, update),
                         "model_version": str(config.model.version),

@@ -217,6 +217,8 @@ def train_minimax_h3(config: TrainingConfig, *, device: torch.device, resume: Pa
                     module_identifier="networks.lora_minimax_h3",
                     dtype=save_dtype,
                     namespace="diffusion_model",
+                    adapter_format=config.output.adapter_format,
+                    family="minimax-h3",
                     metadata={
                         **publication_metadata(config, identity, update),
                         "model_variant": config.model.variant,

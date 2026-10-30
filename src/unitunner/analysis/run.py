@@ -9,7 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 from unitunner.analysis.adapters import compare_deltas, groups, load_delta, summarize
-from unitunner.analysis.artifacts import Artifact, discover, inspect_artifact
+from unitunner.analysis.artifacts import Artifact, discover
+from unitunner.analysis.references import ReferenceArtifact, inspect_reference, resolve_reference
 from unitunner.analysis.statistics import compare, dense_spectrum, describe
 from unitunner.logging import operation_context
 from unitunner.progress import progress, status
@@ -40,7 +41,7 @@ def canonical(name: str) -> str:
     return name
 
 
-def baseline_key(name: str, base: Artifact, key_map: dict[str, str]) -> str | None:
+def baseline_key(name: str, base: ReferenceArtifact, key_map: dict[str, str]) -> str | None:
     """Require one unambiguous key; users can supply explicit cross-layout mappings."""
     if name in key_map:
         target = key_map[name]
@@ -52,6 +53,9 @@ def baseline_key(name: str, base: Artifact, key_map: dict[str, str]) -> str | No
     role = name.split("/", 1)[0]
     if role not in {"model", "weights"}:
         return None  # An encoder/discriminator tensor is not a denoiser weight with a similar name.
+    resolved = resolve_reference(name, base)
+    if resolved is not None:
+        return resolved
     if not hasattr(base, "_canonical_index"):
         base._canonical_index = {}
         for key in base.tensors:
@@ -176,11 +180,12 @@ def analyze(
             "Only final portable exports are analyzed. Periodic weights and resume states are excluded; stored buffers may be indistinguishable from weights.",
             "Portable exports expose all stored tensors; trained/all scope is equivalent for these exports.",
             "ΔW = alpha/r x B A; encoder adapters use unit scaling. LoHa uses the Hadamard product; native full-right LoKr uses unit scaling.",
+            "Diffusers A/B honors PEFT alpha/rank patterns and use_rslora metadata; without alpha, vanilla PEFT uses unit scaling. DoRA is not approximated as vanilla LoRA.",
             "Stable rank = sum(s²)/max(s²); energy rank90 is the smallest k explaining 90% of squared singular values. Energy effective rank = exp(-sum(p log p)), p=s²/sum(s²).",
             "Convolutions are unfolded as [out, inxkernel]. Exact SVD is budgeted; skipped spectra are explicitly marked. Spectral charts display at most 128 singular values.",
             "Final exports cannot reconstruct parameter trajectories. Recorded loss curves are telemetry, not weight-change measurements.",
             "Charts show explicitly labeled subsets; layer diagnostics paginate at 24 rows and collection summaries at 24 files. Full numeric rows remain in CSV.",
-            "Base matching uses exact names after wrapper removal, or an explicit key map; shape and coverage are reported. Name matching alone does not verify base-model identity.",
+            "Base matching uses exact names after wrapper removal, documented official/ComfyUI projection aliases and row slices, or an explicit key map; shape and coverage are reported. Layout compatibility does not verify base-model identity.",
             "Zero denominators have no defined relative change/cosine. Nonfinite entries are counted and excluded from finite moments.",
             "Packed quantization tensors are storage-only, not decoded weights. Use floating exports for logical weight analysis.",
             "Singular-vector similarity is |u_i^T v_j| (sign invariant). Repeated singular values permit basis rotations: prefer principal angles and Frobenius subspace overlap for interpretation.",
@@ -192,7 +197,7 @@ def analyze(
     }
     previous = {}
     with ExitStack() as stack:
-        baseline = stack.enter_context(inspect_artifact(base)) if base else None
+        baseline = stack.enter_context(inspect_reference(base)) if base else None
         for artifact in progress(artifacts, "[analyze] artifacts"):
             predecessor = None  # Final exports are independent observations, never a time series.
             # A duplicate update is a separate snapshot, never an inferred time interval.

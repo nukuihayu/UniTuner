@@ -77,7 +77,11 @@ uv run unitunner analyze runs/oil-skin-lora --base /models/base.safetensors \
   --layer '*attn*' --top-k 64 --top-layers 6
 ```
 
-默认最多选择 3 层做子空间比较；`--layer` 可重复并显式选择层。`--compare` 可提供另一个完整模型权重，生成三方比较。基模与权重只按明确名称、形状或 `--key-map mapping.json` 匹配，不猜测下划线与点号关系。encoder 对照需要对应 VAE 基模和明确映射，不能拿 denoiser 基模冒充。
+默认最多选择 3 层做子空间比较；`--layer` 可重复并显式选择层。`--compare` 可提供另一个完整模型权重，生成三方比较。基模与权重按明确名称、形状、已知官方／ComfyUI 投影映射或 `--key-map mapping.json` 匹配，不猜测下划线与点号关系。encoder 对照需要对应 VAE 基模和明确映射，不能拿 denoiser 基模冒充。
+
+底模支持单文件、分片索引及官方仓库的本地 transformer 目录。已知布局差异使用只读投影视图处理：Qwen Image 2.1 的 `[gate_layer; proj]`、Z-Image 的 Q/K/V（含不等宽 GQA）、FLUX 的 QKV 和单流融合输入、FLUX3 QKV，以及 H3 的 QKV 和 SwiGLU 顺序。其他受支持模型复用训练加载器的明确官方层名映射。只在所分析的一层需要时拼接对应参考矩阵，不加载整模或改写底模。对普通 LoRA，同时识别 ComfyUI down/up/alpha 和 Diffusers A/B；后者读取官方 PEFT 的 alpha、逐层 pattern 和 RSLoRA 缩放元数据，无显式 alpha 时按 vanilla PEFT 的单位缩放处理。DoRA 不会被误算为普通 LoRA。
+
+这修复的是存储布局匹配，不证明底模版本相同。量化打包权重仍标记为不可直接比较，需先提供浮点底模。Qwen 2.1 的 ComfyUI LoRA 本身保留拆分层名，见 [ComfyUI LoRA 映射](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy/lora.py)；A/B 单位缩放依据 [Diffusers PEFT 加载逻辑](https://github.com/huggingface/diffusers/blob/main/src/diffusers/utils/peft_utils.py)。
 
 精确谱分解受 `--svd-max-elements`、`--factor-budget` 限制；子空间矩阵受 `--matrix-budget` 限制，大矩阵使用固定 seed 的随机化 SVD，并报告捕获能量。卷积展开为 `[out, in×kernel]`；默认不解码 packed quantization，需浮点导出来分析逻辑权重。
 

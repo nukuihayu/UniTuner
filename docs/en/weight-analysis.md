@@ -56,6 +56,10 @@ Subspace overlap and principal angles are more reliable than individual singular
 
 Use `--base`, `--compare`, repeatable `--layer`, `--top-k`, `--top-layers`, and explicit `--key-map` when needed. Names and shapes must match; fuzzy mappings are not inferred. Encoders require their own matching VAE reference. Spectra and subspaces have explicit compute budgets; randomized SVD uses a fixed seed and reports captured energy. Packed quantization is storage-only unless exported to floating weights.
 
+Baselines can be single files, indexed shards or local official transformer directories. Reference-only views handle documented ComfyUI/official layout differences: Qwen Image 2.1 `[gate_layer; proj]`, Z-Image QKV including unequal-width GQA, FLUX QKV and fused single-stream inputs, FLUX3 QKV, and H3 QKV/SwiGLU ordering. Other supported families reuse explicit official projection mappings from the model importer. Only the required reference matrix is joined; the full model is never allocated or rewritten. Both ComfyUI down/up/alpha and Diffusers A/B LoRA factors are recognized, including official PEFT alpha/pattern and RSLoRA scaling metadata. Vanilla PEFT A/B without explicit alpha uses unit scaling; DoRA is not approximated as vanilla LoRA.
+
+Layout compatibility does not establish base-model identity. Packed quantization remains unavailable for logical comparisons; provide floating base weights. Qwen 2.1 LoRA projections stay separate according to [ComfyUI's mapping](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy/lora.py); the A/B scaling convention follows [Diffusers PEFT loading](https://github.com/huggingface/diffusers/blob/main/src/diffusers/utils/peft_utils.py).
+
 Final exports cannot recover parameter trajectories. Recorded loss/gradient/LR curves are separate telemetry, not inferred weight histories.
 
 Sources: [LoRA](https://arxiv.org/abs/2106.09685), [LyCORIS](https://arxiv.org/abs/2309.14859), [Randomized matrix decompositions](https://arxiv.org/abs/0909.4061).

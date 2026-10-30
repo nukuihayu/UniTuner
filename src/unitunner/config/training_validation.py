@@ -15,6 +15,13 @@ if TYPE_CHECKING:
 
 def validate_training_policy(config: "TrainingConfig") -> None:
     """Validate model/method/execution choices once for the whole run."""
+    if config.output.adapter_format == "diffusers" and config.train.adapter is not None:
+        if config.train.adapter.algorithm != "lora":
+            raise ConfigRuleError(
+                "output.adapter_format",
+                "Official Diffusers export supports vanilla LoRA only",
+                "Use adapter_format='comfyui' for LoHa/LoKr, or train.adapter.algorithm='lora'.",
+            )
     if (
         config.model.family == ModelFamily.MOSS_IMAGE
         and config.model.variant == "edit"

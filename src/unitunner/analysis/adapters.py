@@ -1,6 +1,8 @@
 """Analyze actual adapter updates, respecting native alpha and encoder scaling."""
 
+import json
 import math
+import re
 from dataclasses import dataclass
 
 import torch
@@ -9,6 +11,8 @@ from unitunner.analysis.artifacts import Artifact
 from unitunner.analysis.statistics import CHUNK, spectrum
 
 SUFFIXES = {
+    "lora_A.weight": "down",
+    "lora_B.weight": "up",
     "lora_down.weight": "down",
     "lora_up.weight": "up",
     "hada_w1_a": "a1",
@@ -92,6 +96,27 @@ class Delta:
         return None
 
 
+def peft_scale(artifact: Artifact, name: str, rank: int) -> float:
+    """Honor official component-prefixed PEFT alpha metadata and reject DoRA estimates."""
+    metadata = json.loads(artifact.metadata.get("lora_adapter_metadata", "{}"))
+    local = name.split("/", 1)[-1]
+    component, _, layer = local.partition(".")
+    config = {
+        key.removeprefix(component + "."): value for key, value in metadata.items() if key.startswith(component + ".")
+    }
+    if not config:
+        config, layer = metadata, local
+    if config.get("use_dora") or any(key.startswith(name + ".lora_magnitude_vector") for key in artifact.tensors):
+        raise ValueError(
+            "DoRA updates require magnitude/base-weight normalization; vanilla LoRA analysis is unavailable"
+        )
+    alpha = config.get("lora_alpha", artifact.metadata.get("network_alpha", rank))
+    patterns = dict.fromkeys([*config.get("rank_pattern", {}), *config.get("alpha_pattern", {})])
+    match = next((pattern for pattern in patterns if re.match(rf"(.*\.)?({pattern})$", layer)), None)
+    alpha = config.get("alpha_pattern", {}).get(match, alpha)
+    return float(alpha) / (math.sqrt(rank) if config.get("use_rslora") else rank)
+
+
 def load_delta(artifact: Artifact, name: str, parts: dict[str, str]) -> Delta:
     """Reject ambiguous scaling and geometry rather than report an invented update."""
     factors = {part: artifact.read(key).double() for part, key in parts.items() if part != "alpha"}
@@ -129,6 +154,11 @@ def load_delta(artifact: Artifact, name: str, parts: dict[str, str]) -> Delta:
         scale = 1.0
     else:
         alpha = artifact.read(parts["alpha"]).item() if "alpha" in parts else artifact.metadata.get("network_alpha")
+        if parts.get("down", "").endswith(".lora_A.weight") and "alpha" not in parts:
+            scale = peft_scale(artifact, name, rank)
+            if not math.isfinite(scale) or scale <= 0:
+                raise ValueError("PEFT scaling must be finite and positive")
+            return Delta(kind, factors, scale, rank, shape)
         if alpha is None:
             raise ValueError("alpha missing: effective update scale is unknown")
         scale = float(alpha) / rank

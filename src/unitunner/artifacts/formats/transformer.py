@@ -260,6 +260,21 @@ def _h3_sources(key: str) -> tuple[str, ...]:
     )
 
 
+def official_projection_sources(family: str, key: str) -> tuple[str, ...]:
+    """Map a native parameter to ordered official parameters, retaining fusion boundaries."""
+    if family in {"flux", "flux2"}:
+        return _flux_sources(key, second=family == "flux2")
+    if family == "flux3":
+        return (_flux3_key(key),)
+    if family == "wan":
+        return (_wan_key(key),)
+    if family == "krea2":
+        return (_krea_key(key),)
+    if family == "minimax-h3":
+        return _h3_sources(key)
+    return (key,)
+
+
 def convert_transformer(
     family: str, tensors: Mapping[str, Tensor], expected: Mapping[str, Tensor], *, external: bool | None = None
 ) -> dict[str, Tensor]:

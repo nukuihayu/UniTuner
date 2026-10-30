@@ -7,7 +7,7 @@ from fnmatch import fnmatchcase
 import torch
 
 from unitunner.analysis.adapters import groups, load_delta
-from unitunner.analysis.artifacts import inspect_artifact
+from unitunner.analysis.references import inspect_reference
 
 
 def singular_basis(matrix, *, top_k=32, side="right", seed=42):
@@ -103,8 +103,8 @@ def enrich_subspaces(
         key = snapshot["file"]
         latest[key] = index
     with ExitStack() as stack:
-        baseline = stack.enter_context(inspect_artifact(base)) if base else None
-        comparison = stack.enter_context(inspect_artifact(compare_path)) if compare_path else None
+        baseline = stack.enter_context(inspect_reference(base)) if base else None
+        comparison = stack.enter_context(inspect_reference(compare_path)) if compare_path else None
         for index in latest.values():
             snapshot, artifact = report["snapshots"][index], artifacts[index]
             candidates = [(row, True) for row in snapshot["effective"] if "norm" in row]

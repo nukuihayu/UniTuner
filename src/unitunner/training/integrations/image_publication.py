@@ -72,7 +72,7 @@ def publish_image_model(
         if isinstance(model, QwenImage21Transformer):
             metadata["qwen_image_model_version"] = "2.1"
         metadata.update(method_metadata)
-        if isinstance(model, FluxTransformer | Flux2Transformer):
+        if isinstance(model, FluxTransformer | Flux2Transformer) and config.output.adapter_format == "comfyui":
             metadata["unitunner.adapter.layout"] = "flux-diffusers"
             targets = binding.adapter_targets()
             layout = flux_adapter_layout(
@@ -105,6 +105,8 @@ def publish_image_model(
             base_model=base_model,
             module_identifier=module_identifier,
             dtype=dtype,
+            adapter_format=config.output.adapter_format,
+            family=str(config.model.family),
             metadata=metadata,
             published=published,
             namespace="diffusion_model"

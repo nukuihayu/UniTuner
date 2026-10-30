@@ -47,3 +47,15 @@ def test_config_classes_remain_importable_and_output_identity_survives_roundtrip
     config.output._run_name = "named-run"
     assert "_run_name" not in config.output.model_dump()
     assert config.model_validate_json(config.model_dump_json()).model_dump() == config.model_dump()
+
+
+def test_adapter_format_default_override_and_algorithm_validation():
+    assert OutputConfig().adapter_format == "comfyui"
+    value = document()
+    value["output"] = {"adapter_format": "diffusers"}
+    config = load_training_config(overrides=value)
+    assert config.output.adapter_format == "diffusers"
+    for algorithm in ("loha", "lokr"):
+        value["train"]["adapter"] = {"algorithm": algorithm}
+        with pytest.raises(ValueError, match="vanilla LoRA"):
+            load_training_config(overrides=value)
