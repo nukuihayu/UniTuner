@@ -21,10 +21,10 @@
 
 ## 开始转换
 
-在项目根目录安装可选依赖：
+在项目根目录同步默认依赖：
 
 ```bash
-uv sync --locked --extra kitchen
+uv sync --locked
 ```
 
 将模型转换为 FP8：

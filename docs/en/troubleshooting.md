@@ -25,7 +25,7 @@ Locate the failing stage: validation → cache encoding → training → preview
 | Existing path cannot be found | Relative paths use the working directory; check shard completeness and distinguish tokenizers from encoder weights |
 | Key / shape / topology mismatch | Verify family, variant, version, component, and format; renaming a model does not convert its architecture |
 | Tokenizer download or offline failure | Set a local tokenizer source and, when needed, subfolder; verify separate processor and CLIP sources |
-| Missing optional dependency | Install the corresponding [extra](installation.md) into the environment running the command |
+| Missing dependency | Restore the [default dependencies](installation.md) in the environment running the command |
 | CUDA unavailable | Check driver, CUDA-enabled Torch, and visible devices; CPU workflows need FP32 without CUDA-only policies |
 
 ## Caches and datasets

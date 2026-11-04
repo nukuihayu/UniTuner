@@ -28,16 +28,16 @@
 git clone https://github.com/nukuihayu/UniTuner.git
 cd UniTuner
 uv python install 3.13
-uv sync --locked --no-dev --extra media --extra text
+uv sync --locked --no-dev
 uv run --no-dev unituner --help
 ```
 
-`media` 提供图像/视频/音频读写，`text` 提供文本编码与分词依赖。后续命令都在仓库根目录执行。
+默认安装包含媒体读写、文本编码、分词器、comfy-kitchen 和 comfy-aimdo。后续命令都在仓库根目录执行。
 
 国内环境需要清华 PyPI 源时，安装依赖使用：
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev --extra media --extra text
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev
 ```
 
 该地址用于 Python 包，不是模型下载源或 Python 解释器下载源。依赖安装完后用 `uv run --no-sync --no-dev` 启动可避免训练前再次同步依赖。

@@ -33,7 +33,7 @@ GPU memory holds weights, optimizer state, gradients, and forward activations. P
 | Attention-saved activations are large | `attention_activation_offload = true` | Host memory and D2H/H2D transfers |
 | Frozen weights or transfers are too large | `quantization = "float8_e4m3fn"` or another supported layout | Smaller packed storage; temporary floating weights and dequantization overhead |
 | Frozen adapter base weights do not fit | `residency = "frozen-blocks"` | Automatic shared cache, asynchronous prefetch, per-block recomputation |
-| Manage frozen weights through virtual memory | `residency = "vbar"` | Physical residency follows device capacity; NVIDIA CUDA and vbar extra |
+| Manage frozen weights through virtual memory | `residency = "vbar"` | Physical residency follows device capacity; a compatible NVIDIA CUDA device |
 | Flow matching can use mixed precision | `precision = "bf16"` | CUDA AMP; trainable parameters and optimizer masters remain FP32 |
 
 Supported policies can be combined, without a promise of faster updates. Compare steady-state time and total GPU memory with the same model, dimensions, and batch size. Record first-call compilation separately.
@@ -132,7 +132,7 @@ Buffers are reused only after all graph readers finish and their CUDA events are
 Install the dependency:
 
 ```bash
-uv sync --locked --extra media --extra text --extra vbar
+uv sync --locked
 ```
 
 Then edit the configuration:
@@ -166,7 +166,7 @@ To reduce published file size independently, use `output.save_precision = "bf16"
 Install Kitchen, then explicitly select it in generation configuration:
 
 ```bash
-uv sync --locked --extra media --extra text --extra kitchen
+uv sync --locked
 ```
 
 ```toml

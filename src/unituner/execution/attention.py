@@ -61,13 +61,15 @@ def compiled_attention(*, fullgraph: bool) -> Generator[None]:
 def inference_attention(backend: AttentionBackend) -> Generator[None]:
     """Scope an inference-only provider to this context, restoring it even after failure.
 
-    Kitchen is an optional dependency loaded only at this provider boundary.
+    Kitchen is a default dependency loaded lazily at this provider boundary.
     Torch is the default; explicit unsupported Kitchen calls never fall back.
     """
     provider = None
     if backend == "kitchen-int8":
         if find_spec("comfy_kitchen") is None:
-            raise ValueError("Kitchen inference attention requires the kitchen extra: uv sync --extra kitchen")
+            raise ValueError(
+                "Kitchen inference attention requires the default comfy-kitchen dependency; run uv sync --locked --no-dev"
+            )
         module = import_module("comfy_kitchen")
         provider = cast(_KitchenAttention, module.int8_attention)
     elif backend != "torch":

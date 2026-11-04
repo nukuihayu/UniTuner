@@ -26,7 +26,7 @@ def initialize_vbar() -> None:
     if "torch" in sys.modules:
         raise ValueError("VBAR must be initialized before importing Torch; use the unituner CLI or initialize_vbar()")
     if find_spec("comfy_aimdo") is None:
-        raise ValueError("VBAR requires the optional backend: uv sync --extra vbar")
+        raise ValueError("VBAR requires the default comfy-aimdo dependency; run uv sync --locked --no-dev")
     if version("comfy-aimdo") != "0.6.0":
         raise ValueError("VBAR requires comfy-aimdo==0.6.0")
     control = cast(_Control, import_module("comfy_aimdo.control"))
@@ -36,5 +36,5 @@ def initialize_vbar() -> None:
 
 
 def vbar_initialized() -> bool:
-    """Report successful process bootstrap without importing the optional backend."""
+    """Report successful process bootstrap without importing the VBAR backend."""
     return _initialized

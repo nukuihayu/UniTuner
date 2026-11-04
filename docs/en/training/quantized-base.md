@@ -19,10 +19,10 @@ This reduces resident base storage and block transfers. Each layer still needs a
 
 ## Quantize each layer before training
 
-Install the optional dependency, then add a storage precision to an existing training configuration. Keep `model.weights` pointing to the floating native artifact:
+Sync the default dependencies, then add a storage precision to an existing training configuration. Keep `model.weights` pointing to the floating native artifact:
 
 ```bash
-uv sync --locked --extra kitchen
+uv sync --locked
 ```
 
 ```toml

@@ -25,7 +25,7 @@
 | 路径存在但找不到文件 | 相对路径以命令工作目录为准；检查分片文件是否完整、是否误填 tokenizer 路径为文本权重 |
 | 权重 keys / shape / topology 不匹配 | 核对家族、variant、version、资产组件和格式；仅修改名称不会转换模型架构 |
 | 分词器无法下载或离线缺文件 | 显式配置本地 `model.text.tokenizer.source`；必要时设置 subfolder，检查 processor/CLIP 的独立来源 |
-| optional dependency missing | 按[安装指南](installation.md)安装对应 extra，并确认命令使用同一环境 |
+| dependency missing | 按[安装指南](installation.md)恢复默认依赖，并确认命令使用同一环境 |
 | CUDA unavailable | 检查驱动、Torch CUDA 构建与可见设备；CPU 流程使用 FP32 并删除 CUDA 专属选项 |
 
 ## 缓存与数据

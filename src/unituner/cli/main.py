@@ -262,7 +262,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
         return import_module("unituner.analysis.run").run(args)
     if args.command == "caches":
         if any(find_spec(name) is None for name in ("PIL", "cv2", "av")):
-            raise ValueError("Cache import requires optional dependencies: uv sync --extra media")
+            raise ValueError("Cache import requires the default media dependencies; run uv sync --locked --no-dev")
         entry = import_module("unituner.models.minimax_h3.data.cache.conversion").run
         return cast(Callable[..., int], entry)(args.specification, args.destination)
     if args.command == "adapters":
@@ -335,7 +335,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
         config_video = load_video_generation_config(config_path, overrides=overrides)
         set_context(family=config_video.model.family, variant=config_video.model.variant)
         if any(find_spec(name) is None for name in ("PIL", "cv2", "av", "transformers")):
-            raise ValueError("Video generation requires uv sync --extra media --extra text")
+            raise ValueError("Video generation dependencies are unavailable; run uv sync --locked --no-dev")
         family = "minimax_h3" if config_video.model.family == "minimax-h3" else "wan"
         entry = import_module(f"unituner.models.{family}.inference.run").run
         return cast(Callable[..., int], entry)(config_video, device=args.device)
@@ -354,7 +354,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
         ):
             required = (*required, "av")
         if any(find_spec(name) is None for name in required):
-            raise ValueError(f"{args.command} requires optional dependencies: " + ", ".join(required))
+            raise ValueError(
+                f"{args.command} dependencies are unavailable: "
+                + ", ".join(required)
+                + "; run uv sync --locked --no-dev"
+            )
         module = {
             "cache": "unituner.data.build",
             "mid-timestep": "unituner.training.calibration",

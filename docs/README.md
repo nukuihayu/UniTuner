@@ -8,7 +8,7 @@
 
 | 页面 | 内容 |
 | --- | --- |
-| [安装与环境](installation.md) | 依赖安装、CUDA、可选组件与离线资产 |
+| [安装与环境](installation.md) | 完整依赖安装、CUDA 与离线资产 |
 | [第一次训练 LoRA](getting-started.md) | 从图片、缓存到训练、预览与生成 |
 | [TOML 与命令行](configuration.md) | 配置结构、覆盖优先级与命令速查 |
 | [训练基础概念](concepts.md) | latent、流匹配、适配器与更新计数 |

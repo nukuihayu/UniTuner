@@ -9,7 +9,7 @@
 
 - [环境要求](#环境要求)
 - [基础安装](#基础安装)
-- [可选依赖](#可选依赖)
+- [默认完整依赖](#默认完整依赖)
 - [检查 CUDA](#检查-cuda)
 - [分词器与离线运行](#分词器与离线运行)
 - [镜像与固定环境](#镜像与固定环境)
@@ -37,28 +37,24 @@
 git clone https://github.com/nukuihayu/UniTuner.git
 cd UniTuner
 uv python install 3.13
-uv sync --locked --no-dev --extra media --extra text
+uv sync --locked --no-dev
 uv run --no-dev unituner --help
 ```
 
 所有示例命令默认从仓库根目录执行。模型不会随着依赖安装自动下载。
 
-## 可选依赖
+## 默认完整依赖
 
-| extra | 用途 | 何时需要 |
-| --- | --- | --- |
-| `media` | 图像、视频、音频读写 | 缓存生产、预览和生成 |
-| `text` | 文本模型、分词器和处理器 | 编码缓存、文本条件预览和推理 |
-| `kitchen` | comfy-kitchen 量化与可选算子 | 对应权重转换、量化或推理注意力路径 |
-| `vbar` | comfy-aimdo 显存页管理 | `execution.residency = "vbar"` |
+普通安装和 `uv sync --locked --no-dev` 均包含全部运行依赖，不再提供 `media`、`text`、`kitchen`、`vbar` extras：
 
-需要量化和 VBAR 时，在基础 extras 上一并安装：
+| 依赖 | 用途 |
+| --- | --- |
+| transformers、torchvision、sentencepiece、ftfy | 文本编码、分词器及处理器 |
+| av、opencv-python-headless、pillow | 图像、视频和音频读写 |
+| comfy-kitchen | 量化、权重转换及对应推理算子 |
+| comfy-aimdo | VBAR 显存页管理 |
 
-```bash
-uv sync --locked --no-dev --extra media --extra text --extra kitchen --extra vbar
-```
-
-再次同步时继续列出需要的 extras。已有缓存、关闭预览的训练不必加载文本编码器；修复训练仍需要 VAE 和图像读取。
+安装依赖不会自动启用量化或 VBAR，也不会下载模型。CUDA 专属功能仍须满足设备、驱动和配置要求；已有缓存且关闭预览的训练仍按需加载文本编码器。
 
 ## 检查 CUDA
 
@@ -87,7 +83,7 @@ offline = true
 需要 PyPI 镜像时：
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev --extra media --extra text
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev
 ```
 
 镜像只改变 Python 包来源，不是模型或 Python 解释器下载源。依赖准备完毕后可以使用 `uv run --no-sync --no-dev unituner …`，避免启动时再次同步。
@@ -95,12 +91,12 @@ UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-
 ## 开发环境
 
 ```bash
-uv sync --locked --group dev --extra media --extra text
+uv sync --locked --group dev
 make check
 make test
 ```
 
-`make check` 执行 Ruff、Ty 和 Pyright；`make test` 执行项目测试。CUDA、可选依赖和本地资产相关测试有各自运行条件。模型接入和资源所有权见[架构](architecture.md)。
+`make check` 执行 Ruff、Ty 和 Pyright；`make test` 执行项目测试。CUDA 和本地资产相关测试有各自运行条件。模型接入和资源所有权见[架构](architecture.md)。
 
 ---
 

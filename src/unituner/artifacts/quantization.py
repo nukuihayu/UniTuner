@@ -21,7 +21,9 @@ def kitchen_types():
             getattr(module, layout)
         return module
     except (ImportError, AttributeError) as error:
-        raise ValueError("Kitchen conversion requires current comfy-kitchen: uv sync --extra kitchen") from error
+        raise ValueError(
+            "Kitchen conversion requires the default comfy-kitchen dependency; run uv sync --locked --no-dev"
+        ) from error
 
 
 def json_tensor(value: Mapping) -> Tensor:

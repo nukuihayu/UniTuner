@@ -1805,34 +1805,24 @@ name = "unituner"
 version = "0.1.0.dev0"
 source = { editable = "." }
 dependencies = [
+    { name = "av" },
+    { name = "comfy-aimdo" },
+    { name = "comfy-kitchen" },
+    { name = "ftfy" },
     { name = "kaleido" },
     { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "pillow" },
     { name = "plotly" },
     { name = "pydantic" },
     { name = "pypdf" },
     { name = "safetensors" },
+    { name = "sentencepiece" },
     { name = "tensorboard" },
     { name = "torch" },
-    { name = "tqdm" },
-]
-
-[package.optional-dependencies]
-kitchen = [
-    { name = "comfy-kitchen" },
-]
-media = [
-    { name = "av" },
-    { name = "opencv-python-headless" },
-    { name = "pillow" },
-]
-text = [
-    { name = "ftfy" },
-    { name = "sentencepiece" },
     { name = "torchvision" },
+    { name = "tqdm" },
     { name = "transformers" },
-]
-vbar = [
-    { name = "comfy-aimdo" },
 ]
 
 [package.dev-dependencies]
@@ -1846,26 +1836,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "av", marker = "extra == 'media'", specifier = ">=18,<19" },
-    { name = "comfy-aimdo", marker = "extra == 'vbar'", specifier = "==0.6.0" },
-    { name = "comfy-kitchen", marker = "extra == 'kitchen'", specifier = "==0.2.39" },
-    { name = "ftfy", marker = "extra == 'text'", specifier = ">=6.3,<7" },
+    { name = "av", specifier = ">=18,<19" },
+    { name = "comfy-aimdo", specifier = "==0.6.0" },
+    { name = "comfy-kitchen", specifier = "==0.2.39" },
+    { name = "ftfy", specifier = ">=6.3,<7" },
     { name = "kaleido", specifier = ">=1.5,<2" },
     { name = "numpy", specifier = ">=2.3,<3" },
-    { name = "opencv-python-headless", marker = "extra == 'media'", specifier = ">=4.13,<5" },
-    { name = "pillow", marker = "extra == 'media'", specifier = ">=12,<13" },
+    { name = "opencv-python-headless", specifier = ">=4.13,<5" },
+    { name = "pillow", specifier = ">=12,<13" },
     { name = "plotly", specifier = ">=6.3,<7" },
     { name = "pydantic", specifier = ">=2.12,<3" },
     { name = "pypdf", specifier = ">=6,<7" },
     { name = "safetensors", specifier = ">=0.8,<1" },
-    { name = "sentencepiece", marker = "extra == 'text'", specifier = ">=0.2,<0.3" },
+    { name = "sentencepiece", specifier = ">=0.2,<0.3" },
     { name = "tensorboard", specifier = ">=2.20,<3" },
     { name = "torch", specifier = ">=2.13,<2.14" },
-    { name = "torchvision", marker = "extra == 'text'", specifier = ">=0.28,<0.29" },
+    { name = "torchvision", specifier = ">=0.28,<0.29" },
     { name = "tqdm", specifier = ">=4.67,<5" },
-    { name = "transformers", marker = "extra == 'text'", specifier = ">=5.3,<6" },
+    { name = "transformers", specifier = ">=5.3,<6" },
 ]
-provides-extras = ["kitchen", "vbar", "text", "media"]
 
 [package.metadata.requires-dev]
 dev = [

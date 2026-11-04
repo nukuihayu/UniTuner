@@ -97,7 +97,7 @@ Adapters/full select trainable parameters. Flow matching/restoration select the 
 
 ## Configuration, caches, and artifacts
 
-The CLI loads immutable Pydantic configuration and rejects unknown fields. Loading configuration does not create models or probe GPUs. Media/text optional dependencies are imported at application boundaries. Relative paths use the command's working directory.
+The CLI loads immutable Pydantic configuration and rejects unknown fields. Loading configuration does not create models or probe GPUs. Media/text dependencies are installed by default and imported lazily at application boundaries. Relative paths use the command's working directory.
 
 `training/output.py` owns run directory name sanitization, timestamps, and collision handling. `training/telemetry.py` uses those rules or an already resolved run name, and owns metric recording and the event writer lifecycle.
 

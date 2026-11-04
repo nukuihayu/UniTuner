@@ -54,10 +54,10 @@ MOSS Image, FLUX3 and Qwen Image 2.1 retain their local text directory defaults 
 
 ## Quantize before encoding
 
-Install the optional dependency and add this fragment to your existing configuration:
+Sync the default dependencies and add this fragment to your existing configuration:
 
 ```bash
-uv sync --locked --extra kitchen
+uv sync --locked
 ```
 
 ```toml

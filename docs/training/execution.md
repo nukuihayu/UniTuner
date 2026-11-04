@@ -33,7 +33,7 @@
 | 注意力保存的激活占用大 | `attention_activation_offload = true` | 增加主机内存和 D2H/H2D 传输 |
 | 冻结权重存储或传输占用过大 | `quantization = "float8_e4m3fn"` 等 | 逐层量化；计算临时反量化，只支持 adapter |
 | 适配器训练的冻结权重放不下 | `residency = "frozen-blocks"` | 自动调整共享缓存与异步预取；要求逐块重算 |
-| 希望使用虚拟内存管理冻结权重驻留 | `residency = "vbar"` | 按设备容量管理物理页；需要 NVIDIA CUDA 和 vbar extra |
+| 希望使用虚拟内存管理冻结权重驻留 | `residency = "vbar"` | 按设备容量管理物理页；需要兼容的 NVIDIA CUDA 设备 |
 | 流匹配可接受混合精度计算 | `precision = "bf16"` | CUDA AMP；可训练参数与优化器 masters 仍为 FP32 |
 
 这些策略可在支持范围内组合，但不会保证单步更快。固定模型、输入尺寸和 batch，分别比较稳定运行后的耗时和总显存；首次编译耗时应单独记录。
@@ -132,7 +132,7 @@ residency = "frozen-blocks"
 安装对应依赖：
 
 ```bash
-uv sync --locked --extra media --extra text --extra vbar
+uv sync --locked
 ```
 
 然后修改配置：
@@ -166,7 +166,7 @@ BF16／FP16 AMP 支持 CUDA 流匹配和图像修复。默认自动选择、权�
 安装 Kitchen 后，在生成配置中显式选择：
 
 ```bash
-uv sync --locked --extra media --extra text --extra kitchen
+uv sync --locked
 ```
 
 ```toml

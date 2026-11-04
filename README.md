@@ -78,7 +78,7 @@ Model size, training dimensions, trainable parameters, and loss networks jointly
 | Block recomputation | Reduce saved forward activations | Replay native block computation during backward |
 | Attention activation offload | Stage attention's saved activations on the host | CUDA; additional RAM and transfers |
 | H2D frozen-block cache | Load frozen weights on demand and reuse resident blocks | CUDA adapters; automatic capacity calibration within this mode |
-| VBAR | Manage frozen-weight residency through virtual addresses and physical pages | CUDA adapters and the `vbar` extra |
+| VBAR | Manage frozen-weight residency through virtual addresses and physical pages | CUDA adapters and a compatible NVIDIA device |
 | Quantized frozen base | Reduce frozen-weight storage | Supported quantized layouts and adapter training |
 | CUDA compilation | Compile training block computation with Inductor | Opt-in; initial compilation overhead |
 
@@ -88,13 +88,13 @@ Start with default eager/resident execution, then select [execution policies](do
 
 ## Quick start
 
-Install Python **3.12+**, [uv](https://docs.astral.sh/uv/), and obtain local model assets. CUDA training requires an NVIDIA driver compatible with the project's Torch version. See [installation](docs/en/installation.md) for optional dependencies and environment checks.
+Install Python **3.12+**, [uv](https://docs.astral.sh/uv/), and obtain local model assets. CUDA training requires an NVIDIA driver compatible with the project's Torch version. See [installation](docs/en/installation.md) for default dependencies and environment checks.
 
 ```bash
 git clone https://github.com/nukuihayu/UniTuner.git
 cd UniTuner
 uv python install 3.13
-uv sync --locked --no-dev --extra media --extra text
+uv sync --locked --no-dev
 cp docs/examples/tutorial-lora.toml train.toml
 ```
 

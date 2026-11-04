@@ -8,7 +8,7 @@
 
 | Page | Contents |
 | --- | --- |
-| [Installation and environment](installation.md) | Dependencies, CUDA, optional extras, offline assets |
+| [Installation and environment](installation.md) | Default dependencies, CUDA, offline assets |
 | [Your first LoRA](getting-started.md) | Prepare images, cache, train, preview, and generate |
 | [TOML and CLI](configuration.md) | Configuration ownership, overrides, and command reference |
 | [Training concepts](concepts.md) | Latents, flow matching, adapters, and update counts |

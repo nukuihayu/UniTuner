@@ -14,24 +14,19 @@ dependencies = [
     "plotly>=6.3,<7",
     "kaleido>=1.5,<2",
     "pypdf>=6,<7",
-]
-[project.scripts]
-unituner = "unituner.cli.main:main"
-
-[project.optional-dependencies]
-kitchen = ["comfy-kitchen==0.2.39"]
-vbar = ["comfy-aimdo==0.6.0"]
-text = [
+    "comfy-kitchen==0.2.39",
+    "comfy-aimdo==0.6.0",
     "transformers>=5.3,<6",
     "torchvision>=0.28,<0.29",
     "sentencepiece>=0.2,<0.3",
     "ftfy>=6.3,<7",
-]
-media = [
     "av>=18,<19",
     "opencv-python-headless>=4.13,<5",
     "pillow>=12,<13",
 ]
+[project.scripts]
+unituner = "unituner.cli.main:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9.1,<10",

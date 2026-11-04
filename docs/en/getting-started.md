@@ -28,16 +28,16 @@ Run in an environment with a compatible CUDA driver:
 git clone https://github.com/nukuihayu/UniTuner.git
 cd UniTuner
 uv python install 3.13
-uv sync --locked --no-dev --extra media --extra text
+uv sync --locked --no-dev
 uv run --no-dev unituner --help
 ```
 
-`media` installs image/video/audio I/O dependencies; `text` installs text encoding and tokenizer dependencies. Run subsequent commands from the repository root.
+The default installation includes image/video/audio I/O, text encoders, tokenizers, comfy-kitchen, and comfy-aimdo. Run subsequent commands from the repository root.
 
 If you need the Tsinghua PyPI mirror:
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev --extra media --extra text
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev
 ```
 
 This is a Python package index, not a model or Python-interpreter download mirror. After installation, `uv run --no-sync --no-dev` starts commands without another dependency synchronization.

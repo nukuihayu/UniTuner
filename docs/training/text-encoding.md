@@ -64,7 +64,7 @@ MOSS Image、FLUX3、Qwen Image 2.1 暂保留本地文本目录作为默认来�
 安装量化依赖，在原训练配置中添加：
 
 ```bash
-uv sync --locked --extra kitchen
+uv sync --locked
 ```
 
 ```toml

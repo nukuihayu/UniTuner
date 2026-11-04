@@ -215,7 +215,7 @@ def report_error(error: Exception) -> int:
         hints.append("Check permissions and whether another process has the file open.")
     elif isinstance(error, ImportError):
         hints.append(
-            "Install the required extras in the environment running unituner (uv sync --extra text --extra media)."
+            "Restore the default dependencies in the environment running unituner (uv sync --locked --no-dev)."
         )
     elif isinstance(error, FloatingPointError):
         hints.append("Check nonfinite inputs/losses and learning rate; for FP16 also check execution.fp16_loss_scale.")

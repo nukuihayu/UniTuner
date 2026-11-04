@@ -34,7 +34,7 @@ def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
         video_preview = None
         if config.preview is not None:
             if any(find_spec(name) is None for name in ("PIL", "cv2", "av", "transformers")):
-                raise ValueError("Wan previews require uv sync --extra media --extra text")
+                raise ValueError("Wan preview dependencies are unavailable; run uv sync --locked --no-dev")
             video_preview = import_module("unituner.training.integrations.wan.previews").VideoPreviews(config)
         train_wan(config, device=torch.device(device), resume=resume, preview_writer=video_preview)
         return 0
@@ -46,7 +46,7 @@ def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
             else "[train] Indexing restoration pairs and validating caption caches"
         )
         if find_spec("PIL") is None:
-            raise ValueError("Image restoration training requires uv sync --extra media")
+            raise ValueError("Image restoration dependencies are unavailable; run uv sync --locked --no-dev")
         discover = cast(Callable[..., tuple[Path, ...]], import_module("unituner.data.media.image").discover_images)
         read = cast(
             Callable[[AlignedImagePair, tuple[int, int], int, float], tuple[torch.Tensor, torch.Tensor]],

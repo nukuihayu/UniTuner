@@ -78,7 +78,7 @@ UniTuner 面向使用本地模型资产进行微调的用户，覆盖从数据�
 | 块重算 | 减少长期保存的前向激活 | 反向时重放原生块计算 |
 | 注意力激活卸载 | 将注意力保存的激活暂存到主机 | CUDA；增加 RAM 和传输需求 |
 | H2D 冻结块缓存 | 按需载入冻结权重，并复用允许常驻的块 | CUDA adapter；模式内自动校准缓存容量 |
-| VBAR | 通过虚拟地址和物理页管理冻结权重驻留 | CUDA adapter；需要 `vbar` 可选依赖 |
+| VBAR | 通过虚拟地址和物理页管理冻结权重驻留 | CUDA adapter；需要兼容的 NVIDIA 设备 |
 | 冻结底模量化 | 降低冻结权重存储需求 | 支持的量化布局与 adapter 训练 |
 | CUDA 编译 | 使用 Inductor 编译训练块计算 | 可选启用，首次调用有编译开销 |
 
@@ -88,13 +88,13 @@ UniTuner 面向使用本地模型资产进行微调的用户，覆盖从数据�
 
 ## 快速开始
 
-需要 Python **3.12+**、[uv](https://docs.astral.sh/uv/) 和本地模型资产。CUDA 训练还需要兼容项目 Torch 版本的 NVIDIA 驱动；[安装指南](docs/installation.md)说明可选依赖与环境检查。
+需要 Python **3.12+**、[uv](https://docs.astral.sh/uv/) 和本地模型资产。CUDA 训练还需要兼容项目 Torch 版本的 NVIDIA 驱动；[安装指南](docs/installation.md)说明默认依赖与环境检查。
 
 ```bash
 git clone https://github.com/nukuihayu/UniTuner.git
 cd UniTuner
 uv python install 3.13
-uv sync --locked --no-dev --extra media --extra text
+uv sync --locked --no-dev
 cp docs/examples/tutorial-lora.toml train.toml
 ```
 

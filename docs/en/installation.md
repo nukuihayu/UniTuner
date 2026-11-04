@@ -9,7 +9,7 @@ Prepare the environment here, then follow [your first training run](getting-star
 
 - [Requirements](#requirements)
 - [Install](#install)
-- [Optional dependencies](#optional-dependencies)
+- [Default runtime dependencies](#default-runtime-dependencies)
 - [Check CUDA](#check-cuda)
 - [Tokenizers and offline use](#tokenizers-and-offline-use)
 - [Mirrors and fixed environments](#mirrors-and-fixed-environments)
@@ -37,28 +37,24 @@ GPU memory requirements depend on the model, dimensions, batch, parameter mode, 
 git clone https://github.com/nukuihayu/UniTuner.git
 cd UniTuner
 uv python install 3.13
-uv sync --locked --no-dev --extra media --extra text
+uv sync --locked --no-dev
 uv run --no-dev unituner --help
 ```
 
 Commands assume the repository root as the working directory. Installing dependencies does not download model weights.
 
-## Optional dependencies
+## Default runtime dependencies
 
-| Extra | Provides | Required for |
-| --- | --- | --- |
-| `media` | Image, video, and audio IO | Cache production, previews, and generation |
-| `text` | Text models, tokenizers, and processors | Text cache encoding, conditioned previews, and inference |
-| `kitchen` | comfy-kitchen quantization and optional operators | Applicable conversion, quantization, and inference attention paths |
-| `vbar` | comfy-aimdo memory page management | `execution.residency = "vbar"` |
+A normal installation or `uv sync --locked --no-dev` installs all runtime dependencies. The `media`, `text`, `kitchen`, and `vbar` extras are no longer provided:
 
-To include quantization and VBAR:
+| Dependencies | Purpose |
+| --- | --- |
+| transformers, torchvision, sentencepiece, ftfy | Text encoding, tokenizers, and processors |
+| av, opencv-python-headless, pillow | Image, video, and audio I/O |
+| comfy-kitchen | Quantization, weight conversion, and corresponding inference operators |
+| comfy-aimdo | VBAR memory-page management |
 
-```bash
-uv sync --locked --no-dev --extra media --extra text --extra kitchen --extra vbar
-```
-
-Keep listing required extras when syncing again. Training from existing caches without previews does not need to load a text encoder. Restoration still needs its VAE and image IO.
+Installing dependencies does not enable quantization or VBAR and does not download models. CUDA-specific features still require compatible devices, drivers, and configuration. Text encoders remain lazily loaded when needed.
 
 ## Check CUDA
 
@@ -87,7 +83,7 @@ Use `subfolder = "tokenizer"` if the files are nested below that directory. FLUX
 Set a PyPI mirror when needed:
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev --extra media --extra text
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-dev
 ```
 
 This controls Python package sources, not model or interpreter downloads. After installation, `uv run --no-sync --no-dev unituner …` avoids synchronizing dependencies at launch.
@@ -95,12 +91,12 @@ This controls Python package sources, not model or interpreter downloads. After 
 ## Development
 
 ```bash
-uv sync --locked --group dev --extra media --extra text
+uv sync --locked --group dev
 make check
 make test
 ```
 
-`make check` runs Ruff, Ty, and Pyright; `make test` runs project tests. Some tests require CUDA, optional dependencies, or local assets. See [architecture](architecture.md) for model integration and resource ownership.
+`make check` runs Ruff, Ty, and Pyright; `make test` runs project tests. Some tests require CUDA or local assets. See [architecture](architecture.md) for model integration and resource ownership.
 
 ---
 

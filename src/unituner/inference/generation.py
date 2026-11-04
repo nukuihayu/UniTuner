@@ -20,7 +20,7 @@ class ImageGeneration(Protocol):
 
 @runtime_scope
 def run(config: GenerationConfig, *, device: str) -> int:
-    """Generate with native model stages; load optional dependencies only for the selected family."""
+    """Generate with native model stages; load providers only for the selected family."""
     selected = torch.device(device)
     if selected.type not in {"cpu", "cuda"}:
         raise ValueError("Generation entry supports CPU and CUDA devices")
@@ -39,6 +39,6 @@ def run(config: GenerationConfig, *, device: str) -> int:
     entry = import_module(module).run
     if not callable(entry):
         raise TypeError(f"Image generation entry is not callable: {module}.run")
-    # Family application signatures are checked statically; importlib is the optional dependency boundary.
+    # Family application signatures are checked statically; importlib is the lazy provider boundary.
     generate = cast(ImageGeneration, entry)
     return generate(config, device=selected)

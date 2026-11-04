@@ -102,7 +102,7 @@ LoRA／LoHa／LoKr 与 full 决定可训练参数；flow-matching／restoration 
 ## 配置、缓存与产物
 
 CLI 先加载不可变 Pydantic 配置，拒绝未知字段；配置加载不创建模型或探测 GPU。
-媒体与文本的可选依赖在应用边界导入。所有相对配置路径以命令工作目录为基准。
+媒体与文本依赖默认安装，仍在应用边界按需导入。所有相对配置路径以命令工作目录为基准。
 
 `config/train.py`、`config/output.py` 分别拥有训练与输出字段；`config/training.py` 组合它们，
 `training_validation.py` 分开校验全局策略、逐数据组约束和预览。全局规则每次配置加载仅执行一次。

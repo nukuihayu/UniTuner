@@ -21,10 +21,10 @@ Conversion exports ComfyUI denoiser layouts by default. It recognizes published 
 
 ## Convert a model
 
-Install the optional dependency from the repository root:
+Sync the default dependencies from the repository root:
 
 ```bash
-uv sync --locked --extra kitchen
+uv sync --locked
 ```
 
 Convert weights to FP8:

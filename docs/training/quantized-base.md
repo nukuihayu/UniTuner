@@ -22,7 +22,7 @@ UniTuner 支持冻结量化基模并训练 LoRA、LoHa 或 LoKr。所有精度�
 安装依赖后，在已有训练配置中设置量化精度，`model.weights` 继续指向浮点原生文件：
 
 ```bash
-uv sync --locked --extra kitchen
+uv sync --locked
 ```
 
 ```toml
