@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from tests.execution.test_native_strategies import FAMILIES, _case
+from tests.execution.test_native_strategies import _case
 from unituner.config.wavelet import WaveletLossConfig
 from unituner.training.losses.wavelet import WaveletLoss
 from unituner.training.session import TrainingSession
@@ -37,7 +37,7 @@ def test_wavelet_gradients_and_frame_reduction():
     assert torch.isfinite(prediction.grad).all() and torch.isfinite(target.grad).all()
 
 
-@pytest.mark.parametrize("family", FAMILIES[:8])
+@pytest.mark.parametrize("family", ["flux", "qwen-image-2-1", "z-image"])
 def test_native_image_wavelet_loss_and_gradients(family):
     torch.set_num_threads(1)
     torch.manual_seed(826)

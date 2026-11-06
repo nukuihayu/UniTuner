@@ -28,15 +28,13 @@ Noninteractive JSON stdout follows the summary cadence; consume JSONL or TensorB
 
 ## Jupyter / Notebook
 
-Direct calls in Python cells use a widget bar when `ipywidgets` is available, falling back to text otherwise. `%%bash` and `!python` launch separate processes that cannot directly create kernel widgets. An inherited `JPY_PARENT_PID` enables a text bar instead of disabling progress.
-
-If your notebook environment does not pass that variable, add this before the training command in your existing `%%bash` cell:
+Notebook cells display progress automatically when supported. If progress is missing, set this before your training command:
 
 ```bash
 export UNITUNER_PROGRESS=always
 ```
 
-`UNITUNER_PROGRESS` defaults to `auto`; `always` forces a bar, while `never` disables it for redirected logs or JSON stdout consumers. Bars use stderr. When enabled, they replace duplicate training INFO/JSON summaries; JSONL and TensorBoard still retain every update. The notebook frontend controls text carriage-return rendering. Subprocess text bars do not require `ipywidgets`.
+The default is `auto`. Use `never` to disable progress bars when saving console output. JSONL and TensorBoard retain full per-update metrics regardless of the progress setting.
 
 ## Full metrics in JSONL
 
@@ -75,7 +73,7 @@ uv run --no-dev unituner train train.toml --device cuda --log-level DEBUG
 
 Console levels are DEBUG/INFO/WARNING/ERROR. JSONL retains DEBUG details independently. Errors identify configuration fields or the active device, source file, update and phase when available. Start with the first exception and the announced JSONL path.
 
-Schema errors occur before weights load. Check table paths, spelling and types; do not quote numbers/booleans. A cache identity error calls for rebuilding with the intended assets/data. An OOM calls for smaller batches/dimensions, recomputation or a suitable offload policy; inspect peak memory rather than only post-update allocation.
+Configuration errors occur before weights load. Check table paths, spelling and types; do not quote numbers/booleans. A cache identity error calls for rebuilding with the intended assets/data. An OOM calls for smaller batches/dimensions, recomputation or a suitable offload policy; inspect peak memory rather than only post-update allocation.
 
 ---
 

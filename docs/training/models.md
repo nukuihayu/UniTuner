@@ -4,114 +4,95 @@
 
 [文档目录](../README.md) · [训练指南](README.md) · [示例配置](../examples/README.md)
 
-当前十个家族共用[训练方法](README.md)，各自维护原生网络、VAE、文本编码和条件装配。
-下表中的流匹配均有 adapter（LoRA／LoHa／LoKr）与 full 入口；默认按基模精度自动选择，
-流匹配与八个图像家族的修复任务均可显式选择 CUDA BF16 AMP。十个家族的 adapter 训练均可使用[训练前权重量化](quantized-base.md)或原生量化基模；full 训练要求浮点权重。
-
-<details>
-<summary>本页导航</summary>
-
-- [从任务选择模型](#从任务选择模型)
-- [VAE 加载](#vae-加载)
-- [模型选择](#模型选择)
-- [公共本地资产](#公共本地资产)
-- [编辑、参考图与图层](#编辑参考图与图层)
-- [必要的模型专属参数](#必要的模型专属参数)
-- [视频与音视频](#视频与音视频)
-- [MOSS-Image-Edit](#moss-image-edit)
-
-</details>
+先按任务选择模型，再准备对应的权重、VAE 和文本编码器。下表列出的流匹配训练支持 LoRA、LoHa、LoKr 和全参数训练；修复训练按变体选择。
 
 ## 从任务选择模型
 
-主体或风格微调可以先使用已有完整本地资产的图像模型；图像编辑需要支持编辑的变体与对应参考条件；Qwen layered 使用独立前景图层；视频和音视频任务则需要额外遵守帧数、时间采样与音频规则。
-
-复制配置前，先根据 checkpoint 确定准确的家族、必要的 version 与 variant，再检查 VAE、文本编码器、辅助 bundle 和数据条件。仅修改 `model.family` 不能完成模型迁移。
-
-## VAE 加载
-
-标准 VAE 直接填写 `model.vae` 路径，无需先运行 `weights import` 或提供拓扑 JSON。缺少原生元数据时使用对应家族的发布配置；原生元数据优先保留自定义结构，显式配置与元数据冲突时仍报错。
-
-| 家族 | 默认结构与外部格式 |
+| 想完成的任务 | 选择与准备 |
 | --- | --- |
-| Z-Image | 标准 16 通道 VAE；自动识别 Diffusers／ComfyUI 键 |
-| FLUX | 标准 16 通道 VAE；自动识别原生／Diffusers 键 |
-| FLUX.2、FLUX3、MOSS | 共用标准 32 通道 packed VAE；自动识别原生／Diffusers 键 |
-| Qwen Image、Krea2 | 标准 16 通道因果 VAE；自动识别官方／ComfyUI 键；Qwen layered 由变体选择 RGBA |
-| Qwen Image 2.1 | 独立 64 通道 RGBA VAE；使用本项目发布结构默认值和原生键 |
-| Wan 2.1／2.2 | 共用 16 通道因果 VAE；支持官方 `.pth`／`.pt` state dict 和 safetensors，自动识别 ComfyUI 键 |
-| MiniMax-H3 | 内置视频／音频 VAE；自动移除视频的 `first_stage_model.`／`video_vae.`／`vae.` 和音频的 `audio_vae.`／`vae.` 前缀 |
+| 主体或风格微调 | 选择已有完整本地模型文件的图像模型，准备图片和同名文本 |
+| 图像编辑 | 选择编辑变体，准备目标图、原图和编辑指令 |
+| 图层训练 | 使用 Qwen layered，准备合成图与独立 RGBA 前景图层 |
+| 一步图像修复 | 选择支持修复的模型，准备已对齐的 LQ/HQ 或合成退化配置 |
+| 视频或音视频 | 使用 Wan 或 MiniMaxH3，按对应示例准备帧数、帧率和音频 |
 
-加载仍严格检查完整键集合和张量形状，不跳过未知权重。非标准结构可通过 Python 加载器的 `config` 或 `weights import --topology` 显式提供。
+切换模型时，同时核对 `family`、`variant`、`version`、VAE 和文本编码器；只修改模型名称无法替换整套模型文件。
 
 ## 模型选择
 
 | `model.family` | `model.version` | `model.variant` | 数据与条件 | 修复训练 | 流匹配示例 |
 | --- | --- | --- | --- | --- | --- |
-| `z-image` | 不设置 | `base`／`turbo` | 图片＋Qwen3 文本 | 是 | [flow](../examples/flow.toml) |
-| `flux` | 不设置 | `dev`／`kontext`／`fill` | T5＋CLIP；Kontext／Fill 一张条件图 | 仅 dev | [FLUX](../examples/flux-flow.toml)、[Fill](../examples/flux-fill-flow.toml) |
-| `flux2` | `dev`／`klein-4b`／`klein-9b` | `base`／`distilled`；dev 仅 distilled | 原生文本、可选有序参考图 | 是 | [FLUX.2](../examples/flux2-flow.toml)、[参考图](../examples/flux2-reference-flow.toml) |
-| `flux3` | 不设置 | `base`／`distilled` | Qwen3-VL、最多10个参考来源 | 是 | [FLUX3](../examples/flux3-flow.toml) |
-| `moss-image` | 不设置 | `base`／`sft`／`edit` | Qwen3.5 文本、packed VAE | Base/SFT | [MOSS](../examples/moss-flow.toml) |
-| `qwen-image` | 不设置 | `original`／`edit`／`edit-2509`／`edit-2511`／`layered` | Qwen2.5-VL，编辑参考图或独立前景 | 仅 original | [原版](../examples/qwen-image-flow.toml)、[编辑](../examples/qwen-image-edit-flow.toml)、[图层](../examples/qwen-image-layered-flow.toml) |
-| `qwen-image-2-1` | 不设置 | `base` | Qwen3-VL、可选参考图，独立64通道vae | 是 | [Qwen2.1](../examples/qwen-image-2-1-flow.toml) |
-| `krea2` | 不设置 | `raw`／`turbo` | Qwen3-VL 逐层文本特征，原生固定选层 | 是 | [Krea2](../examples/krea2-flow.toml) |
-| `wan` | `2.1`／`2.2` | `t2v`／`i2v` | 图片／视频，原生控制与条件帧 | 否 | [Wan](../examples/wan-flow.toml) |
-| `minimax-h3` | 不设置 | `t2va`／`fl2va`／`ref2va` | 图片／音视频，原生 JSONL AV 记录 | 否 | [H3](../examples/minimax-h3-train.toml) |
+| `z-image` | 不设置 | `base`／`turbo` | 图片和文本 | 是 | [Z-Image](../examples/flow.toml) |
+| `flux` | 不设置 | `dev`／`kontext`／`fill` | Kontext／Fill 需要一张条件图 | 仅 dev | [FLUX](../examples/flux-flow.toml)、[Fill](../examples/flux-fill-flow.toml) |
+| `flux2` | `dev`／`klein-4b`／`klein-9b` | `base`／`distilled`；dev 仅 distilled | 文本和可选有序参考图 | 是 | [FLUX.2](../examples/flux2-flow.toml)、[参考图](../examples/flux2-reference-flow.toml) |
+| `flux3` | 不设置 | `base`／`distilled` | 文本，最多 10 个参考来源 | 是 | [FLUX3](../examples/flux3-flow.toml) |
+| `moss-image` | 不设置 | `base`／`sft`／`edit` | edit 需要参考图和编辑指令 | Base/SFT | [MOSS](../examples/moss-flow.toml)、[编辑](../examples/moss-edit-flow.toml) |
+| `qwen-image` | 不设置 | `original`／`edit`／`edit-2509`／`edit-2511`／`layered` | 文本、编辑参考图或前景图层 | 仅 original | [原版](../examples/qwen-image-flow.toml)、[编辑](../examples/qwen-image-edit-flow.toml)、[图层](../examples/qwen-image-layered-flow.toml) |
+| `qwen-image-2-1` | 不设置 | `base` | 文本和可选参考图 | 是 | [Qwen2.1](../examples/qwen-image-2-1-flow.toml) |
+| `krea2` | 不设置 | `raw`／`turbo` | 图片和文本 | 是 | [Krea2](../examples/krea2-flow.toml) |
+| `bluepixel` | 不设置 | `turbo` | 一张参考图和编辑指令；尺寸为 64 的倍数 | 是 | [BluePixel](../examples/bluepixel-flow.toml) |
+| `wan` | `2.1`／`2.2` | `t2v`／`i2v` | 图片或视频；i2v 需要条件帧 | 否 | [Wan](../examples/wan-flow.toml) |
+| `minimax-h3` | 不设置 | `t2va`／`fl2va`／`ref2va` | 图片或音视频记录 | 否 | [H3](../examples/minimax-h3-train.toml) |
 
-不能给其他家族添加 `model.version`。蒸馏／Turbo 不构成独立训练方法，也不意味着可以混用
-base 权重、文本编码器或采样时间表。变体必须与权重内拓扑一致，schema 校验不会读取权重验证这一点。
+仅 FLUX.2 和 Wan 需要设置 `model.version`。Base、Turbo 和蒸馏变体应使用各自的权重与采样参数。
+
+## VAE 加载
+
+将匹配的 VAE 文件或目录填入 `model.vae`：
+
+| 模型 | 需要准备的 VAE |
+| --- | --- |
+| Z-Image、FLUX | 对应模型的 16 通道 VAE |
+| FLUX.2、FLUX3、MOSS | 配套的 FLUX.2 32 通道 VAE |
+| Qwen Image、Krea2 | 对应模型的 16 通道 VAE；Qwen layered 使用支持 RGBA 的版本 |
+| Qwen Image 2.1 | 配套的 64 通道 RGBA VAE |
+| BluePixel-Turbo | 模型快照中的 `vae/` 目录，包含 DCAE-F64 配置和权重 |
+| Wan | 对应的 16 通道 VAE；可使用受支持的 `.pth`、`.pt` 或 safetensors 文件 |
+| MiniMaxH3 | 配套的视频 VAE 和音频 VAE，按 H3 示例分别填写 |
+
+标准模型通常可直接使用其配套文件。加载报错时先检查是否拿错模型版本或组件；需要转换文件时参见[权重转换](../weight-conversion.md)。
 
 ## 公共本地资产
 
-- `model.weights`：主模型 safetensors、编号分片、索引 JSON 或 Diffusers 目录；支持对应家族的 ComfyUI／Diffusers 权重，训练必填。
-- `model.vae`：匹配模型的本地 VAE 权重；缓存、预览、修复／生成需要。
-- `model.text_encoder`：本地文本编码器目录或原生组件权重，形式由家族决定。
-- `model.assets`：辅助 bundle 根目录；省略时为 denoiser 文件的父目录。
+| 字段 | 填写内容 |
+| --- | --- |
+| `model.weights` | 主模型文件、分片索引或受支持的模型目录 |
+| `model.vae` | 配套 VAE 文件或目录 |
+| `model.text_encoder` | 配套文本编码器文件或目录 |
+| `model.assets` | 辅助文件根目录；训练配置中省略时使用主模型路径的父目录 |
 
-辅助 bundle 固定使用 `text_encoder/`（FLUX 的 CLIP）和
-`image_encoder/model.safetensors`（Wan2.1 I2V 的 CLIP）。编码器权重不会自动下载。
-Tokenizer／processor 使用独立的默认 Hub 来源，也可覆盖本地目录、revision 和离线模式，见[文本编码配置](text-encoding.md#tokenizer-来源)。
-FLUX 的 `model.text_encoder` 仍是 T5，不是 CLIP。Wan2.2 I2V 不使用2.1的独立图像编码器。
-H3 需要独立的 AV VAE／处理器，见下面的专属参数。
+FLUX 的 `model.text_encoder` 指向 T5，CLIP 放在 `model.assets/text_encoder/`；Wan 2.1 I2V 的图像编码器放在 `image_encoder/model.safetensors`。BluePixel 的 `assets` 指向包含 `tokenizer/` 的模型快照根目录。
 
-`[model.text] max_length` 是公共可选项，但只在支持覆盖的家族开放：Z-Image 默认512，
-MOSS4096（上限4096），FLUX512（上限512），Krea2 512。其他家族使用固定原生文本预算，拒绝显式覆盖。
-Krea2 使用编码器原生特征选层。
-
-Qwen、Qwen2.1、Krea2、H3 默认按实际权重键名自动识别格式，无需填写 `model.text_source_format`。兼容原生 base、Transformers，以及语言键为 `model.layers.*`、视觉键为 `visual.*` 或 `model.visual.*` 的 Qwen/Comfy 混合布局。Comfy-Org 的 `qwen3vl_8b_bf16.safetensors` 可直接加载到规格匹配的 Qwen2.1 编码器。
-需要约束输入时仍可显式指定 `"transformers"` 或 `"qwen"`；`null`/`"auto"` 使用自动识别。识别读取所有分片的键名，不根据文件名或配置中的 architecture 猜测格式。混合语言前缀、重复视觉别名、缺失/多余键、形状不符或非有限数值仍会报错。H3 保持自身宽度与截断层要求，并校验完整模型中最终丢弃的层。
-FLUX.2/FLUX.3、MOSS、Z-Image 同样按已支持的语言键名前缀识别；FLUX T5/CLIP 保留既有别名校验，Wan 自动识别统一 `encoder.*` 前缀。VAE 保留各家族的格式/拓扑校验，Z-Image 也支持自动移除统一 `vae.*` 前缀。
+模型权重需要自行下载。分词器和处理器可以使用默认来源，也可指定本地目录、版本和离线模式，见[文本编码](text-encoding.md)。文本编码器格式通常可自动识别，只有需要明确限定时才设置 `model.text_source_format`。
 
 ## 编辑、参考图与图层
 
-在数据组中填写条件来源：
+参考目录按文件主体与目标匹配：
 
 ```toml
 [dataset.groups.main]
 source = "/data/targets"
 cache_directory = "/data/cache"
-reference_sources = ["/data/reference-a", "/data/reference-b"]
+reference_sources = ["/data/references"]
 ```
 
-按目标文件主体匹配每个条件来源，有序列表决定参考顺序；条件图不是额外的独立训练样本。
-只使用一个参考来源时删除第二项。目标与参考图分别按各自尺寸选择 bucket，再独立缩放、中心裁剪。Qwen2.1 可显式设置参考图面积预算（见下文）。
-原始尺寸相同且已经对齐的图片对使用相同缩放比例和裁剪坐标；不同构图的参考图不会因此自动配准。
-放大和缩小均使用 Lanczos，缩放尺寸按 half-up 舍入。
+`targets/a.png` 对应 `references/a.png`，同名 `a.txt` 写编辑指令。多个目录的顺序就是参考图顺序。
 
-| 模型 | 条件约束 |
+| 模型 | 条件要求 |
 | --- | --- |
-| FLUX Dev | 不接受 reference_sources |
-| FLUX Kontext／Fill | 恰好一个来源；Fill 可另设 mask_source |
-| FLUX.2 | 有序参考来源，按自身尺寸分桶，同尺寸配对与目标对齐 |
-| FLUX3 | 最多10个来源，按自身尺寸分桶，同尺寸配对与目标对齐 |
-| Qwen edit 系列 | 最初 edit 必须有参考，2509／2511 可无参考 |
-| Qwen2.1 | 有序参考来源，按自身尺寸分桶，同尺寸配对与目标对齐 |
-| Qwen original／layered | 不接受编辑参考目录；layered 使用 layer_sources |
+| FLUX Dev | 不使用参考图 |
+| FLUX Kontext／Fill | 恰好一个参考目录；Fill 可另设 `mask_source` |
+| FLUX.2 | 可选一个或多个有序参考目录 |
+| FLUX3 | 最多 10 个参考目录 |
+| BluePixel | 流匹配训练恰好一个参考目录；修复训练使用 LQ/HQ 配对 |
+| MOSS edit | 至少一个参考目录 |
+| Qwen edit | 最初的 edit 需要参考图；2509／2511 可不提供 |
+| Qwen original／layered | 不使用编辑参考目录；layered 使用 `layer_sources` |
+| Qwen2.1 | 可选有序参考目录，可独立设置参考图面积预算 |
 
-训练参考图默认按自身尺寸和数据集面积预算分桶；两者独立使用相同的分桶配置与缩放裁剪算子，因此相同原始尺寸自然得到对齐的输出。关闭数据集分桶时，目标和默认参考图均使用配置的固定 resolution。Qwen2.1 的目标图和参考图均先转 RGBA，再缩放裁剪。VAE 保留 alpha，视觉编码器仅将 alpha 合成到白底；两者共享同一份处理后的参考像素，视觉编码器不会再次缩放。
+目标和参考图按各自长宽比缩放、中心裁剪。原始尺寸相同且已对齐的图片保持配对关系；不同构图不会自动配准。修改图片、参考来源或裁剪设置后，重新运行 `cache`。
 
-Qwen2.1 可显式覆盖参考图面积预算：
+Qwen2.1 可将目标固定为方图，同时保留参考图长宽比：
 
 ```toml
 [dataset.groups.main]
@@ -123,84 +104,47 @@ reference_sources = ["/data/references"]
 reference_resolution = [1024, 1024]
 ```
 
-`reference_resolution` 是参考图的独立面积预算（宽×高），不是强制方形输出。每张参考图按自身长宽比选择 32 对齐的 bucket，再使用相同的缩放／中心裁剪算子；竖图会选竖向 bucket，而不裁到目标方图。桶对齐仍可能带来少量边缘裁剪。省略时使用数据集面积预算，同尺寸配对保持对齐，其他参考图按自身比例分桶，不添加补边；该选项目前仅支持 Qwen2.1。模式或预算变更会改变缓存身份，需重新缓存。
+`reference_resolution` 表示参考图的面积预算，不会强制输出为方图；该选项仅用于 Qwen2.1。需要对齐原图和区域遮罩时，保持原始尺寸与坐标一致，并省略这一覆盖项。参考图中的遮罩不会自动变成损失遮罩。
 
-上例通过 `enable_bucket = false` 将目标固定为 1024×1024，参考图仍使用独立长宽比。若开启分桶，目标也会按自身比例选择 bucket。
-
-Qwen2.1 的原图＋区域遮罩可分别放入两个 `reference_sources` 目录；目标、原图和遮罩必须预先同尺寸、同坐标，且不设置 `reference_resolution`，才能保留配对对齐。这里遮罩是图像参考条件，不会自动成为损失遮罩。`mask_source` 是 FLUX Fill 的原生重绘遮罩：训练和推理均等比缩放、中心裁剪，遮罩最近邻插值保留标签，alpha 遮罩不参与 RGB 颜色重采样。FLUX Fill 的目标、原图及显式遮罩必须同尺寸；修改预处理配置后应重建缓存。
-
-训练缓存与生成推理是独立的预处理边界；本节描述训练数据集。改变预处理后需要重新生成缓存。
+FLUX Fill 的 `mask_source` 是重绘遮罩，目标、原图和遮罩应同尺寸且对齐。
 
 ## 必要的模型专属参数
 
-| 配置位置 | 用途／适用范围 |
+| 配置 | 何时使用 |
 | --- | --- |
-| `method.guidance` | FLUX／FLUX.2 Dev 的 learned guidance embedding；不是推理 CFG；修复入口不开放此项 |
-| `method.qwen_image.remove_base` | Qwen layered 是否排除合成图监督，默认 false |
-| `dataset.groups.main.wan.single_frame` | Wan I2V 的独立条件／目标帧索引，仅 image 数据；与公共 control_source 互斥 |
-| `model.minimax_h3` | H3 audio_vae、text_config，及可选 text_processor／topology／text_device |
-| `dataset.groups.main.minimax_h3` | H3 cache_seed、音频解码／修复边界、实验时长策略 |
-| `method.minimax_h3` | H3 sigma／focus 区间、video_shift=12、audio_shift=3、条件清洁度与 audio_loss_weight=1 |
+| `method.guidance` | FLUX／FLUX.2 Dev 的训练条件；与推理 CFG 不同 |
+| `method.qwen_image.remove_base` | Qwen layered 是否排除合成图监督 |
+| `dataset.groups.main.wan.single_frame` | Wan I2V 从图片组选择条件帧和目标帧 |
+| `model.minimax_h3` | H3 视频／音频编码器及处理器文件 |
+| `dataset.groups.main.minimax_h3` | H3 缓存、音频和时长设置 |
+| `method.minimax_h3` | H3 视频／音频噪声与损失设置 |
 
-`dataset.groups.main.control_source` 已是公共字段，当前能力检查仅允许 Wan；共享名字不代表其他家族已实现。
-流匹配使用各模型的缓存后验策略；
-修复训练的公共 `method.restoration.posterior` 可选值及默认策略见[修复指南](restoration.md)。
+完整字段见[参数参考](parameters.md)，后验和时间校准设置见[修复训练](restoration.md)。
 
 ## 视频与音视频
 
-Wan 的 `dataset.groups.main.video.target_frames` 和 max_frames 必须满足1+4k，原生视频 VAE 保留因果时间压缩。
-使用 [wan-cache](../examples/wan-cache.toml) 生成缓存，训练配置选择同一缓存和模型。
-Wan 显式 FP32 模式关闭 autocast，注意力仍保留原生 BF16 Q/K/V，不能理解为所有内部运算都 FP32；
-显式 CUDA BF16 AMP 遵循公共执行策略。
-2.1 I2V 需要独立图像编码器；2.2 I2V 沿用其原生条件路径。完整 FLF2V 应用不在当前支持范围。
+Wan 的目标帧数和最大帧数需要满足 `1 + 4k`。2.1 I2V 需要配套图像编码器，2.2 I2V 按对应示例填写。先运行 [Wan 缓存](../examples/wan-cache.toml)，再使用 [Wan 训练](../examples/wan-flow.toml)。
 
-H3 当前 batch_size=1、分辨率32对齐；video 使用24FPS timestamp 重采样，目标帧数17*n+5，
-max_frames 至少5，原生音频32kHz立体声。JSONL 是其 AV 记录格式，不是图像修复配对格式。
-先用 [H3 cache](../examples/minimax-h3-cache.toml)，再用 [H3 train](../examples/minimax-h3-train.toml)；
-已有显式拆分缓存可用 `caches import` 和 [导入说明JSON](../examples/minimax-h3-cache-import.json)。
-当前缓存生产尚不支持 teacher-caption 记录，不应仅因 schema 可读取就用于训练。
+H3 要求 batch 为 1、分辨率为 32 的倍数，视频为 24 FPS，目标帧数满足 `17n + 5`，最大帧数至少为 5；音频为 32 kHz 立体声。先运行 [H3 缓存](../examples/minimax-h3-cache.toml)，再使用 [H3 训练](../examples/minimax-h3-train.toml)。
 
-视频预览与生成分别使用各家族原生条件；[示例索引](../examples/README.md) 提供具体入口。
-
-[填写数据集](datasets.md) · [完整参数默认值](parameters.md)
+数据目录、条件帧和生成方法见[视频与音视频指南](video.md)。
 
 ## MOSS-Image-Edit
 
-`model.family="moss-image"`、`model.variant="edit"` 复用 MOSS Base/SFT 权重，启用
-[ComfyUI PR #17296](https://github.com/Comfy-Org/ComfyUI/pull/17296) 的 **Moss-Image-Edit** 格式
-（`index_timestep_zero_text_start`）。它需要编辑训练或匹配的编辑 adapter；修改 variant 本身不会赋予底模编辑能力。
-此格式不等同于 PR 中 ai-toolkit 的两种格式：文本编码器只读取指令，参考图只通过 packed VAE latent 输入。
+选择 `family = "moss-image"`、`variant = "edit"`，使用匹配的编辑权重或适配器。仅修改 variant 不会让普通底模学会编辑。
 
-参考 token 使用零时间，只读取同组参考；文本和目标使用当前时间并读取全部 token。
-参考图编号从 1 开始，frame/text 坐标固定为 0，目标坐标仍位于有效文本末尾。
-训练只对目标加噪并计算 flow loss，参考分支保留梯度；支持全参数和已有 adapter 算法。
+1. 按[编辑训练示例](../examples/moss-edit-flow.toml)准备目标图、同名指令和参考目录。
+2. 执行 `unituner cache CONFIG --device cuda`，再执行 `unituner train CONFIG --device cuda`。
+3. 按[编辑生成示例](../examples/moss-edit-generate.toml)填写 `sampling.reference_images`。
+4. 在对应 ComfyUI 节点中选择 **Moss-Image-Edit**，并使用匹配的适配器文件。
 
-- [训练示例](../examples/moss-edit-flow.toml)：`source` 放编辑后的目标图及同名指令 `.txt`，
-  `reference_sources` 放按文件名 stem 匹配的原图，可按顺序提供多个目录。训练参考图按自身尺寸分桶，相同原始尺寸自然得到对齐的输出。
-- 先执行 `unituner cache <配置> --device cuda`，再执行 `unituner train <配置> --device cuda`。
-  编辑缓存保存有序参考 latent，不能混用原版 MOSS 缓存；缓存身份包含参考图内容。
-- [生成示例](../examples/moss-edit-generate.toml)：使用 `sampling.reference_images`；参考图保留各自尺寸，
-  按 16 像素对齐，不采用 FLUX.2 的参考图缩放策略。预览使用同样字段。
-- 推理从目标纯噪声开始。默认缓存逐层参考 K/V，在一次采样内供各步及相同跳层路径的 CFG 共用；
-  SLG／跳层分支分别构建缓存，采样结束即释放，不跨训练更新复用。
-  edit 默认不跳过无条件分支的第 22 层；Base/SFT 原有默认值保持不变。
-- 导出 adapter 沿用 ComfyUI 的 `diffusion_model.*` 键。在该 PR 的节点中选择 **Moss-Image-Edit**，
-  不要选择 ai-toolkit。外部仓库的自定义 adapter 文件需先转换为项目支持的发布键与缩放格式。
-
-当前 edit 不支持 TREAD 或 restoration 方法，也不包含蒙版背景锁定。参考 K/V 缓存以显存换计算，
-多参考图和不同跳层路径会增加缓存占用。
-
-训练继续使用原生 MOSS 的显式精度转换和残差计算，因此不承诺与 ComfyUI 融合内核逐位一致。
-
----
-
-[文档首页](../README.md) · [参数参考](parameters.md) · [故障排查](../troubleshooting.md)
+编辑配置使用单独缓存，不能混用 Base/SFT 缓存。多参考图会增加显存占用。MOSS edit 暂不支持 TREAD、一步修复和蒙版背景锁定。
 
 ## 预览默认参数
 
-省略 `preview.samples` 中的 `steps` 和 `guidance`，即可使用所选模型／变体的默认值。预览与独立生成共用原生采样入口；训练时间步移位不会覆盖推理时间表。
+省略 `steps` 和 `guidance` 时使用对应变体的默认值：
 
-| Model / 模型 | Steps | Guidance |
+| 模型 | Steps | Guidance |
 | --- | --- | --- |
 | Qwen Image 2.1 | 25 | 1 |
 | Qwen Image / edit / layered | 25 | 4 |
@@ -208,6 +152,11 @@ max_frames 至少5，原生音频32kHz立体声。JSONL 是其 AV 记录格式�
 | FLUX Dev / Kontext / Fill | 25 | 3.5 / 2.5 / 30 |
 | FLUX.2 Dev / Klein base | 50 | 4 |
 | FLUX.2 Klein distilled | 4 | 1 |
-| FLUX3 base / distilled | 50 / 16 | 4 / no CFG |
+| BluePixel-Turbo | 4 | 3 |
+| FLUX3 base / distilled | 50 / 16 | 4 / 不使用 CFG |
 | MOSS Image | 50 | 3 |
 | Krea2 raw / turbo | 28 / 8 | 5.5 / 1 |
+
+---
+
+[文档首页](../README.md) · [参数参考](parameters.md) · [故障排查](../troubleshooting.md)

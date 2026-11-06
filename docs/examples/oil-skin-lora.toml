@@ -172,8 +172,8 @@ precision = "bf16"
 # none retains activations; block recomputes blocks to reduce activation memory at extra compute cost.
 recompute = "block"
 
-# resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
-# resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported.
+# resident 常驻；frozen-blocks 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
+# resident keeps weights on device; frozen-blocks manages frozen weights; trainable-blocks is reserved and currently unsupported.
 residency = "resident"
 # false 直接执行；true 使用 CUDA 编译，auto 按设备选择；首次编译额外耗时。
 # false uses eager execution; true compiles on CUDA, auto selects by device; compilation adds startup cost.

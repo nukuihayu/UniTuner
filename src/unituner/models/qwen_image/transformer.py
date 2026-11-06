@@ -3,12 +3,14 @@
 """Compute native Qwen Image predictions with explicit ordered image grids."""
 
 from math import prod
+from typing import ClassVar
 
 import torch
 from torch import Tensor, nn
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.qwen_image.config.model import QwenImageConfig
 from unituner.models.qwen_image.layers import AdaptiveOutputNorm, QwenImageBlock, QwenTimeEmbedding, RMSNorm
@@ -22,6 +24,8 @@ class QwenImageTransformer(nn.Module):
     Ordered grids are shared across samples; callers with different geometry
     must make independent predictions rather than attending synthetic padding.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.QWEN_IMAGE
 
     def __init__(self, config: QwenImageConfig) -> None:
         super().__init__()

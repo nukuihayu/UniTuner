@@ -4,7 +4,7 @@
 
 [Documentation](../README.md) · [Training](README.md) · [Examples](../examples/README.md)
 
-LayerSync, REPA, and TREAD can be combined for flow matching across ten families, in adapter or full mode. They are not connected to restoration. Layer windows must match the actual native topology. [Execution strategies](execution.md) independently control compilation, recomputation, and residency.
+LayerSync, REPA, and TREAD can be combined for flow matching on supported models, in adapter or full mode. They are not connected to restoration. Layer windows must match the actual native topology. [Execution strategies](execution.md) independently control compilation, recomputation, and residency.
 
 <details>
 <summary>On this page</summary>

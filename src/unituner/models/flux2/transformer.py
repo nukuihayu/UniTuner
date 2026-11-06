@@ -1,11 +1,14 @@
 # Derived from Black Forest Labs FLUX, Apache-2.0.
 """Compute native FLUX.2 tokens without training or execution-policy ownership."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.flux2.config.model import Flux2Config
 from unituner.models.flux2.layers import (
@@ -26,6 +29,8 @@ class Flux2Transformer(nn.Module):
     This dense model consumes all supplied text/image tokens without masking.
     Execution owners install recompute/compile boundaries outside the network.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.FLUX2
 
     def __init__(self, config: Flux2Config) -> None:
         super().__init__()

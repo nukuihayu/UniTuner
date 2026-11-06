@@ -63,6 +63,8 @@ class EncoderModelConfig(BaseModel):
             raise ValueError("Krea2 requires model.variant=raw/turbo")
         if self.family == ModelFamily.QWEN_IMAGE_2_1 and self.variant != "base":
             raise ValueError("Qwen Image2.1 requires model.variant=base")
+        if self.family == ModelFamily.BLUEPIXEL and self.variant != "turbo":
+            raise ValueError("BluePixel-Turbo requires model.variant=turbo")
         if self.family == ModelFamily.FLUX2:
             if self.version not in ("dev", "klein-4b", "klein-9b") or self.variant not in ("base", "distilled"):
                 raise ValueError("FLUX.2 requires model.version and base/distilled variant")

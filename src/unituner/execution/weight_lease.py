@@ -8,10 +8,6 @@ import torch
 from torch import Tensor
 
 
-class _Pages(Protocol):
-    def unpin(self, address: int, size: int) -> None: ...
-
-
 class _Engine(Protocol):
     def queue_callback(self, callback: Callable[[], None]) -> None: ...
 
@@ -33,24 +29,18 @@ def after_backward(callback: Callable[[], None]) -> None:
 class WeightLease:
     """Keep immutable storage alive until backward finishes reading it.
 
-    A fallback becomes populated only after its complete copy is submitted.
-    Recycling carries that validity and the last-use event to the arena.
+    Recycling carries the last-use event to the H2D cache.
     """
 
     tensor: Tensor
-    allocation: tuple[_Pages, int, int] | None
     released: bool = False
-    recycle: Callable[[torch.Event | None, bool], None] | None = None
-    populated: bool = False
+    recycle: Callable[[torch.Event | None], None] | None = None
 
     def release(self, *, ready: torch.Event | None = None) -> None:
-        """Unpin once; the caller must have finished all graph reads before releasing."""
+        """Recycle once after the caller finishes all graph reads."""
         if not self.released:
-            if self.allocation is not None:
-                owner, address, size = self.allocation
-                owner.unpin(address, size)
             if self.recycle is not None:
-                self.recycle(ready, self.populated)
+                self.recycle(ready)
             self.released = True
 
 
@@ -59,7 +49,7 @@ class PrefetchUnavailable(Exception):
 
 
 class FrozenWeights(Protocol):
-    """Keep scheduling independent of physical-page or ordinary CUDA storage."""
+    """Expose H2D weight storage to the lookahead scheduler."""
 
     device: torch.device
 

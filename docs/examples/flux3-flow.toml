@@ -109,8 +109,8 @@ alpha = 16.0
 # 计算精度；训练 auto 按底模解析，CUDA 可显式 bf16，CPU 流程用 fp32。
 # Compute precision; training auto follows base weights, CUDA can use bf16, CPU workflows use fp32.
 precision = "fp32"
-# resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
-# resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported.
+# resident 常驻；frozen-blocks 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
+# resident keeps weights on device; frozen-blocks manages frozen weights; trainable-blocks is reserved and currently unsupported.
 residency = "resident"
 # none 保存激活；block 按块重算以降低激活显存，增加计算量。
 # none retains activations; block recomputes blocks to reduce activation memory at extra compute cost.

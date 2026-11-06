@@ -5,11 +5,15 @@ import math
 import torch
 from torch import Tensor
 
+from unituner.models.catalog import IMAGE_FAMILIES, image_family_spec
+
 
 def training_sigma_grid(family: str, sampling: str, *, device: torch.device) -> Tensor | None:
     """Return 1000 descending FP32 sigmas; None selects continuous uniform sampling."""
     if sampling == "uniform":
         return None
+    if family in IMAGE_FAMILIES:
+        family = image_family_spec(family).backbone
     defaults = {
         "flux": 3.0,
         "flux2": math.exp(0.8),

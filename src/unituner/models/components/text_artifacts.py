@@ -49,6 +49,7 @@ def text_config_path(path: Path, family: str, *, version: str | None = None) -> 
         "flux-clip": "clip-l",
         "krea2": "qwen3-vl-4b",
         "flux3": "qwen3-vl-4b",
+        "bluepixel": "qwen3-8b",
         "qwen-image": "qwen2-5-vl",
         "qwen-image-2-1": "qwen-image-2-1",
     }

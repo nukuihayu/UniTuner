@@ -32,7 +32,7 @@ uv sync --locked --no-dev
 uv run --no-dev unituner --help
 ```
 
-默认安装包含媒体读写、文本编码、分词器、comfy-kitchen 和 comfy-aimdo。后续命令都在仓库根目录执行。
+默认安装包含媒体读写、文本编码、分词器和 comfy-kitchen。后续命令都在仓库根目录执行。
 
 国内环境需要清华 PyPI 源时，安装依赖使用：
 

@@ -1,0 +1,43 @@
+[model]
+family = "bluepixel"
+variant = "turbo"
+weights = "models/BluePixel-Turbo/transformer"
+vae = "models/BluePixel-Turbo/vae"
+text_encoder = "models/BluePixel-Turbo/text_encoder"
+assets = "models/BluePixel-Turbo"
+
+[dataset.groups.main]
+kind = "restoration"
+source = "data/high"
+low_quality_source = "data/low"
+cache_directory = "cache/bluepixel-restoration"
+resolution = [512, 512]
+batch_size = 1
+
+[method]
+kind = "restoration"
+
+[method.restoration]
+midtimestep = 244
+encoder_rank = 4
+posterior = "mean"
+
+[losses]
+lrr = 5.0
+l1 = 0.5
+dv3d = 0.0
+gan = 0.0
+fdl = 0.0
+
+[train]
+parameter_mode = "adapter"
+learning_rate = 0.0001
+max_updates = 1000
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[output]
+directory = "runs/bluepixel-restoration"

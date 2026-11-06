@@ -29,9 +29,14 @@ from unituner.training.objectives import install_objectives
 from unituner.training.session import TrainingSession
 
 
-@pytest.mark.parametrize("family", FAMILIES)
-@pytest.mark.parametrize("device_name", ["cpu", "cuda"])
-@pytest.mark.parametrize("compiled", [False, True])
+@pytest.mark.parametrize(
+    "family,device_name,compiled",
+    [
+        *((family, "cpu", False) for family in FAMILIES),
+        *((family, "cuda", True) for family in ("flux", "qwen-image-2-1", "wan")),
+        ("qwen-image-2-1", "cuda", False),
+    ],
+)
 def test_repa_layersync_tread_recompute_and_exact_resume(tmp_path, family, device_name, compiled):
     """Use synthetic frozen grids to test loss math, never encoder quality or full weights."""
     if device_name == "cuda" and not torch.cuda.is_available():

@@ -31,12 +31,11 @@ from unituner.execution.installation import (
 from unituner.execution.precision import resolve_training_precision
 from unituner.execution.runtime import runtime_scope
 from unituner.logging import set_context
-from unituner.models.catalog import ModelFamily
+from unituner.models.catalog import IMAGE_FAMILIES, image_family_spec
 from unituner.models.components.conditioning import batch_captions
 from unituner.models.flux.transformer import FluxTransformer
-from unituner.models.image import ImageModel, load_image_model
+from unituner.models.image import ImageModel, load_image_model, validate_model_selection
 from unituner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record
-from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
 from unituner.precision import FLOAT_DTYPES
 from unituner.progress import Progress, status
 from unituner.training.contracts import ImageFlowRequest, RunState, StepResult
@@ -94,24 +93,19 @@ def train(
     config = resolve_training_precision(config)
     execution = config.execution
     restoration = config.method.kind == "restoration"
-    if config.model.family not in {
-        ModelFamily.Z_IMAGE,
-        ModelFamily.MOSS_IMAGE,
-        ModelFamily.FLUX,
-        ModelFamily.FLUX3,
-        ModelFamily.FLUX2,
-        ModelFamily.QWEN_IMAGE,
-        ModelFamily.QWEN_IMAGE_2_1,
-        ModelFamily.KREA2,
-    } or any(data.kind != ("restoration" if restoration else "image") for data in config.dataset.groups.values()):
+    spec = image_family_spec(config.model.family)
+    if config.model.family not in IMAGE_FAMILIES or any(
+        data.kind != ("restoration" if restoration else "image") for data in config.dataset.groups.values()
+    ):
         raise ValueError("Training entry supports native cached image flow and Z-Image/Qwen/Krea2 restoration")
     if restoration != (restoration_data is not None):
         raise ValueError("Restoration requires an explicitly indexed image restoration dataset")
     if restoration and any(
-        min(data.resolution) < 16 or any(value % 16 for value in data.resolution)
+        min(data.resolution) < spec.restoration_training_alignment
+        or any(value % spec.restoration_training_alignment for value in data.resolution)
         for data in config.dataset.groups.values()
     ):
-        raise ValueError("Restoration resolution must be at least 16 and divisible by 16")
+        raise ValueError(f"Restoration resolution requires {spec.restoration_training_alignment}-aligned dimensions")
     validate_training_execution(execution, device=device, adapter=config.train.adapter is not None)
     precision = execution.precision
     if precision == "auto":
@@ -206,13 +200,16 @@ def train(
     status(
         f"[train] Denoiser loaded; preparing base weights (quantization={execution.quantization}, residency={execution.residency})"
     )
-    prepare_base_weights(model, execution, family=config.model.family.value, device=device)
+    prepare_base_weights(
+        model, execution,
+        family=spec.backbone,
+        device=device,
+    )
     if execution.residency == "resident" and load_device != device:
         model.to(device=device)
     if isinstance(model, FluxTransformer) and config.method.guidance is not None and not model.config.guidance_embed:
         raise ValueError("Explicit method.guidance requires Flux guidance embedding")
-    if not isinstance(model, QwenImage21Transformer) and model.config.variant != config.model.variant:
-        raise ValueError("Training model variant differs from native artifact topology")
+    validate_model_selection(config.model, model)
     output = Path(config.output.directory)
     output.mkdir(parents=True, exist_ok=True)
     if config.method.wavelet is not None and not restoration:

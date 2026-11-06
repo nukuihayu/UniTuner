@@ -15,8 +15,9 @@ dependencies = [
     "kaleido>=1.5,<2",
     "pypdf>=6,<7",
     "comfy-kitchen==0.2.39",
-    "comfy-aimdo==0.6.0",
-    "transformers>=5.3,<6",
+    "diffusers>=0.41",
+    "huggingface-hub>=1.0",
+    "transformers>=5.3",
     "torchvision>=0.28,<0.29",
     "sentencepiece>=0.2,<0.3",
     "ftfy>=6.3,<7",
@@ -46,7 +47,6 @@ packages = ["src/unituner"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = ["--import-mode=importlib"]
-norecursedirs = ["tests/comparison", "tests/performance"]
 [tool.ruff]
 force-exclude = true
 extend-exclude = ["benchmarks"]

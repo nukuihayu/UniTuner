@@ -1,22 +1,14 @@
 """Publish native image previews at completed-update boundaries through the optional media provider."""
 
 from collections.abc import Callable
-from importlib import import_module
 from typing import Protocol, cast
 
 from torch import nn
 
 from unituner.config.training import TrainingConfig
 from unituner.data.datasets.restoration import RestorationDataset
-from unituner.models.flux.transformer import FluxTransformer
-from unituner.models.flux2.transformer import Flux2Transformer
-from unituner.models.flux3.transformer import Flux3Transformer
-from unituner.models.image import ImageModel
-from unituner.models.krea2.transformer import Krea2Transformer
-from unituner.models.moss_image.transformer import MossImageTransformer
-from unituner.models.qwen_image.transformer import QwenImageTransformer
-from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
-from unituner.models.z_image.transformer import ZImageTransformer
+from unituner.models.image import ImageModel, model_spec, validate_model_selection
+from unituner.models.providers import load_provider
 from unituner.precision import compute_context, sampling_precision
 from unituner.training.methods.restoration import RestorationMethod
 from unituner.training.previews.context import preview_context
@@ -91,20 +83,6 @@ def build_flow_preview(
     model: ImageModel,
 ) -> ImagePreview:
     """Select the native image publisher explicitly without a fallback model family."""
-    providers = (
-        (
-            FluxTransformer | Flux2Transformer | Flux3Transformer | MossImageTransformer | ZImageTransformer,
-            "unituner.training.previews.flow",
-        ),
-        (QwenImageTransformer, "unituner.training.integrations.qwen_image.previews"),
-        (QwenImage21Transformer, "unituner.training.integrations.qwen_image_2_1.previews"),
-        (Krea2Transformer, "unituner.training.integrations.krea2.previews"),
-    )
-    for model_type, module in providers:
-        if isinstance(model, model_type):
-            factory = cast(
-                Callable[[TrainingConfig, ImageModel], ImagePreview],
-                import_module(module).ImagePreviews,
-            )
-            return factory(config, model)
-    raise TypeError("No image preview publisher for this model type")
+    validate_model_selection(config.model, model)
+    factory = cast(Callable[[TrainingConfig, ImageModel], ImagePreview], load_provider(model_spec(model).preview))
+    return factory(config, model)

@@ -43,12 +43,13 @@ def checkpoint_vae_blocks(
         ImageResidual,
         VAEAttention,
     )
-    modules = vae.modules() if checkpoint_encoder else vae.get_submodule("decoder").modules()
+    decoder = vae.get_submodule("decoder")
+    modules = vae.modules() if checkpoint_encoder else decoder.modules()
     for index, module in enumerate(modules):
         if isinstance(module, block_types):
             session.own(RecomputeInstallation(ModelRegion(module, index, "visual"), require_training=False))
     if compile_decoder:
-        for module in vae.get_submodule("decoder").modules():
+        for module in decoder.modules():
             # Keep SDPA native: Inductor layout propagation can violate Flash
             # Attention's contiguous head-dimension contract during replay.
             if isinstance(module, (ResidualBlock, Upsample, ResidualConvBlock, Upsample2d, ImageResidual)):

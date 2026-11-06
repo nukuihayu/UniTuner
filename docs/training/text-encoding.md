@@ -11,7 +11,7 @@
 - [Tokenizer 来源](#tokenizer-来源)
 - [缓存前逐层量化](#缓存前逐层量化)
 - [读取提前转换的编码器](#读取提前转换的编码器)
-- [层保护与缓存身份](#层保护与缓存身份)
+- [效果与重新缓存](#效果与重新缓存)
 
 </details>
 
@@ -32,7 +32,7 @@ MOSS 的 Qwen3.5 单文件需要同名 JSON 或同目录 `config.json`；Wan 使
 
 ## Tokenizer 来源
 
-Tokenizer／processor 默认按 Musubi 的来源从 Hub 获取，仅下载词表、模板及处理器配置，不下载编码器权重，也不执行远程代码。原生文本编码器仍从 `model.text_encoder` 读取本地权重和模型配置。
+Tokenizer／processor 默认从下表的 Hub 仓库获取，仅下载词表、模板及处理器配置，不下载编码器权重，也不执行远程代码。原生文本编码器仍从 `model.text_encoder` 读取本地权重和模型配置。
 
 | 模型 | 默认仓库／子目录 |
 | --- | --- |
@@ -41,6 +41,7 @@ Tokenizer／processor 默认按 Musubi 的来源从 Hub 获取，仅下载词表
 | FLUX.2 Dev | `mistralai/Mistral-Small-3.1-24B-Instruct-2503` |
 | FLUX.2 Klein 4B／9B | `Qwen/Qwen3-4B`／`Qwen/Qwen3-8B` |
 | Qwen Image | `Qwen/Qwen-Image` / `tokenizer`；processor：`Qwen/Qwen-Image-Edit` / `processor` |
+| BluePixel | `model.assets` 下的本地 `tokenizer` |
 | Krea2 | `Qwen/Qwen3-VL-4B-Instruct` |
 | Wan | `Wan-AI/Wan2.1-T2V-14B` / `google/umt5-xxl` |
 | MiniMaxH3 | `MiniMaxAI/MiniMax-H3` / `processor` |
@@ -73,7 +74,7 @@ precision = "bf16"
 quantization = "float8_e4m3fn"
 ```
 
-`model.text_encoder` 仍指向原来的本地资产。运行 `unituner cache train.toml --device cuda` 时，加载器先在 CPU 建立浮点文本模型，再逐层送入 GPU 量化，将每层打包结果放回 CPU，最后移动到文本推理设备。无需先把完整浮点编码器放入 GPU；主机内存仍需容纳浮点源模型。CPU 执行则在 CPU 量化。源文件不会被改写。
+`model.text_encoder` 继续指向本地源资产，然后运行 `unituner cache train.toml --device cuda`。量化可以降低 GPU 权重内存，但准备阶段仍需足够主机内存容纳浮点源模型，源文件不会被修改。
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -98,13 +99,13 @@ uv run unituner weights convert models/qwen3/model.safetensors models/qwen3-fp8/
   --family qwen3 --precision float8_e4m3fn --device cuda
 ```
 
-将 `model.text_encoder` 改为 `models/qwen3-fp8`，并保留 `model.text.quantization = "none"`。读取器根据每层 `*.comfy_quant` 识别布局，保留 scale、码本与旋转张量的存储 dtype。显式指定量化格式时，已有量化层必须匹配；不会隐式重新量化有损权重。转换文件保留源键与前缀，默认自动识别源命名空间；如显式设置 `model.text_source_format`，须与源格式一致。
+将 `model.text_encoder` 改为 `models/qwen3-fp8`，保留 `model.text.quantization = "none"`，即可使用文件已有量化格式。显式指定的目标格式必须与已有量化层匹配。设置 `model.text_source_format` 时，需与源格式一致。
 
-文件转换也支持 `--precision bf16`、`fp16`、`fp32`。量化输入先反量化；这不会恢复量化前丢失的信息。对浮点源先指定计算精度再在线量化，与直接按源 dtype 离线量化，可能得到不同编码；需要对照时，离线先转换为相同浮点 dtype，再使用相同量化参数、设备和后端。
+文件转换也支持 `--precision bf16`、`fp16` 和 `fp32`。转回浮点不能恢复量化时丢失的信息。比较在线与离线转换时，请保持精度、量化参数和设备一致。
 
 | 模型家族 | 文本编码器转换预设 |
 | --- | --- |
-| Z-Image、FLUX.2 Klein | `qwen3` |
+| Z-Image、FLUX.2 Klein、BluePixel | `qwen3` |
 | MOSS Image | `qwen3-5` |
 | FLUX | 主文本目录 `t5`，辅助 CLIP 目录 `clip`，分别转换 |
 | FLUX.2 Dev | `mistral` |
@@ -116,11 +117,11 @@ FLUX 的在线设置同时应用于 T5 和 CLIP；需要不同布局时分别离
 
 MiniMaxH3 实际只使用语言层 0–49，在线量化自动保护第 0 和 49 层。离线转换完整、未截断的 Qwen3-VL 时，另加 `--exclude '*layers.49.*'`；更推荐转换匹配其原生截断拓扑的文件。文本加载器接受首末层等路径已经量化的文件，并保留其打包存储，不要求重新转换。键、形状、布局及显式量化参数仍须通过校验。
 
-## 层保护与缓存身份
+## 效果与重新缓存
 
-在线准备和独立转换共用[文本保护预设](../weight-conversion.md#文本编码器保护)：按数字层号保留首末层，保护归一化、embedding、词表／LM head、视觉／音频分支、多模态 projector、MTP，以及 Qwen3.5 的敏感投影。语言特征选择、padding、图像／视频 token 和 RoPE 规则保持各家族原生约定。T5 的激活 dtype 判断使用逻辑浮点精度，避免误读打包权重 dtype。
+敏感文本层会自动保留较高精度。请使用与模型匹配的编码器、分词器和处理器资产。
 
-缓存身份包含文本源资产、显式精度／量化设置，以及实际运行的布局和计算 dtype。修改这些设置后重新运行 `cache`，不能用旧 conditioning 冒充新精度的结果。写入特征仍遵循现有缓存 schema：通常为 FP32，FLUX3 的原生 BF16 特征边界也保留；把低精度结果存为 FP32 不会恢复计算中损失的信息。
+更换编码器、分词器、revision、精度或量化设置后，重新运行 `unituner cache train.toml --device cuda`。比较训练效果时请固定这些设置。将特征保存为 FP32 不能恢复低精度编码时丢失的信息。
 
 ---
 

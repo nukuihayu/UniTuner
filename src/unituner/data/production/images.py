@@ -14,7 +14,7 @@ from unituner.config.model import EncoderModelConfig
 from unituner.data.cache.feature_encoding import RepaCacheWriter
 from unituner.data.media.buckets import ImageBuckets
 from unituner.data.media.image import discover_images, index_conditions
-from unituner.models.catalog import ModelFamily
+from unituner.models.catalog import IMAGE_FAMILIES, ModelFamily, cache_alignment
 from unituner.models.components.image_encoders import ImageVAE, load_image_text, load_image_vae
 from unituner.models.components.text_artifacts import text_artifact_sha256, text_encoding_identity
 from unituner.models.qwen_image.config.model import QwenImageConfig
@@ -28,16 +28,7 @@ def produce_images(
     config: CacheConfig, *, device: str, repa: RepaCacheWriter | None, tokenizer_digests: dict[str, str]
 ) -> int:
     """Load native FP32 VAEs and independently configured text encoders for caching."""
-    if config.model.family not in {
-        ModelFamily.Z_IMAGE,
-        ModelFamily.MOSS_IMAGE,
-        ModelFamily.FLUX,
-        ModelFamily.FLUX3,
-        ModelFamily.FLUX2,
-        ModelFamily.QWEN_IMAGE,
-        ModelFamily.QWEN_IMAGE_2_1,
-        ModelFamily.KREA2,
-    } or any(
+    if config.model.family not in IMAGE_FAMILIES or any(
         data.kind
         not in {
             "image",
@@ -70,7 +61,7 @@ def produce_images(
             raise ValueError("Image source requires source and cache_directory")
         buckets = ImageBuckets(
             source.resolution,
-            alignment=32 if config.model.family == ModelFamily.QWEN_IMAGE_2_1 else 16,
+            alignment=cache_alignment(config.model.family),
             enabled=source.enable_bucket and source.kind != "restoration",
             no_upscale=source.bucket_no_upscale,
             caption_extension=source.caption_extension,
@@ -152,12 +143,13 @@ def produce_images(
                 repa=repa,
                 encoder_sha256=encoder_digest,
                 variant=config.model.variant
-                if config.model.family in (ModelFamily.FLUX, ModelFamily.FLUX2, ModelFamily.FLUX3)
+                if config.model.family in (ModelFamily.FLUX, ModelFamily.FLUX2, ModelFamily.FLUX3, ModelFamily.BLUEPIXEL)
                 or (config.model.family == ModelFamily.MOSS_IMAGE and config.model.variant == "edit")
                 else None,
                 data=source,
                 seed=config.seed,
                 version=config.model.version if config.model.version in ("dev", "klein-4b", "klein-9b") else None,
+                kind=source.kind,
                 batch_size=config.cache.batch_size,
             )
         count += len(manifest.entries)

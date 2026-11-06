@@ -13,7 +13,6 @@ GPU memory holds weights, optimizer state, gradients, and forward activations. P
 - [Activation recomputation](#activation-recomputation)
 - [Attention activation offload](#attention-activation-offload)
 - [Frozen-block offload](#frozen-block-offload)
-- [VBAR residency](#vbar-residency)
 - [BF16 AMP and publication precision](#bf16-amp-and-publication-precision)
 - [INT8 inference attention](#int8-inference-attention)
 - [Combination and resume constraints](#combination-and-resume-constraints)
@@ -22,7 +21,7 @@ GPU memory holds weights, optimizer state, gradients, and forward activations. P
 </details>
 
 > [!IMPORTANT]
-> Residency is explicit: resident mode does not switch to offload after OOM. Automatic H2D capacity and VBAR page management operate within the selected policy. `compile = "auto"` selects by device, not by free VRAM.
+> Residency is explicit: resident mode does not switch to offload after OOM. Automatic H2D capacity operates within the selected policy. `compile = "auto"` selects by device, not by free VRAM.
 
 ## Choose a policy
 
@@ -33,7 +32,6 @@ GPU memory holds weights, optimizer state, gradients, and forward activations. P
 | Attention-saved activations are large | `attention_activation_offload = true` | Host memory and D2H/H2D transfers |
 | Frozen weights or transfers are too large | `quantization = "float8_e4m3fn"` or another supported layout | Smaller packed storage; temporary floating weights and dequantization overhead |
 | Frozen adapter base weights do not fit | `residency = "frozen-blocks"` | Automatic shared cache, asynchronous prefetch, per-block recomputation |
-| Manage frozen weights through virtual memory | `residency = "vbar"` | Physical residency follows device capacity; a compatible NVIDIA CUDA device |
 | Flow matching can use mixed precision | `precision = "bf16"` | CUDA AMP; trainable parameters and optimizer masters remain FP32 |
 
 Supported policies can be combined, without a promise of faster updates. Compare steady-state time and total GPU memory with the same model, dimensions, and batch size. Record first-call compilation separately.
@@ -53,9 +51,9 @@ attention_activation_offload = false
 quantization = "none"
 ```
 
-The default uses eager execution without compilation startup cost. Use `compile` to compare compiled training. Explicit true enables CUDA Inductor; `"auto"` selects Inductor on CUDA and eager on CPU. Compilation covers training computations. Previews and standalone inference use native evaluation paths. Enable compilation after comparing steady-state throughput; compilation can change floating-point rounding and update trajectories.
+Compilation is off by default. Complete a run with defaults before trying `compile = true`, then compare steady-state speed. Initial startup and size changes can trigger compilation. `compile = "auto"` enables it on CUDA and leaves it off on CPU.
 
-On CUDA, restoration training with both `compile` and block recomputation for the restoration networks also compiles supported stateless convolutional residual and upsampling blocks in the VAE decoder, fusing pointwise operations during forward and checkpoint replay to reduce intermediate activations. The decoder remains frozen and in eval mode while gradients flow to its latent input; encoder LoRA training continues normally. With `encoder_rank = 0` (and `losses.lrr = 0`), encoder checkpointing is omitted while decoder optimization remains active and pixel-loss gradients still flow through the frozen decoder to the DiT. Initial training and some size changes can trigger compilation. No-grad previews and calibration bypass this compiled path. Attention retains native execution, and stateful Qwen temporal blocks are excluded.
+Restoration compilation can increase initial preparation time. Benefits depend on the model, resolution and device; compare complete-update time and peak GPU memory.
 
 The following blocks are **edits** to existing sections. Merge them into your `[execution]` section rather than appending duplicate headers.
 
@@ -78,7 +76,7 @@ Text caches and inference use independent `[model.text]` precision/quantization 
 
 ## Activation recomputation
 
-Use non-reentrant whole-block recomputation, preserving RNG state while replaying attention and feed-forward computations during backward:
+Enable recomputation to save activation memory at the cost of additional computation:
 
 ```toml
 [execution]
@@ -108,9 +106,9 @@ Try interval 4 if memory permits. Setting `recompute = "none"` then disables onl
 attention_activation_offload = true
 ```
 
-On CUDA, non-leaf tensors saved by SDPA for backward move to pinned CPU memory and return on demand. This does not offload the entire attention module or optimizer state.
+Temporarily store some attention activations on CPU and bring them back when needed. This requires CUDA and increases host-memory use and transfer overhead.
 
-It supports resident none/block, frozen blocks, and supported VBAR recomputation. Previews disable these hooks. Host memory and transfer bandwidth can become the new bottleneck.
+Combine it with recomputation or frozen-weight offload when needed. Check host memory and training speed to avoid moving the bottleneck to CPU RAM or transfers.
 
 ## Frozen-block offload
 
@@ -121,34 +119,10 @@ residency = "frozen-blocks"
 
 This policy supports CUDA adapters only. Frozen block weights remain on CPU and transfer for forward and backward recomputation. Adapters and embeddings/output layers outside blocks remain on the compute device; it is not whole-model CPU offload.
 
-Frozen-block offload uses CPU master weights, asynchronous prefetch and an automatically sized GPU cache. Omitted recompute is inferred as block; explicit none is rejected. Leave cache capacity and pinned-memory options omitted initially. Compare stable transfer/compute time and host RAM use; this policy is for frozen adapter bases, not full training. See [execution internals](execution-internals.md) for cache allocation details.
+This mode requires `recompute = "block"` and `recompute_interval = 1`; omitted recomputation settings are filled in automatically. GPU cache capacity adjusts automatically, so start without a manual limit. Verify that the largest training dimensions complete an update; automatic adjustment does not guarantee that arbitrary larger sizes fit.
 
-Usually omit `frozen_weight_cache_mb` and `use_pinned_memory_for_block_swap`. An explicit MiB value caps retained storage plus one largest frozen block for current computation. Zero permits one block and cannot also hold an equal-sized lookahead block. This does not cap total VRAM, active-graph storage, activations, optimizer state, or casts. Pinned masters consume non-pageable host memory; explicit false disables them.
+Usually omit `frozen_weight_cache_mb` and `use_pinned_memory_for_block_swap`. Set the former in MiB only to limit additional retained frozen weights; zero keeps space for the current block. This is not a total VRAM limit: activations and optimizers need memory too. If host memory is tight, set the latter to `false`, accepting potentially slower transfers.
 
-Buffers are reused only after all graph readers finish and their CUDA events are respected. CPU masters remain immutable. Block recomputation is required; full training is unsupported. Outstanding graphs may temporarily exceed the cache budget rather than overwrite live weights.
-
-## VBAR residency
-
-Install the dependency:
-
-```bash
-uv sync --locked
-```
-
-Then edit the configuration:
-
-```toml
-[execution]
-residency = "vbar"
-```
-
-VBAR uses comfy-aimdo to manage virtual frozen-weight residency. It reuses resident pages, transfers faults from immutable CPU sources, and automatically prefetches for forward/backward. Unlike frozen-block caching, it does not use `frozen_weight_cache_mb`.
-
-Prefetch checks available memory. If actual allocator retries increase, completed-backward feedback increases the prefetch reserve to reduce failed speculative allocations, without a manual threshold. Demand allocations still fail when they cannot fit. Compare H2D and VBAR at actual training dimensions: throughput depends on computation, transfers, and residency.
-
-It requires NVIDIA CUDA adapter training and supports compilation and BF16 AMP. The CLI initializes AIMDO before Torch import; Python callers must preserve that ordering.
-
-VBAR pages are outside Torch `max_memory_allocated`. Also inspect `ExecutionInstallation.vbar_statistics().loaded_bytes`. For host memory, consider both `pinned_staging_bytes` and `registered_source_bytes`. Lower Torch counters alone do not establish lower total GPU memory use.
 
 ## BF16 AMP and publication precision
 
@@ -157,7 +131,7 @@ VBAR pages are outside Torch `max_memory_allocated`. Also inspect `ExecutionInst
 precision = "bf16"
 ```
 
-BF16/FP16 AMP supports CUDA flow matching and image restoration. See [precision configuration](precision.md) for automatic detection, weight storage, FP16 loss scaling and default BF16 VGG/DINO. Trainable master parameters remain FP32; backward and optimizer updates run outside forward autocast.
+BF16/FP16 supports CUDA flow matching and restoration. See [precision](precision.md) for defaults, FP16 overflow handling and restoration feature precision.
 
 To reduce published file size independently, use `output.save_precision = "bf16"` or `"fp16"`. Publication dtype and training computation precision are separate; resume state retains training dtypes.
 
@@ -176,15 +150,14 @@ attention_backend = "kitchen-int8"
 
 Image previews set the same field in `[[preview.samples]]`; standalone `restore` puts it at the root. Wan/H3 use native sampling sections. Only denoiser inference changes; VAE and text encoding retain their original paths.
 
-Default `"torch"` uses native SDPA. Kitchen INT8 lacks the backward path required here and fails when explicitly called with gradients. CPU and unsupported head shapes/layouts do not silently fall back. INT8 may produce different outputs from Torch.
+The default is `"torch"`. `kitchen-int8` is for inference only and requires CUDA and supported model shapes. Select `"torch"` when unsupported. Changing attention backends can change outputs.
 
 ## Combination and resume constraints
 
-`trainable-blocks` is unsupported. FP16 uses AMP with FP32 master parameters and fixed loss scaling. Calibration-free weight layouts support frozen-base LoRA/LoHa/LoKr training with temporary weight reconstruction and floating compute; see [quantized-base training](quantized-base.md). Full training uses resident weights. Frozen blocks/VBAR support adapters only; Both VBAR and frozen blocks require whole-block recomputation.
+`trainable-blocks` is unsupported. FP16 uses AMP with FP32 master parameters and fixed loss scaling. Calibration-free weight layouts support frozen-base LoRA/LoHa/LoKr training with temporary weight reconstruction and floating compute; see [quantized-base training](quantized-base.md). Full training uses resident weights. Frozen blocks support adapters only and require whole-block recomputation.
 
-Compilation, fused LoRA computation, and selected precision boundaries belong to resume identity. Compare policies in separate output directories starting from the same base. Do not assume a changed policy preserves a checkpoint's numerical trajectory. A fixed seed alone also does not guarantee byte-identical CUDA results.
+Changing precision, quantization or compilation settings can make old resume states incompatible. Compare settings in new output directories with the same model, data and seed. A fixed seed does not guarantee identical results across different devices or settings.
 
-See [execution internals](execution-internals.md) for transfer streams, weight leases, VBAR staging, and compile boundaries.
 
 ## cuDNN and TF32 tuning
 

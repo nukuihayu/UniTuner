@@ -3,11 +3,12 @@
 import torch
 from torch import Tensor
 
+from unituner.models.catalog import IMAGE_FAMILIES
 from unituner.models.flux.inference.sampling import build_schedule
 
 
 def _validate_time_grid(family: str, resolution: tuple[int, int]) -> None:
-    if family not in ("z-image", "flux", "flux2", "flux3", "moss-image", "qwen-image", "qwen-image-2-1", "krea2"):
+    if family not in IMAGE_FAMILIES:
         raise ValueError("A new restoration family must declare its native time grid")
     if any(type(size) is not int or size < 16 or size % 16 for size in resolution):
         raise ValueError("Restoration time grids require positive 16-aligned pixel dimensions")

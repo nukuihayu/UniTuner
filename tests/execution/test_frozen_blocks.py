@@ -143,7 +143,7 @@ def test_no_input_gradient_replay_handles_partial_outputs_and_retained_graph():
 
 @pytest.mark.parametrize("pinned", [False, True])
 @pytest.mark.parametrize("cache_budget", [0, 32, 2048])
-def test_mixed_dtype_strided_weights_and_outstanding_graphs(pinned, cache_budget, vbar=False):
+def test_mixed_dtype_strided_weights_and_outstanding_graphs(pinned, cache_budget):
     """Keep native strides, live trainable storage and independent backward lifetimes."""
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
@@ -169,12 +169,9 @@ def test_mixed_dtype_strided_weights_and_outstanding_graphs(pinned, cache_budget
             device=device,
             use_pinned_memory=pinned,
             cache_budget_bytes=cache_budget,
-            use_vbar=vbar,
         )
     ) as owner:
-        if not vbar:
-            assert owner._cache is not None
-            assert owner._cache.statistics().allocated_bytes == 0
+        assert owner._cache.statistics().allocated_bytes == 0
         assert model.weight.stride() == stride
         for _ in range(3):
             inputs = [torch.randn(2, 8, device=device, requires_grad=True) for _ in range(2)]
@@ -201,10 +198,9 @@ def test_mixed_dtype_strided_weights_and_outstanding_graphs(pinned, cache_budget
 
 
 def test_offload_defaults_require_no_cache_or_recompute_tuning():
-    for residency in ("frozen-blocks", "vbar"):
-        config = ExecutionConfig(residency=residency)
-        assert config.recompute == "block"
-        assert config.recompute_interval == 1
-        assert config.frozen_weight_cache_mb is None
-        assert config.use_pinned_memory_for_block_swap is None
+    config = ExecutionConfig(residency="frozen-blocks")
+    assert config.recompute == "block"
+    assert config.recompute_interval == 1
+    assert config.frozen_weight_cache_mb is None
+    assert config.use_pinned_memory_for_block_swap is None
     assert ExecutionConfig().recompute == "none"

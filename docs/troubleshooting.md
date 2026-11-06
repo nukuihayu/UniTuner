@@ -44,12 +44,12 @@
 
 | 出错阶段 | 优先检查 |
 | --- | --- |
-| 加载底模 | 适配器训练考虑 `frozen-blocks` / VBAR，或支持的量化底模；检查其他 GPU 进程 |
+| 加载底模 | 适配器训练考虑 `frozen-blocks` 或支持的量化底模；检查其他 GPU 进程 |
 | 前向或反向 | 减小 batch/尺寸，开启 `recompute = "block"`；注意力保存占用大时考虑激活卸载 |
 | 更大 bucket 首次出现 | 自动缓存容量不能保证所有未知尺寸都适用；降低最大面积或调整数据尺寸 |
 | 预览或保存 | 预览需要额外 VAE/文本资产；减少预览尺寸和样本数，确认主机内存也充足 |
 
-`residency = "resident"` 不会在 OOM 后自动切到卸载模式。H2D 在所选 `frozen-blocks` 模式内自动调节缓存；VBAR 在所选模式内管理驻留页。梯度累积增加有效批量，不减少单个 microbatch 的激活需求。详见[执行策略](training/execution.md)。
+`residency = "resident"` 不会在 OOM 后自动切到卸载模式。H2D 在所选 `frozen-blocks` 模式内自动调节缓存。梯度累积增加有效批量，不减少单个 microbatch 的激活需求。详见[执行策略](training/execution.md)。
 
 ## 数值与训练效果
 

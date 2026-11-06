@@ -38,7 +38,7 @@ Use each training and inference pair together, with matching asset paths, output
 
 ## Training and caching
 
-Training examples use the training schema; cache-only examples use the encoding schema. Usually run `unituner cache CONFIG --device cuda`, then `unituner train CONFIG --device cuda`. Training-only examples with just a denoiser require caches built using the corresponding complete cache configuration.
+Training examples include training settings; cache-only examples need only encoding settings. Usually run `unituner cache CONFIG --device cuda`, then `unituner train CONFIG --device cuda`. Training-only examples with just a denoiser require caches built using the corresponding complete cache configuration.
 
 | Task | Example | Notes |
 | --- | --- | --- |
@@ -53,9 +53,10 @@ Training examples use the training schema; cache-only examples use the encoding 
 | FLUX Fill | [flux-fill-flow.toml](../../examples/flux-fill-flow.toml) | One reference directory plus mask; for Kontext change weights/variant and remove `mask_source` |
 | FLUX.2 | [flux2-flow.toml](../../examples/flux2-flow.toml) | Klein 4B base without references |
 | FLUX.2 references | [flux2-reference-flow.toml](../../examples/flux2-reference-flow.toml) | Ordered references use their own aspect buckets; equal-sized pairs stay aligned |
+| BluePixel-Turbo | [bluepixel-flow.toml](../../examples/bluepixel-flow.toml) | One reference image and matching DCAE-F64 assets |
 | FLUX3 | [flux3-flow.toml](../../examples/flux3-flow.toml) | See model guide for references |
 | MOSS | [moss-flow.toml](../../examples/moss-flow.toml) | Native skip-layer preview parameters must match topology |
-| MOSS Edit | [moss-edit-flow.toml](../../examples/moss-edit-flow.toml) | Reference-conditioned editing; text-start layout |
+| MOSS Edit | [moss-edit-flow.toml](../../examples/moss-edit-flow.toml) | Source image and editing instruction |
 | Qwen original | [qwen-image-flow.toml](../../examples/qwen-image-flow.toml) | Text-to-image |
 | Qwen edit-2511 | [qwen-image-edit-flow.toml](../../examples/qwen-image-edit-flow.toml) | Target/reference file stems must match |
 | Qwen layered | [qwen-image-layered-flow.toml](../../examples/qwen-image-layered-flow.toml) | RGBA foreground layers and composite |
@@ -76,8 +77,9 @@ This is an explicit conversion specification, not a training TOML.
 
 ## Image restoration
 
-| Task | Example | Dependencies and limits |
+| Task | Example | What you need |
 | --- | --- | --- |
+| BluePixel-Turbo | [bluepixel-restoration-train.toml](../../examples/bluepixel-restoration-train.toml) | Paired images, DCAE-F64, LRR + L1 |
 | Z-Image default losses | [restoration.toml](../../examples/restoration.toml) | DINOv3-ConvNeXt and VGG19 weights |
 | Z-Image Turbo skin restoration | [oil-skin-lora.toml](../../examples/oil-skin-lora.toml) | Paired real images, DINO/VGG/GAN objectives; replace local paths |
 | Z-Image full | [restoration-full.toml](../../examples/restoration-full.toml) | Same losses, full denoiser, block recomputation |
@@ -101,13 +103,13 @@ The first command needs only VAE/images and no cache. It prints JSON without rew
 
 ## Inference
 
-Inference configurations use separate schemas and cannot be passed to `unituner validate`. Each inference command loads and validates its own configuration before reading local models.
+Validate inference settings with `unituner validate CONFIG --for generate`, `--for generate-video`, or `--for restore`, matching the intended command. Running the inference command also checks its configuration before loading models.
 
 | Command | Examples |
 | --- | --- |
-| `unituner generate CONFIG --device cuda` | [Z-Image](../../examples/generate.toml), [FLUX](../../examples/flux-generate.toml), [FLUX.2](../../examples/flux2-generate.toml), [FLUX3](../../examples/flux3-generate.toml), [MOSS](../../examples/moss-generate.toml), [MOSS Edit](../../examples/moss-edit-generate.toml), [Qwen](../../examples/qwen-image-generate.toml), [Qwen layered](../../examples/qwen-image-layered-generate.toml), [Krea2](../../examples/krea2-generate.toml) |
+| `unituner generate CONFIG --device cuda` | [BluePixel](../../examples/bluepixel-generate.toml), [Z-Image](../../examples/generate.toml), [FLUX](../../examples/flux-generate.toml), [FLUX.2](../../examples/flux2-generate.toml), [FLUX3](../../examples/flux3-generate.toml), [MOSS](../../examples/moss-generate.toml), [MOSS Edit](../../examples/moss-edit-generate.toml), [Qwen](../../examples/qwen-image-generate.toml), [Qwen layered](../../examples/qwen-image-layered-generate.toml), [Krea2](../../examples/krea2-generate.toml) |
 | `unituner generate-video CONFIG --device cuda` | [Wan](../../examples/wan-generate-video.toml), [H3](../../examples/minimax-h3-generate.toml) |
-| `unituner restore CONFIG --device cuda` | [Z-Image](../../examples/restore.toml), [Qwen](../../examples/qwen-image-restore.toml), [Krea2](../../examples/krea2-restore.toml) |
+| `unituner restore CONFIG --device cuda` | [BluePixel](../../examples/bluepixel-restore.toml), [Z-Image](../../examples/restore.toml), [Qwen](../../examples/qwen-image-restore.toml), [Krea2](../../examples/krea2-restore.toml) |
 
 Adapter paths and algorithm/rank/alpha must match training publications. For full models, replace `model.weights`. Restoration `encoder_weights` points to the exported encoder adapter and uses the sigma recorded by the training publications.
 

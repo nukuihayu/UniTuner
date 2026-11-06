@@ -38,7 +38,7 @@ loss = mean((model(zσ, time(σ), text) − v*)²)
 
 `σ` is the noise fraction. Sampling images, noise, and time teaches a direction from noise toward data. At generation time, a sampler follows that direction over multiple time steps.
 
-This is an explanatory formula. Native implementations own timestep units, shifted schedules, prediction signs, and conditioning. Z-Image's sign, for example, is handled at its model boundary. An integer timestep is not a universal noise fraction across families.
+This is an explanatory formula. Models use different timestep units and sampling schedules, so an integer timestep from one model is not a universal noise fraction for others.
 
 ## What LoRA and full training change
 

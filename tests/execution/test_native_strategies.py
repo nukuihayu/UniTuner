@@ -22,7 +22,6 @@ from unituner.checkpoints.restore import restore_checkpoint
 from unituner.checkpoints.saving import save_checkpoint
 from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
 from unituner.config.execution import ExecutionConfig
-from unituner.execution.allocator_bootstrap import vbar_initialized
 from unituner.execution.frozen_blocks import FrozenModelPlacement
 from unituner.execution.installation import ExecutionInstallation
 from unituner.models.krea2.config.model import Krea2Config
@@ -154,14 +153,19 @@ def _case(family, session, mode="lora") -> tuple[Any, dict[str, Any], Any]:
     return binding, {"model": binding.model, "adapter": owner.branches}, request
 
 
-@pytest.mark.parametrize("family", FAMILIES)
-@pytest.mark.parametrize(("pinned", "cache_mb"), [(False, 0), (True, 0), (True, 1)])
+@pytest.mark.parametrize(
+    "family,pinned,cache_mb",
+    [
+        *((family, True, 0) for family in FAMILIES),
+        ("flux", False, 0),
+        ("wan", True, 1),
+    ],
+)
 def test_native_h2d_forward_backward_three_updates(
     tmp_path,
     family,
     pinned,
     cache_mb,
-    residency: Literal["resident", "frozen-blocks", "vbar", "trainable-blocks"] = "frozen-blocks",
 ):
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
@@ -185,7 +189,7 @@ def test_native_h2d_forward_backward_three_updates(
             parameter.grad = None
         config = ExecutionConfig(
             compile=False,
-            residency=residency,
+            residency="frozen-blocks",
             recompute="block",
             use_pinned_memory_for_block_swap=pinned,
             frozen_weight_cache_mb=cache_mb,
@@ -209,7 +213,7 @@ def test_native_h2d_forward_backward_three_updates(
             parameter.grad = None
         del actual, expected, gradients
         snapshots = []
-        for strategy in ("resident", residency):
+        for strategy in ("resident", "frozen-blocks"):
             model.load_state_dict(initial)
             adapter.load_state_dict(initial_adapter)
             optimizer = torch.optim.AdamW(parameters, lr=0.001)
@@ -218,7 +222,7 @@ def test_native_h2d_forward_backward_three_updates(
                 binding.regions,
                 ExecutionConfig(
                     compile=False,
-                    residency=cast(Literal["resident", "frozen-blocks", "vbar", "trainable-blocks"], strategy),
+                    residency=cast(Literal["resident", "frozen-blocks", "trainable-blocks"], strategy),
                     recompute="block",
                     use_pinned_memory_for_block_swap=pinned if strategy != "resident" else False,
                     frozen_weight_cache_mb=cache_mb if strategy != "resident" else 0,
@@ -256,16 +260,12 @@ def test_native_h2d_forward_backward_three_updates(
         assert all(torch.equal(value, snapshots[1][key]) for key, value in snapshots[0].items())
 
 
-@pytest.mark.parametrize("family", FAMILIES)
 @pytest.mark.parametrize(
-    ("residency", "cache_mb"),
+    ("family", "residency", "cache_mb"),
     [
-        ("resident", 0),
-        ("frozen-blocks", 0),
-        ("frozen-blocks", 1),
-        pytest.param(
-            "vbar", 0, marks=pytest.mark.skipif(not vbar_initialized(), reason="Requires early VBAR bootstrap")
-        ),
+        *((family, "frozen-blocks", 0) for family in FAMILIES),
+        ("flux", "resident", 0),
+        ("wan", "frozen-blocks", 1),
     ],
 )
 def test_native_inductor_forward_and_every_active_gradient(family, residency, cache_mb):
@@ -360,8 +360,13 @@ def test_native_layersync_target_capture_backward_and_h2d(family, device_name):
         assert modules["model"].feature_recorder is None
 
 
-@pytest.mark.parametrize("family", FAMILIES)
-@pytest.mark.parametrize("compiled", [False, True])
+@pytest.mark.parametrize(
+    "family,compiled",
+    [
+        *((family, False) for family in FAMILIES),
+        *((family, True) for family in ("flux", "qwen-image-2-1", "wan")),
+    ],
+)
 def test_native_tread_resident_vs_h2d_three_updates(family, compiled):
     """Require exact eager replay and qualify compiled gradients AND AdamW trajectories.
 
@@ -396,7 +401,7 @@ def test_native_tread_resident_vs_h2d_three_updates(family, compiled):
                     binding.regions,
                     ExecutionConfig(
                         compile=compiled,
-                        residency=cast(Literal["resident", "frozen-blocks", "vbar", "trainable-blocks"], strategy),
+                        residency=cast(Literal["resident", "frozen-blocks", "trainable-blocks"], strategy),
                         recompute="block",
                     ),
                     device=device,

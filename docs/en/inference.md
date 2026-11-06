@@ -82,6 +82,14 @@ Full mode publishes a complete model even when only selected denoiser layers wer
 
 ## Restore an image
 
+BluePixel-Turbo supports reference-guided editing with [generate](../examples/bluepixel-generate.toml) and original-size repair with [restore](../examples/bluepixel-restore.toml), using the existing TOML fields. Download the model snapshot locally; `assets` must contain `tokenizer`.
+
+`generate` uses the published four-step CFG 3 Euler flow-matching sampler. `restore` uses the shared one-step flow prediction with sigma and optional encoder adapters, with DCAE-F64 encoding/decoding and 64-aligned padding/cropping. Use the [flow-matching](../examples/bluepixel-flow.toml) or [restoration](../examples/bluepixel-restoration-train.toml) training configuration for task-specific weights; the released editing weights alone are not a trained one-step restoration checkpoint.
+
+The weight repository specifies [FLUX Non-Commercial License v2.1](https://huggingface.co/openvivo/BluePixel-Turbo/blob/main/LICENSE.md), separately from the upstream Apache-2.0 code. UniTuner's native training is not the upstream SATP distillation recipe.
+
+Other families use the one-step restoration workflow below:
+
 Restoration uses `restore`; see the [restoration tutorial](restoration-tutorial.md) for the full workflow. Set input/output paths and the matching denoiser/encoder publications:
 
 ```bash
@@ -109,7 +117,7 @@ Current adapter training publishes ComfyUI keys for the matching model by defaul
 
 ## Check a failing inference run
 
-Do not pass inference TOML to `unituner validate`, which checks training only. Each inference command loads its own schema. Check family/variant, base path, adapter algorithm/rank, and condition assets before checking dimensions and sampling options.
+Check image-generation settings with `unituner validate generate.toml --for generate`, restoration with `unituner validate restore.toml --for restore`, and video generation with `--for generate-video`. If a command fails, check family/variant, model path, adapter algorithm/rank, and required assets, followed by dimensions and sampling settings.
 
 Torch attention is the default. Optional Kitchen INT8 changes output numerics; see [INT8 inference attention](training/execution.md#int8-inference-attention) before comparing it.
 

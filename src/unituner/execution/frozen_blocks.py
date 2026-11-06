@@ -13,7 +13,6 @@ from torch.utils.checkpoint import checkpoint
 from torch.utils.hooks import RemovableHandle
 
 from unituner.execution.activations import AttentionReplay
-from unituner.execution.mapped_weights import VbarArena, VbarStatistics, VbarWeights
 from unituner.execution.prefetch import WeightPrefetch
 from unituner.execution.regions import ModelRegion, ModelRegions
 from unituner.execution.weight_cache import H2dCache, H2dWeights
@@ -74,7 +73,7 @@ class _ReplayContext:
 
 
 class _BackwardReplay[R: Tensor | tuple[Tensor, ...], **P](nn.Module):
-    """Join one invocation's input gradients before releasing its recomputed VBAR leases."""
+    """Join one invocation's input gradients before releasing its recomputed weight leases."""
 
     def __init__(self, call: Callable[P, R], finish: Callable[[], None]) -> None:
         super().__init__()
@@ -110,20 +109,17 @@ class _WeightSlice:
 
 @dataclass(frozen=True, slots=True)
 class _WeightPayload:
-    """Keep one dtype's source views, optional packed master and native slices."""
+    """Keep one dtype's packed CPU master and native parameter slices."""
 
-    host: Tensor | None
+    host: Tensor
     source: WeightSource
     weights: tuple[_WeightSlice, ...]
 
 
-def _pack_weights(
-    parameters: tuple[tuple[str, nn.Parameter], ...], *, pinned: bool, preserve_sources: bool = False
-) -> tuple[_WeightPayload, ...]:
-    """Describe or pack contiguous frozen weights before mutating any parameter.
+def _pack_weights(parameters: tuple[tuple[str, nn.Parameter], ...], *, pinned: bool) -> tuple[_WeightPayload, ...]:
+    """Pack contiguous frozen weights before mutating any parameter.
 
-    VBAR retains CPU views instead of copying mmap-backed sources. Fixed H2D
-    packs matching dtypes. Arbitrary-stride weights use the separate native
+    H2D packs matching dtypes. Arbitrary-stride weights use the separate native
     transfer path, preserving their layout and operator selection. Copies finish
     before installation publishes CPU masters, including when sources are CUDA.
     """
@@ -133,25 +129,17 @@ def _pack_weights(
             groups.setdefault(parameter.dtype, []).append((name, parameter))
     payloads = []
     for dtype, group in groups.items():
-        host = (
-            None
-            if preserve_sources
-            else torch.empty(
-                sum(parameter.numel() for _, parameter in group), device="cpu", dtype=dtype, pin_memory=pinned
-            )
+        host = torch.empty(
+            sum(parameter.numel() for _, parameter in group), device="cpu", dtype=dtype, pin_memory=pinned
         )
-        chunks = []
         weights = []
         offset = 0
         for name, parameter in group:
             elements = parameter.numel()
-            if host is None:
-                chunks.append(parameter.detach().to("cpu").reshape(-1))
-            else:
-                host[offset : offset + elements].copy_(parameter.detach().reshape(-1))
+            host[offset : offset + elements].copy_(parameter.detach().reshape(-1))
             weights.append(_WeightSlice(name, parameter, offset, parameter.shape, parameter.stride()))
             offset += elements
-        payloads.append(_WeightPayload(host, WeightSource(tuple(chunks) if host is None else (host,)), tuple(weights)))
+        payloads.append(_WeightPayload(host, WeightSource((host,)), tuple(weights)))
     return tuple(payloads)
 
 
@@ -159,8 +147,7 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
     """Stage frozen CPU masters without replacing native Parameter identities.
 
     All contiguous weights use leases through checkpoint forward and replay.
-    H2D shares a last-use cache across the model; VBAR manages physical pages.
-    Both share one lookahead scheduler outside compiled native computation.
+    H2D shares a last-use cache and lookahead scheduler across the model.
     GPU storage may be reused only after the last graph read and CUDA event.
     Noncontiguous parameters retain their original operator layout. CPU masters
     remain immutable until close; adapters and optimizer storage stay on CUDA.
@@ -174,18 +161,12 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         use_pinned_memory: bool = False,
         cache_budget_bytes: int | None = None,
         cache: H2dCache | None = None,
-        use_vbar: bool = False,
-        vbar_arena: VbarArena | None = None,
         prefetch: WeightPrefetch | None = None,
     ) -> None:
         if device.type != "cuda":
             raise ValueError("Frozen block H2D residency requires CUDA")
         if cache_budget_bytes is not None and cache_budget_bytes < 0:
             raise ValueError("Frozen weight cache budget must be nonnegative")
-        if use_vbar and cache_budget_bytes:
-            raise ValueError("VBAR residency manages its own budget; fixed CUDA caching cannot be combined")
-        if vbar_arena is not None and not use_vbar:
-            raise ValueError("A VBAR arena requires use_vbar=True")
         self.region: ModelRegion = region
         self.device: torch.device = device
         original: Callable[P, R] = region.module.forward
@@ -199,9 +180,7 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         self._original_devices: tuple[torch.device, ...] = tuple(p.device for p in self._masters)
         self._call: FrozenRegionCall[R, P] = FrozenRegionCall(region.module, original)
         named = tuple(self._call.named_parameters())
-        self._payloads: tuple[_WeightPayload, ...] = _pack_weights(
-            named, pinned=use_pinned_memory, preserve_sources=use_vbar
-        )
+        self._payloads: tuple[_WeightPayload, ...] = _pack_weights(named, pinned=use_pinned_memory)
         self._strided: tuple[tuple[str, nn.Parameter], ...] = tuple(
             (name, parameter)
             for name, parameter in named
@@ -212,14 +191,12 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         )
         # Allocate all masters before publishing storage. Keep native strides for
         # exceptional layouts rather than silently changing their GEMM dispatch.
-        strided_host = tuple(parameter.detach().to("cpu", copy=not use_vbar) for _, parameter in self._strided)
-        if use_pinned_memory and not use_vbar:
+        strided_host = tuple(parameter.detach().to("cpu") for _, parameter in self._strided)
+        if use_pinned_memory:
             strided_host = tuple(value.pin_memory() for value in strided_host)
-        self._cache_owned: bool = not use_vbar and cache is None
-        self._cache: H2dCache | None = (
-            None
-            if use_vbar
-            else cache
+        self._cache_owned: bool = cache is None
+        self._cache: H2dCache = (
+            cache
             if cache is not None
             else H2dCache(
                 device=device,
@@ -227,33 +204,15 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
                 retained_bytes=cache_budget_bytes,
             )
         )
-        self._vbar_views: list[dict[str, Tensor] | None] = [None for _ in self._payloads]
-        self._vbar: VbarWeights | None = (
-            VbarWeights(tuple(payload.source for payload in self._payloads), device=device, arena=vbar_arena)
-            if use_vbar and self._payloads
-            else None
-        )
-        self._weights: VbarWeights | H2dWeights | None = (
-            self._vbar
-            if use_vbar
-            else H2dWeights(tuple(payload.source for payload in self._payloads), self._cache)
-            if self._cache is not None
-            else None
-        )
+        self._weights: H2dWeights = H2dWeights(tuple(payload.source for payload in self._payloads), self._cache)
         self._prefetch: WeightPrefetch | None = prefetch
         if prefetch is not None and self._weights is not None:
             prefetch.register(self._weights)
         replay_state: ContextVar[_ReplayState | None] = ContextVar("frozen_weight_replay", default=None)
         self._replays: list[_ReplayState] = []
         for payload in self._payloads:
-            for index, weight in enumerate(payload.weights):
-                weight.parameter.data = (
-                    payload.source.chunks[index].as_strided(
-                        weight.shape, weight.stride, payload.source.chunks[index].storage_offset()
-                    )
-                    if payload.host is None
-                    else payload.host.as_strided(weight.shape, weight.stride, weight.offset)
-                )
+            for weight in payload.weights:
+                weight.parameter.data = payload.host.as_strided(weight.shape, weight.stride, weight.offset)
         for (_, parameter), value in zip(self._strided, strided_host, strict=True):
             parameter.data = value
 
@@ -261,15 +220,10 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
             values: dict[str, Tensor] = dict(self._trainable)
             for index, payload in enumerate(self._payloads):
                 transfer = leases[index].tensor
-                views = self._vbar_views[index] if leases and leases[index].allocation is not None else None
-                if views is None:
-                    views = {
-                        weight.name: transfer.as_strided(weight.shape, weight.stride, weight.offset)
-                        for weight in payload.weights
-                    }
-                    if leases and leases[index].allocation is not None:
-                        self._vbar_views[index] = views
-                values.update(views)
+                values.update(
+                    (weight.name, transfer.as_strided(weight.shape, weight.stride, weight.offset))
+                    for weight in payload.weights
+                )
             values.update(
                 (name, parameter.to(device, non_blocking=use_pinned_memory)) for name, parameter in self._strided
             )
@@ -366,16 +320,11 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
 
         self._forward = ForwardOverride(region.module, installed, owner="FrozenBlockInstallation")
 
-    def vbar_statistics(self) -> VbarStatistics:
-        """Report external physical weights without mislabeling Torch allocator reductions as VRAM savings."""
-        return VbarStatistics() if self._vbar is None else self._vbar.statistics()
-
     def close(self) -> None:
         """Restore frozen weights to their original devices after backward, then release the owned forward."""
         if self._closed:
             return
         self._forward.check_current()
-        self._vbar_views.clear()
         if self._weights is not None:
             self._weights.close()
         if self._cache_owned and self._cache is not None:

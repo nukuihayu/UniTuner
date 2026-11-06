@@ -13,7 +13,6 @@
 - [检查 CUDA](#检查-cuda)
 - [分词器与离线运行](#分词器与离线运行)
 - [镜像与固定环境](#镜像与固定环境)
-- [开发环境](#开发环境)
 
 </details>
 
@@ -45,16 +44,16 @@ uv run --no-dev unituner --help
 
 ## 默认完整依赖
 
-普通安装和 `uv sync --locked --no-dev` 均包含全部运行依赖，不再提供 `media`、`text`、`kitchen`、`vbar` extras：
+`uv sync --locked --no-dev` 包含缓存、训练和推理需要的运行依赖：
 
 | 依赖 | 用途 |
 | --- | --- |
 | transformers、torchvision、sentencepiece、ftfy | 文本编码、分词器及处理器 |
+| diffusers | BluePixel 的 DCAE 自动编码器 |
 | av、opencv-python-headless、pillow | 图像、视频和音频读写 |
 | comfy-kitchen | 量化、权重转换及对应推理算子 |
-| comfy-aimdo | VBAR 显存页管理 |
 
-安装依赖不会自动启用量化或 VBAR，也不会下载模型。CUDA 专属功能仍须满足设备、驱动和配置要求；已有缓存且关闭预览的训练仍按需加载文本编码器。
+模型权重需要另外准备。量化和卸载在配置中按需启用；CUDA 功能需要兼容的设备和驱动。
 
 ## 检查 CUDA
 
@@ -64,7 +63,6 @@ uv run --no-sync --no-dev python -c "import torch; print('Torch:', torch.__versi
 
 `CUDA available: False` 时先检查驱动、当前 Python 环境和 Torch 构建。`--device cuda` 选择执行设备，不会安装驱动或自动换装 Torch。CPU 流程显式使用 `--device cpu --execution.precision fp32`；`auto` 根据权重精度判断，不保证适用于 CPU。
 
-VBAR 从 `unituner train` 入口在 Torch 导入前初始化。在已导入 Torch 的 Notebook 进程中切换 VBAR，应启动新的 CLI 进程。
 
 ## 分词器与离线运行
 
@@ -87,16 +85,6 @@ UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-
 ```
 
 镜像只改变 Python 包来源，不是模型或 Python 解释器下载源。依赖准备完毕后可以使用 `uv run --no-sync --no-dev unituner …`，避免启动时再次同步。
-
-## 开发环境
-
-```bash
-uv sync --locked --group dev
-make check
-make test
-```
-
-`make check` 执行 Ruff、Ty 和 Pyright；`make test` 执行项目测试。CUDA 和本地资产相关测试有各自运行条件。模型接入和资源所有权见[架构](architecture.md)。
 
 ---
 

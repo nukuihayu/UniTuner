@@ -42,7 +42,7 @@ uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_
 
 | 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
 | --- | --- | --- | --- |
-| `family` | "z-image", "moss-image", "flux", "flux2", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3" | `必填` | 模型家族；先按实际权重选择，再填写对应 variant/version。 |
+| `family` | "z-image", "moss-image", "flux", "flux2", "bluepixel", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3" | `必填` | 模型家族；先按实际权重选择，再填写对应 variant/version。 |
 | `variant` | string | `必填` | 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。 |
 | `version` | "dev", "klein-4b", "klein-9b", "2.1", "2.2" / null | `null` | 仅 FLUX.2 与 Wan 填写；分别选择 dev/klein-4b/klein-9b 或 2.1/2.2。 |
 | `vae` | string / null | `null` | 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。 |
@@ -233,7 +233,7 @@ batch_size = 16
 | `recompute_interval` | integer；> 0 | `1` | 块重算间隔；冻结块卸载策略要求逐块重算时保持 1。 |
 | `restoration_recompute` | "inherit", "none", "block" | `"inherit"` | 图像恢复的 VAE 与 DINO 重算；inherit 跟随 recompute。block 保留辅助网络重算，不受 recompute_interval 影响，可单独减少 DiT 重算。 |
 | `attention_activation_offload` | boolean | `false` | 将保存的注意力激活卸载到主机，节省显存但增加传输和内存需求。 |
-| `residency` | "resident", "frozen-blocks", "vbar", "trainable-blocks" | `"resident"` | resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。 |
+| `residency` | "resident", "frozen-blocks", "trainable-blocks" | `"resident"` | resident 常驻；frozen-blocks 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。 |
 | `use_pinned_memory_for_block_swap` | boolean / null | `null` | 块交换是否用锁页主机内存；省略由策略决定，注意主机 RAM 占用。 |
 | `frozen_weight_cache_mb` | integer / null | `null` | 冻结块 CUDA 缓存预算，单位 MiB；省略时自动，0 最小保留，仍需当前块工作区。 |
 | `quantization` | "none", "fp8", "convrot-int8", "float8_e4m3fn", "float8_e5m2", "mxfp8", "nvfp4", "int8_tensorwise", "int8_rowwise", "int8_convrot", "convrot_w4a4", "convrot_w4a8", "asym_w4a8_int8", "w6a8_int8" | `"none"` | 冻结基模/文本权重的存储量化布局；none 关闭，底模量化仅用于 adapter。 |
@@ -412,7 +412,7 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 
 ## `DegradationConfig`
 
-HYPIR stage ordering with OMGSR noise/blur/JPEG defaults and bounded resize; final grain is a 10% post-alignment extension. See [datasets](datasets.md). 旧阶段 grain 字段迁移到 final_grain。
+在此配置合成模糊、噪声、缩放、压缩与最终颗粒效果。完整配方见[数据集指南](datasets.md)。
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |

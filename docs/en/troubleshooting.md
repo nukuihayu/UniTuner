@@ -21,7 +21,7 @@ Locate the failing stage: validation → cache encoding → training → preview
 
 | Symptom | Check and action |
 | --- | --- |
-| Unknown / extra field | Check the owning table, [parameters](training/parameters.md), and command `--help`; generation uses its own schema |
+| Unknown / extra field | Check the table path, [parameters](training/parameters.md), and command `--help`; use the matching `validate --for` task |
 | Existing path cannot be found | Relative paths use the working directory; check shard completeness and distinguish tokenizers from encoder weights |
 | Key / shape / topology mismatch | Verify family, variant, version, component, and format; renaming a model does not convert its architecture |
 | Tokenizer download or offline failure | Set a local tokenizer source and, when needed, subfolder; verify separate processor and CLIP sources |
@@ -44,12 +44,12 @@ Every `cache` invocation rebuilds and replaces directories after success. Old an
 
 | Stage | Start here |
 | --- | --- |
-| Base model loading | For adapter training consider frozen-block offload, VBAR, or a supported quantized base; inspect other GPU processes |
+| Base model loading | For adapter training consider frozen-block offload or a supported quantized base; inspect other GPU processes |
 | Forward or backward | Reduce batch/dimensions; enable block recomputation; consider attention activation offload |
 | First larger bucket | Automatic capacity cannot guarantee unseen dimensions will fit; reduce the largest area |
 | Preview or saving | Previews need additional VAE/text assets; reduce dimensions/sample count and check host RAM |
 
-Resident mode does not automatically switch to offload after OOM. H2D adjusts its cache within selected `frozen-blocks` mode; VBAR manages pages within selected VBAR mode. Accumulation increases effective batch size without reducing one microbatch's activations. See [execution](training/execution.md).
+Resident mode does not automatically switch to offload after OOM. H2D adjusts its cache within selected `frozen-blocks` mode. Accumulation increases effective batch size without reducing one microbatch's activations. See [execution](training/execution.md).
 
 ## Numerical issues and training quality
 

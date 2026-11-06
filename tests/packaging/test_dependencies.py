@@ -8,9 +8,10 @@ from packaging.requirements import Requirement
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = {
     "av",
-    "comfy-aimdo",
     "comfy-kitchen",
+    "diffusers",
     "ftfy",
+    "huggingface-hub",
     "opencv-python-headless",
     "pillow",
     "sentencepiece",

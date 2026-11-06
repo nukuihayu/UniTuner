@@ -2,9 +2,7 @@
 
 [简体中文](../../training/quantized-base.md) · English · [Training guide](README.md)
 
-UniTuner trains LoRA, LoHa, or LoKr on frozen quantized bases. Every precision uses the same `QuantizedLinear`: reconstruct the current layer's floating weight for forward, reconstruct the same weight again for backward, and compute the input gradient. Activations remain floating point. There is no dynamic activation quantization or integer matrix multiplication.
-
-This reduces resident base storage and block transfers. Each layer still needs a temporary floating weight, and both forward and backward incur reconstruction costs. It does not promise acceleration or equivalence to training the original floating base. Gradients correspond to the floating linear operation actually executed with reconstructed weights.
+UniTuner supports LoRA, LoHa, and LoKr training on a frozen quantized base. Quantization reduces base-weight memory, but needs temporary floating-point working memory and may increase runtime. Compare previews before choosing a lower precision. Full-parameter training requires floating weights.
 
 <details>
 <summary>On this page</summary>
@@ -12,7 +10,7 @@ This reduces resident base storage and block transfers. Each layer still needs a
 - [Quantize each layer before training](#quantize-each-layer-before-training)
 - [Storage precisions](#storage-precisions)
 - [Load a reusable quantized base](#load-a-reusable-quantized-base)
-- [Computation and protections](#computation-and-protections)
+- [Memory and quality](#memory-and-quality)
 - [Saving and resuming](#saving-and-resuming)
 
 </details>
@@ -40,14 +38,14 @@ precision = "bf16"
 recompute = "block"
 ```
 
-This is an amendment, not a complete configuration. Keep the original model, data, optimizer, update count, and output settings. Source weights may be BF16, FP16, or FP32. Native training loaders materialize an FP32 base, then quantize it before installing adapters, optimizers, or execution owners.
+This is an amendment, not a complete configuration. Keep the original model, data, optimizer, update count, and output settings. Source weights may be BF16, FP16, or FP32. The source files are not modified.
 
 ```bash
 uv run unituner cache train.toml --device cuda
 uv run unituner train train.toml --device cuda
 ```
 
-For CUDA training, floating weights initially stay on CPU. Transfer one projection to GPU, quantize it there, and return its packed representation to CPU. Once preparation finishes, resident execution moves the quantized model to GPU; frozen-blocks and VBAR apply their own placement policies. The complete floating base never needs to reside on GPU, but sufficient host memory is still required. CPU training quantizes on CPU.
+Preparation does not require the complete floating base to fit in GPU memory, but host RAM must still accommodate the floating source model. Reserve extra memory for training activations and optimizer states.
 
 ## Storage precisions
 
@@ -78,17 +76,13 @@ uv run unituner weights convert models/qwen21.safetensors models/qwen21-fp8.safe
 
 Point `model.weights` to that artifact. Native loaders recognize `*.comfy_quant` automatically. `quantization = "none"` retains the artifact's existing storage. An explicitly requested precision must match already quantized layers; implicit lossy re-quantization is rejected.
 
-Conversion preserves keys and topology; it does not turn arbitrary external checkpoints into native models. Import floating weights first when necessary, then quantize. All ten base-model families share loading and protection logic; see [weight conversion](../weight-conversion.md).
+Conversion preserves keys and topology; it does not turn arbitrary external checkpoints into native models. Import floating weights first when necessary, then quantize. For supported models and formats, see [weight conversion](../weight-conversion.md).
 
-## Computation and protections
+## Memory and quality
 
-Family policies preserve sensitive input/output, time/conditioning, normalization, and modulation paths. Z-Image noise/context refiners remain floating. Standalone conversion and training preparation share the same policy, including control, motion, face, and audio auxiliary paths nested inside core blocks. Training preparation starts from native FP32 loading, so protected parameters stay FP32; standalone quantization keeps source dtypes. Skipping quantization does not disable AMP; see [precision safeguards](precision.md).
+Sensitive layers automatically retain higher precision. No manual layer selection is needed for ordinary training. Quantization affects base-weight storage; activations and temporary working space still consume memory. You can combine it with BF16 computation and supported offload/recomputation settings; see [precision settings](precision.md).
 
-Packed weights, scales, and correction tensors remain frozen; only floating adapter parameters enter the optimizer. Dtype migration preserves every layout's storage and scale dtype, including FP32 scales and FP8 block scales. Adapter geometry uses logical projection dimensions, not packed storage widths.
-
-INT8 ConvRot encoding follows Musubi's FP32 rotation convention. Computation reconstructs weights in the original coordinate system before ordinary floating linear operations. It does not implement Musubi's dynamic activation quantization or approximate backward. Reconstruction consistently uses upstream eager operations on the tensor's device, preventing thread-local backend changes from reconstructing differently rounded weights during backward or replay.
-
-Base backward does not save inputs for weight gradients or retain a complete floating base. Frozen-block replay reads the saved quantized storage rather than module attributes that may already have returned to CPU. BF16 AMP, compilation around quantized operators, and frozen-block offloading use existing execution settings. Full-parameter training requires floating weights.
+Adapters train and export as floating-point weights. Use held-out previews to check whether quantization changes detail, color, or prompt adherence.
 
 ## Saving and resuming
 

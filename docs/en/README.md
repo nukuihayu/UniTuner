@@ -1,4 +1,4 @@
-<p align="center"><img src="../assets/unituner-logo.png" alt="UniTuner" width="560"></p>
+<p align="center"><img src="../assets/unituner-logo.svg" alt="UniTuner" width="560"></p>
 
 # Documentation
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | [Installation and environment](installation.md) | Default dependencies, CUDA, offline assets |
 | [Your first LoRA](getting-started.md) | Prepare images, cache, train, preview, and generate |
-| [TOML and CLI](configuration.md) | Configuration ownership, overrides, and command reference |
+| [TOML and CLI](configuration.md) | Configuration files, overrides, and command reference |
 | [Training concepts](concepts.md) | Latents, flow matching, adapters, and update counts |
 
 ## Training workflows
@@ -29,7 +29,7 @@
 | --- | --- |
 | [All parameters](training/parameters.md) | Types, defaults, constraints, and table locations |
 | [Models and assets](training/models.md) | Families, variants, conditioning, and components |
-| [Memory and execution](training/execution.md) | Residency, H2D, VBAR, recomputation, and compilation |
+| [Memory and execution](training/execution.md) | Residency, H2D, recomputation, and compilation |
 | [Precision](training/precision.md) | Storage, computation, AMP, and export |
 | [Quantized bases](training/quantized-base.md) | Adapter training with frozen quantized weights |
 | [Text encoding](training/text-encoding.md) | Text weights, tokenizers, precision, and quantization |
@@ -45,10 +45,3 @@
 | [Weight analysis](weight-analysis.md) | Inspect trained weights and adapter changes |
 | [Logs and TensorBoard](logging.md) | Terminal, JSONL, and event metrics |
 | [Troubleshooting](troubleshooting.md) | Assets, cache, OOM, resume, and output differences |
-
-## Project reference
-
-| Page | Contents |
-| --- | --- |
-| [Architecture](architecture.md) | Module boundaries and resource ownership |
-| [Execution internals](training/execution-internals.md) | Weight lifetimes and training execution boundaries |

@@ -1,11 +1,14 @@
 # Derived from Black Forest Labs FLUX3 Image Klein, Apache-2.0.
 """Compute native three-mode FLUX3 predictions with explicit packed sample geometry."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.flux3.conditioning import MODES, Flux3Mode, Flux3Packed, validate_packed
 from unituner.models.flux3.config.model import Flux3Config
@@ -28,6 +31,8 @@ class Flux3Transformer(nn.Module):
     phantom token, never included in attention or final joint packing. The model
     does not import trainers, execution owners, text providers or reference code.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.FLUX3
 
     def __init__(self, config: Flux3Config) -> None:
         super().__init__()

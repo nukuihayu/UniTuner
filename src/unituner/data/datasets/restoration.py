@@ -98,7 +98,7 @@ def index_restoration_pairs(
                 "image": file_sha256(path, release_cache=True),
                 "caption_utf8": hashlib.sha256(caption.encode()).hexdigest(),
             }
-            if manifest.family in ("flux2", "flux3"):
+            if manifest.family in ("flux2", "flux3", "bluepixel"):
                 content["references"] = []
             if manifest.family == "qwen-image":
                 content = {

@@ -34,7 +34,7 @@ class ExecutionConfig(BaseModel):
         default="inherit", description="VAE and DINO recomputation; inherit follows the main model policy"
     )
     attention_activation_offload: bool = False
-    residency: Literal["resident", "frozen-blocks", "vbar", "trainable-blocks"] = "resident"
+    residency: Literal["resident", "frozen-blocks", "trainable-blocks"] = "resident"
     use_pinned_memory_for_block_swap: bool | None = None
     frozen_weight_cache_mb: int | None = Field(
         default=None, ge=0, description="Automatic frozen CUDA cache, or retained MiB plus one current-block workspace"
@@ -46,7 +46,7 @@ class ExecutionConfig(BaseModel):
     @property
     def offloads_frozen_weights(self) -> bool:
         """Identify policies that keep frozen master weights outside the active device."""
-        return self.residency in {"frozen-blocks", "vbar"}
+        return self.residency == "frozen-blocks"
 
     @model_validator(mode="before")
     @classmethod
@@ -88,7 +88,7 @@ class ExecutionConfig(BaseModel):
     @classmethod
     def infer_required_recompute(cls, value: object) -> object:
         """Offloaded frozen blocks necessarily replay; infer this when omitted."""
-        if isinstance(value, dict) and value.get("residency") in ("frozen-blocks", "vbar") and "recompute" not in value:
+        if isinstance(value, dict) and value.get("residency") == "frozen-blocks" and "recompute" not in value:
             return {**value, "recompute": "block"}
         return value
 

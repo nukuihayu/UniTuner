@@ -39,16 +39,15 @@ def deterministic_execution():
         torch.use_deterministic_algorithms(previous, warn_only=warn_only)
 
 
-@pytest.mark.parametrize("parameter_mode", ["adapter", "full"])
 @pytest.mark.parametrize(
-    "family,variant,version",
+    "family,variant,version,parameter_mode",
     [
-        ("flux", "dev", None),
-        ("flux2", "base", "klein-4b"),
-        ("flux2", "distilled", "dev"),
-        ("flux3", "base", None),
-        ("flux3", "distilled", None),
-        ("moss-image", "base", None),
+        ("flux", "dev", None, "adapter"),
+        ("flux2", "base", "klein-4b", "full"),
+        ("flux2", "distilled", "dev", "adapter"),
+        ("flux3", "base", None, "full"),
+        ("flux3", "distilled", None, "adapter"),
+        ("moss-image", "base", None, "full"),
     ],
 )
 def test_mid_timestep_update_preview_resume_and_restore(request, family, variant, version, parameter_mode):

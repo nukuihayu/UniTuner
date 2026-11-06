@@ -2,7 +2,7 @@
 
 [简体中文](../../training/parameters.md) · [Training tutorial](README.md)
 
-Defaults below are read from the current configuration schema. A default is not a recommendation for every model. `null` means omit the key: TOML has no null literal. Tables are optional unless their task needs them; required means required within that table. Replace NAME with an ASCII identifier such as main.
+The tables below list configuration defaults. A default is not a recommendation for every model. `null` means omit the key: TOML has no null literal. Tables are optional unless their task needs them; required means required within that table. Replace NAME with an ASCII identifier such as main.
 
 For a minimal edit, set paths, model variant, data geometry, learning rate, rank, update count and save cadence. Keep other defaults omitted; detailed examples expose them for tuning.
 
@@ -42,7 +42,7 @@ uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_
 
 | Parameter | Type / choices | Default | How to fill |
 | --- | --- | --- | --- |
-| `family` | "z-image", "moss-image", "flux", "flux2", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3" | `required` | Model family; match the checkpoint before selecting variant/version. |
+| `family` | "z-image", "moss-image", "flux", "flux2", "bluepixel", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3" | `required` | Model family; match the checkpoint before selecting variant/version. |
 | `variant` | string | `required` | Checkpoint variant, such as base/turbo, dev or original; use matching weights. |
 | `version` | "dev", "klein-4b", "klein-9b", "2.1", "2.2" / null | `null` | Only FLUX.2 and Wan: dev/klein-4b/klein-9b or 2.1/2.2 respectively. |
 | `vae` | string / null | `null` | Matching local VAE weights, required for caching, previews and inference. |
@@ -233,7 +233,7 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `recompute_interval` | integer；> 0 | `1` | Block recomputation interval; keep 1 when the offload policy requires every block to be recomputed. |
 | `restoration_recompute` | "inherit", "none", "block" | `"inherit"` | Restoration VAE and DINO recomputation. inherit follows recompute; block keeps auxiliary networks checkpointed independently of recompute_interval while reducing DiT recomputation. |
 | `attention_activation_offload` | boolean | `false` | Offload saved attention activations to host memory at extra transfer and RAM cost. |
-| `residency` | "resident", "frozen-blocks", "vbar", "trainable-blocks" | `"resident"` | resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported. |
+| `residency` | "resident", "frozen-blocks", "trainable-blocks" | `"resident"` | resident keeps weights on device; frozen-blocks manages frozen weights; trainable-blocks is reserved and currently unsupported. |
 | `use_pinned_memory_for_block_swap` | boolean / null | `null` | Pinned host memory for block swapping; omitted selects the policy default and can increase host RAM use. |
 | `frozen_weight_cache_mb` | integer / null | `null` | Frozen-block CUDA cache budget in MiB; omitted means automatic, 0 minimizes retention but still needs workspace. |
 | `quantization` | "none", "fp8", "convrot-int8", "float8_e4m3fn", "float8_e5m2", "mxfp8", "nvfp4", "int8_tensorwise", "int8_rowwise", "int8_convrot", "convrot_w4a4", "convrot_w4a8", "asym_w4a8_int8", "w6a8_int8" | `"none"` | Storage quantization for frozen base/text weights; none disables it; base quantization requires adapter training. |
@@ -412,7 +412,7 @@ Weighted DWT band MSE. In restoration this compares decoded RGB output to detach
 
 ## `DegradationConfig`
 
-HYPIR stage ordering with OMGSR noise/blur/JPEG defaults and bounded resize; final grain is a 10% post-alignment extension. See [datasets](datasets.md). 旧阶段 grain 字段迁移到 final_grain。
+Configure synthetic blur, noise, resizing, compression, and final grain here. See [datasets](datasets.md) for a complete recipe.
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |

@@ -1,11 +1,14 @@
 # Adapted from OpenMOSS MOSS-Image and kohya-ss/sd-scripts, Apache-2.0; see THIRD_PARTY_NOTICES.md.
 """Compute native MOSS-Image velocities without trainer, adapter or execution-policy dependencies."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.moss_image.config.model import MossImageConfig
 from unituner.models.moss_image.editing import reference_rope
@@ -19,6 +22,8 @@ class MossImageTransformer(nn.Module):
     and four-axis half-split RoPE. Callers own mode, dtype/device and reversible
     adapter/recompute/compile installations. Base and SFT share this topology.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.MOSS_IMAGE
 
     def __init__(self, config: MossImageConfig) -> None:
         super().__init__()

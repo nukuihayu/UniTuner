@@ -206,13 +206,13 @@ class H2dCache:
         buffer.tensor.record_stream(stream)
         buffer.users += 1
 
-        def recycle(ready: torch.Event | None, populated: bool) -> None:
+        def recycle(ready: torch.Event | None) -> None:
             buffer.users -= 1
             buffer.readers[:] = [event for event in buffer.readers if not event.query()]
             buffer.readers.append(ready if ready is not None else torch.cuda.current_stream(self.device).record_event())
             self._trim()
 
-        return WeightLease(buffer.tensor[: source.nbytes].view(source.dtype), None, recycle=recycle, populated=True)
+        return WeightLease(buffer.tensor[: source.nbytes].view(source.dtype), recycle=recycle)
 
     def observe_backward(self) -> None:
         """Sample once per engine backward, without resetting global allocator peaks."""

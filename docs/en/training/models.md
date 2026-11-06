@@ -1,177 +1,150 @@
 # Models and variants
 
-[简体中文](../../training/models.md) · **English**
+[简体中文](../../training/models.md) · English
 
 [Documentation](../README.md) · [Training](README.md) · [Examples](../examples/README.md)
 
-Ten families share the training workflow while owning native networks, VAEs, text encoding, and conditioning. Every flow-matching entry below supports adapters (LoRA/LoHa/LoKr) and full parameters. Precision follows the base artifact by default; CUDA BF16 AMP is available for flow matching and restoration across all eight image families. Adapter training across all ten families supports [pretraining weight quantization](quantized-base.md) or native quantized bases; full-parameter training requires floating weights.
+Choose a model for your task, then prepare its matching weights, VAE and text encoder. Flow-matching training in the table supports LoRA, LoHa, LoKr and full parameters. Restoration support depends on the selected variant.
 
-<details>
-<summary>On this page</summary>
+## Choose by task
 
-- [Choose a model for the task](#choose-a-model-for-the-task)
-- [VAE loading](#vae-loading)
-- [Model selection](#model-selection)
-- [Local assets](#local-assets)
-- [Editing, references, and layers](#editing-references-and-layers)
-- [Required family-specific settings](#required-family-specific-settings)
-- [Video and audio-video](#video-and-audio-video)
-- [MOSS-Image-Edit](#moss-image-edit)
-
-</details>
-
-## Choose a model for the task
-
-For subject or style fine-tuning, begin with an image model whose compatible local assets you already have. Editing requires an edit-capable variant and paired reference conditions. Qwen layered uses separate foreground layers. Video/audio-video tasks need their native frame and audio policies in addition to the shared training settings.
-
-Before copying a configuration, identify the exact family, version where applicable, and variant from your checkpoint. Then check its VAE, text encoder, auxiliary bundle, and required dataset conditions. Changing only `model.family` is not a complete model migration.
-
-## VAE loading
-
-Set `model.vae` directly for standard VAE weights; no `weights import` or topology JSON is required. Missing native metadata selects published family defaults. Embedded metadata preserves custom topology, and explicit configurations must still agree with it.
-
-| Family | Default topology and external formats |
+| Task | Prepare |
 | --- | --- |
-| Z-Image | Standard 16-channel VAE; detects Diffusers/ComfyUI keys |
-| FLUX | Standard 16-channel VAE; detects native/Diffusers keys |
-| FLUX.2, FLUX3, MOSS | Shared standard 32-channel packed VAE; detects native/Diffusers keys |
-| Qwen Image, Krea2 | Standard 16-channel causal VAE; detects official/ComfyUI keys; Qwen layered selects RGBA by variant |
-| Qwen Image 2.1 | Separate 64-channel RGBA VAE; UniTuner's published topology defaults and native keys |
-| Wan 2.1/2.2 | Shared 16-channel causal VAE; official `.pth`/`.pt` state dicts and safetensors, with ComfyUI key detection |
-| MiniMax-H3 | Built-in video/audio topology; removes video `first_stage_model.`/`video_vae.`/`vae.` and audio `audio_vae.`/`vae.` prefixes |
+| Subject or style tuning | An image model, training images and matching captions |
+| Image editing | An editing variant, target images, source images and instructions |
+| Layered images | Qwen layered, composite targets and separate RGBA foreground layers |
+| One-step restoration | A supported model and aligned LQ/HQ pairs or synthetic degradation |
+| Video or audio-video | Wan or MiniMaxH3, with matching frame counts, frame rates and audio |
 
-Loading still validates complete key inventories and tensor shapes, rejecting unknown weights. Custom topology can be supplied through the Python loader's `config` or `weights import --topology`.
+When changing models, check family, variant, version, VAE and text encoder together. Changing the family name alone does not replace the model files.
 
 ## Model selection
 
-| `model.family` | `model.version` | `model.variant` | Inputs and conditions | Restoration | Flow example |
+| `model.family` | `model.version` | `model.variant` | Data and conditions | Restoration | Flow example |
 | --- | --- | --- | --- | --- | --- |
-| `z-image` | Omit | `base`, `turbo` | Images and Qwen3 text | Yes | [Z-Image](../../examples/flow.toml) |
-| `flux` | Omit | `dev`, `kontext`, `fill` | T5 + CLIP; one condition image for Kontext/Fill | Dev only | [Dev](../../examples/flux-flow.toml), [Fill](../../examples/flux-fill-flow.toml) |
-| `flux2` | `dev`, `klein-4b`, `klein-9b` | `base`, `distilled`; Dev requires distilled | Native text and optional ordered references | Yes | [FLUX.2](../../examples/flux2-flow.toml), [references](../../examples/flux2-reference-flow.toml) |
-| `flux3` | Omit | `base`, `distilled` | Qwen3-VL and up to ten reference sources | Yes | [FLUX3](../../examples/flux3-flow.toml) |
-| `moss-image` | Omit | `base`, `sft`, `edit` | Qwen3.5 text and packed VAE | Base/SFT | [MOSS](../../examples/moss-flow.toml) |
-| `qwen-image` | Omit | `original`, `edit`, `edit-2509`, `edit-2511`, `layered` | Qwen2.5-VL, edit references or foreground layers | Original only | [Original](../../examples/qwen-image-flow.toml), [edit](../../examples/qwen-image-edit-flow.toml), [layered](../../examples/qwen-image-layered-flow.toml) |
-| `qwen-image-2-1` | Omit | `base` | Qwen3-VL, optional references, separate 64-channel VAE | Yes | [Qwen 2.1](../../examples/qwen-image-2-1-flow.toml) |
-| `krea2` | Omit | `raw`, `turbo` | Qwen3-VL layerwise text features with native fixed selection | Yes | [Krea2](../../examples/krea2-flow.toml) |
-| `wan` | `2.1`, `2.2` | `t2v`, `i2v` | Images/video, native controls and condition frames | No | [Wan](../../examples/wan-flow.toml) |
-| `minimax-h3` | Omit | `t2va`, `fl2va`, `ref2va` | Images/audio-video, native AV JSONL records | No | [H3](../../examples/minimax-h3-train.toml) |
+| `z-image` | Omit | `base` / `turbo` | Images and text | Yes | [Z-Image](../../examples/flow.toml) |
+| `flux` | Omit | `dev` / `kontext` / `fill` | Kontext/Fill need one condition image | Dev only | [FLUX](../../examples/flux-flow.toml), [Fill](../../examples/flux-fill-flow.toml) |
+| `flux2` | `dev` / `klein-4b` / `klein-9b` | `base` / `distilled`; Dev requires distilled | Text and optional ordered references | Yes | [FLUX.2](../../examples/flux2-flow.toml), [references](../../examples/flux2-reference-flow.toml) |
+| `flux3` | Omit | `base` / `distilled` | Text and up to 10 reference sources | Yes | [FLUX3](../../examples/flux3-flow.toml) |
+| `moss-image` | Omit | `base` / `sft` / `edit` | Edit needs references and instructions | Base/SFT | [MOSS](../../examples/moss-flow.toml), [editing](../../examples/moss-edit-flow.toml) |
+| `qwen-image` | Omit | `original` / `edit` / `edit-2509` / `edit-2511` / `layered` | Text, edit references or foreground layers | Original only | [Original](../../examples/qwen-image-flow.toml), [edit](../../examples/qwen-image-edit-flow.toml), [layered](../../examples/qwen-image-layered-flow.toml) |
+| `qwen-image-2-1` | Omit | `base` | Text and optional references | Yes | [Qwen2.1](../../examples/qwen-image-2-1-flow.toml) |
+| `krea2` | Omit | `raw` / `turbo` | Images and text | Yes | [Krea2](../../examples/krea2-flow.toml) |
+| `bluepixel` | Omit | `turbo` | One reference and an instruction; dimensions divisible by 64 | Yes | [BluePixel](../../examples/bluepixel-flow.toml) |
+| `wan` | `2.1` / `2.2` | `t2v` / `i2v` | Images/video; I2V needs condition frames | No | [Wan](../../examples/wan-flow.toml) |
+| `minimax-h3` | Omit | `t2va` / `fl2va` / `ref2va` | Images or audio-video records | No | [H3](../../examples/minimax-h3-train.toml) |
 
-Do not set `model.version` for other families. Distilled/Turbo variants retain their model-specific training semantics; base weights, text encoders, and schedules are not interchangeable. Schema validation does not inspect weight topology.
+Set `model.version` only for FLUX.2 and Wan. Use the weights and sampling settings belonging to the selected Base, Turbo or distilled variant.
 
-## Local assets
+## VAE loading
 
-| Field | Purpose |
+Set `model.vae` to the matching file or directory:
+
+| Model | VAE to prepare |
 | --- | --- |
-| `model.weights` | Denoiser safetensors, numbered shards, index JSON, or Diffusers directory; accepts the family’s ComfyUI/Diffusers weights; required for training |
-| `model.vae` | Native VAE for caching, previews, restoration, and generation |
-| `model.text_encoder` | Local encoder directory or native component weights, depending on family |
-| `model.assets` | Auxiliary bundle root; defaults to the denoiser file's parent |
+| Z-Image, FLUX | The model's 16-channel VAE |
+| FLUX.2, FLUX3, MOSS | The matching FLUX.2 32-channel VAE |
+| Qwen Image, Krea2 | The matching 16-channel VAE; Qwen layered needs RGBA support |
+| Qwen Image 2.1 | Its 64-channel RGBA VAE |
+| BluePixel-Turbo | The snapshot's `vae/` directory containing DCAE-F64 configuration and weights |
+| Wan | The matching 16-channel VAE in a supported `.pth`, `.pt` or safetensors file |
+| MiniMaxH3 | Its video and audio VAEs, configured separately as shown in the H3 example |
 
-Auxiliary bundles use `text_encoder/` for FLUX CLIP and `image_encoder/model.safetensors` for Wan 2.1 I2V CLIP. Encoder weights are never downloaded automatically. Tokenizers/processors have independent Hub defaults, local directory overrides, revisions and offline mode; see [text encoding](text-encoding.md#tokenizer-sources). FLUX `model.text_encoder` is T5. Wan 2.2 I2V does not use the separate 2.1 image encoder. H3 requires its own AV VAE.
+Standard models normally load their matching files directly. On a loading error, check the model version and component first. See [weight conversion](../weight-conversion.md) when a file needs conversion.
 
-`[model.text] max_length` is optional only for families supporting overrides: Z-Image defaults to 512; MOSS to 4096 (maximum 4096); FLUX to 512 (maximum 512); Krea2 to 512. Other families use fixed native budgets and reject explicit overrides. Krea2 does not expose a layer-selection list for the text encoder.
+## Local model files
 
-Qwen, Qwen 2.1, Krea2, and H3 detect actual weight namespaces by default; `model.text_source_format` is optional. Supported layouts include native base, Transformers conditional, and Qwen/Comfy language keys under `model.layers.*` with either `visual.*` or `model.visual.*`. Comfy-Org's `qwen3vl_8b_bf16.safetensors` loads directly into a topology-compatible Qwen 2.1 encoder. Explicit `"transformers"`/`"qwen"` overrides remain supported; null/`"auto"` inspect all shard headers. Mixed language namespaces, duplicate visual aliases, missing/extra keys, incompatible shapes and nonfinite values still fail. H3 retains its own width/truncation requirements and validates discarded full-model layers.
-FLUX.2/FLUX.3, MOSS and Z-Image also detect supported language namespaces from weights, independently of config architecture declarations. Existing FLUX T5/CLIP alias validation remains; Wan recognizes a uniform `encoder.*` prefix. VAE format/topology validation remains strict; Z-Image now also recognizes a uniform `vae.*` prefix.
+| Field | Value |
+| --- | --- |
+| `model.weights` | Main model file, shard index or supported model directory |
+| `model.vae` | Matching VAE file or directory |
+| `model.text_encoder` | Matching text encoder file or directory |
+| `model.assets` | Auxiliary-file root; training defaults to the parent of the main weight path |
 
-## Editing, references, and layers
+FLUX's `model.text_encoder` is T5; put CLIP under `model.assets/text_encoder/`. Wan 2.1 I2V uses `image_encoder/model.safetensors`. For BluePixel, point `assets` to the snapshot root containing `tokenizer/`.
 
-Conditions belong in the shared `[dataset.groups.main]` section:
+Download model weights separately. Tokenizers and processors can use default sources or explicit local paths, revisions and offline settings; see [text encoding](text-encoding.md). Text encoder formats are normally detected automatically. Set `model.text_source_format` only to select a specific supported format.
+
+## Editing, references and layers
+
+Match references to target filename stems:
 
 ```toml
 [dataset.groups.main]
 source = "/data/targets"
 cache_directory = "/data/cache"
-reference_sources = ["/data/reference-a", "/data/reference-b"]
+reference_sources = ["/data/references"]
 ```
 
-Each source matches target file stems; list order defines reference order. References are conditions, not additional training examples. Use one entry if only one reference is needed.
+`targets/a.png` pairs with `references/a.png`; `a.txt` contains the instruction. Directory order determines reference order.
 
-Targets and references independently select buckets from their own source dimensions, then resize and center-crop. Equal-sized aligned inputs naturally share scale and crop coordinates; differently composed references are not automatically registered. Upscaling and downscaling use Lanczos, and resized dimensions use half-up rounding. Qwen 2.1 also supports a separate reference area budget.
-
-| Model | Reference constraints |
+| Model | Condition requirements |
 | --- | --- |
-| FLUX Dev | Rejects `reference_sources` |
-| FLUX Kontext / Fill | Exactly one source; Fill optionally accepts `mask_source` |
-| FLUX.2 | Ordered references independently using the dataset bucket settings |
-| FLUX3 | At most ten sources independently using the dataset bucket settings |
-| Qwen edit | Original edit requires references; 2509/2511 can run without them |
-| Qwen 2.1 | Ordered references independently using the dataset bucket settings |
-| Qwen original / layered | Reject edit-reference directories; layered uses `layer_sources` |
+| FLUX Dev | No references |
+| FLUX Kontext/Fill | Exactly one reference directory; Fill can also use `mask_source` |
+| FLUX.2 | Optional ordered reference directories |
+| FLUX3 | Up to 10 reference directories |
+| BluePixel | Exactly one for flow matching; restoration uses LQ/HQ pairs |
+| MOSS edit | At least one reference directory |
+| Qwen edit | Original edit needs references; 2509/2511 can omit them |
+| Qwen original/layered | No edit references; layered uses `layer_sources` |
+| Qwen2.1 | Optional ordered references with a separate area budget |
 
-Training references select aspect buckets using their own dimensions and the dataset area budget. The same bucket settings and resize/crop operators apply independently, so equal source dimensions produce aligned outputs. Disabling dataset bucketing fixes both target and default reference sizes to resolution. Qwen 2.1 converts both to RGBA before resizing. VAE and vision use the same processed reference pixels; only vision composites alpha over white, without another resize.
+Targets and references resize and center-crop using their own aspect ratios. Already aligned images with equal source dimensions keep their pairing; different compositions are not registered automatically. Rerun `cache` after changing images, references or crop settings.
 
-To override the Qwen 2.1 reference area budget, set `reference_resolution = [1024, 1024]` next to `reference_sources` in `[dataset.groups.main]`. This is an area budget (width × height), not a forced square shape. Each reference selects its own 32-aligned aspect bucket and uses the same resampler/crop operator. Portrait references use portrait buckets; alignment can still crop a small border. Omitting the field uses the dataset budget; equal-sized pairs remain aligned, while other references use their own aspect buckets without padding. This option currently supports Qwen 2.1 only. Changing mode or budget invalidates cache identity; rebuild the cache.
+Qwen2.1 can keep square targets and aspect-preserving references:
 
-These are training-cache rules. Generation is a separate preprocessing boundary. Rebuild caches after changing preprocessing. Old family-specific aliases such as `dataset.groups.main.flux2.reference_sources` are not used.
+```toml
+[dataset.groups.main]
+source = "/data/targets"
+cache_directory = "/data/cache"
+resolution = [1024, 1024]
+enable_bucket = false
+reference_sources = ["/data/references"]
+reference_resolution = [1024, 1024]
+```
 
-For a fixed 1024×1024 target, set `resolution = [1024, 1024]` and `enable_bucket = false`; `reference_resolution = [1024, 1024]` still selects independent reference aspect buckets. Enabling target buckets allows target dimensions to vary with aspect ratio.
+`reference_resolution` sets an area budget rather than forcing square references. It is available only for Qwen2.1. To keep a source image and regional mask aligned, use equal original dimensions/coordinates and omit this override. An image reference containing a mask does not become a loss mask automatically.
 
-For Qwen2.1 original-plus-region-mask conditions, use two ordered `reference_sources` directories and omit `reference_resolution`. Target, original and mask must already share source dimensions and coordinates. The mask is an image reference, not an automatic loss mask. FLUX Fill instead uses native `mask_source`: training and inference share uniform scaling and center cropping, with nearest interpolation for masks. Alpha used as a mask never participates in RGB resampling. Fill target, source and explicit mask must have equal dimensions. Rebuild caches after changing preprocessing settings.
+FLUX Fill's `mask_source` supplies its repainting mask. Keep targets, source images and masks aligned at equal dimensions.
 
-## Required family-specific settings
+## Model-specific settings
 
-| Location | Purpose |
+| Setting | Use |
 | --- | --- |
-| `method.guidance` | Learned guidance embedding for FLUX/FLUX.2 Dev, distinct from inference CFG; unavailable in restoration |
-| `method.qwen_image.remove_base` | Exclude composite supervision for Qwen layered; default false |
-| `dataset.groups.main.wan.single_frame` | Independent condition/target frame indices for Wan I2V image data; mutually exclusive with shared `control_source` |
-| `model.minimax_h3` | `audio_vae`, `text_config`, optional `text_processor` / `topology` / `text_device` |
-| `dataset.groups.main.minimax_h3` | Cache seed, audio decoding/repair boundaries, and experimental duration policy |
-| `method.minimax_h3` | Sigma/focus ranges, `video_shift=12`, `audio_shift=3`, condition cleanliness, `audio_loss_weight=1` |
+| `method.guidance` | FLUX/FLUX.2 Dev training conditioning; distinct from inference CFG |
+| `method.qwen_image.remove_base` | Exclude the composite target from Qwen layered supervision |
+| `dataset.groups.main.wan.single_frame` | Select Wan I2V condition and target frame indices |
+| `model.minimax_h3` | H3 video/audio encoder and processor files |
+| `dataset.groups.main.minimax_h3` | H3 cache, audio and duration settings |
+| `method.minimax_h3` | H3 video/audio noise and loss settings |
 
-`dataset.groups.main.control_source` is shared but currently supported only by Wan. Shared field names do not imply support in every family. Old `dataset.groups.main.flux.posterior` / `posterior_seed` fields are not exposed. Flow matching keeps native cache policies; restoration uses shared `method.restoration.posterior`, documented in the [restoration guide](restoration.md).
+See [parameters](parameters.md) for all fields and [restoration](restoration.md) for posterior and time calibration.
 
 ## Video and audio-video
 
-Wan `dataset.groups.main.video.target_frames` and `max_frames` must follow `1+4k`. The VAE keeps native causal temporal compression. Build [Wan caches](../../examples/wan-cache.toml), then train with the same cache and model. In FP32 mode, native attention still uses BF16 Q/K/V; FP32 parameters do not imply every internal operation is FP32. Explicit CUDA BF16 AMP follows the shared execution policy. Wan 2.1 I2V needs its image encoder; 2.2 keeps its native condition path. A complete FLF2V application is not currently connected.
+Wan target/max frame counts must follow `1 + 4k`. 2.1 I2V needs its image encoder; configure 2.2 I2V using its own example. Run [Wan cache](../../examples/wan-cache.toml), then [Wan training](../../examples/wan-flow.toml).
 
-H3 requires batch size 1 and resolution aligned to 32. Video uses timestamp resampling at 24 FPS, target frame counts `17*n+5`, and `max_frames >= 5`. Native audio is 32 kHz stereo. JSONL is the AV record format, not an image restoration pair format.
+H3 requires batch size 1, 32-aligned dimensions, 24 FPS video, target frame counts `17n + 5`, and at least 5 max frames. Audio is 32 kHz stereo. Run [H3 cache](../../examples/minimax-h3-cache.toml), then [H3 training](../../examples/minimax-h3-train.toml).
 
-Start with [H3 cache](../../examples/minimax-h3-cache.toml), then [H3 training](../../examples/minimax-h3-train.toml). Explicit split caches can be converted with `caches import` and the [import specification](../../examples/minimax-h3-cache-import.json). Cache production does not yet support teacher-caption records; schema readability alone does not make them usable for training.
-
-Video previews and generation use each family's native conditions. See the [example index](../examples/README.md).
-
-[Fill datasets](datasets.md) · [All parameter defaults](parameters.md)
+See [video and audio-video](video.md) for records, condition frames and generation.
 
 ## MOSS-Image-Edit
 
-`model.family="moss-image"` with `model.variant="edit"` reuses MOSS Base/SFT weights and enables the
-**Moss-Image-Edit** format in [ComfyUI PR #17296](https://github.com/Comfy-Org/ComfyUI/pull/17296)
-(`index_timestep_zero_text_start`). Editing requires training or a matching edit adapter; changing the variant alone does not teach editing.
-This is distinct from the PR's two ai-toolkit formats: the text encoder receives instructions only, while reference images enter through packed VAE latents.
+Select `family = "moss-image"` and `variant = "edit"` with matching editing weights or an adapter. Changing the variant alone does not teach a base model to edit.
 
-References use zero time and attend only to the reference group. Text and target tokens use the current time and attend to all valid tokens.
-Reference IDs start at 1, their frame/text coordinate stays at 0, and target coordinates remain after the valid text.
-Training adds noise and computes flow loss only on the target, retaining gradients through reference features. Full parameter training and existing adapter algorithms are supported.
+1. Follow the [editing recipe](../../examples/moss-edit-flow.toml) for targets, matching instructions and reference directories.
+2. Run `unituner cache CONFIG --device cuda`, then `unituner train CONFIG --device cuda`.
+3. Follow the [generation recipe](../../examples/moss-edit-generate.toml) and set `sampling.reference_images`.
+4. Choose **Moss-Image-Edit** in the corresponding ComfyUI node and load a matching adapter.
 
-- [Training example](../../examples/moss-edit-flow.toml): `source` holds edited targets and matching instruction `.txt` files.
-  Ordered `reference_sources` directories hold source images matched by filename stem. Training references use their own aspect buckets; equal-sized source pairs share target geometry.
-- Run `unituner cache <config> --device cuda`, then `unituner train <config> --device cuda`.
-  Edit caches store ordered reference latents and include reference content in their identity. Original MOSS caches are incompatible.
-- [Generation example](../../examples/moss-edit-generate.toml): set `sampling.reference_images`.
-  References retain independent sizes aligned to 16 pixels, without FLUX.2 reference resizing. Previews use the same fields.
-- Sampling starts from pure target noise. Per-layer reference K/V is cached within one sampling call and shared across steps and CFG branches with matching skipped layers.
-  SLG/skipped-layer paths build separate caches, released after sampling and never reused across training updates.
-  Edit defaults to no unconditional layer skipping; Base/SFT retain their existing layer-22 default.
-- Published adapters retain ComfyUI `diffusion_model.*` keys. Select **Moss-Image-Edit** in the PR's node, not ai-toolkit.
-  External repositories' custom adapter files must first be converted to the supported published keys and scaling format.
+Use a separate edit cache. More references require more GPU memory. MOSS edit does not support TREAD, one-step restoration or masked background locking.
 
-Edit currently excludes TREAD and restoration and does not lock backgrounds with a mask.
-Reference K/V caching trades memory for computation; additional references and skipped-layer paths increase cache memory.
+## Preview defaults
 
-Training retains native MOSS explicit dtype conversions and residual arithmetic; bitwise equality with ComfyUI fused kernels is not promised.
+Omit `steps` and `guidance` to use the selected variant's defaults:
 
----
-
-[Documentation](../README.md) · [Parameter reference](parameters.md) · [Troubleshooting](../troubleshooting.md)
-
-## Native preview defaults
-
-Omit `steps` and `guidance` in `preview.samples` to use the selected model/variant defaults. Preview and standalone generation share the native sampler; training timestep shifts do not override inference schedules.
-
-| Model / 模型 | Steps | Guidance |
+| Model | Steps | Guidance |
 | --- | --- | --- |
 | Qwen Image 2.1 | 25 | 1 |
 | Qwen Image / edit / layered | 25 | 4 |
@@ -179,6 +152,11 @@ Omit `steps` and `guidance` in `preview.samples` to use the selected model/varia
 | FLUX Dev / Kontext / Fill | 25 | 3.5 / 2.5 / 30 |
 | FLUX.2 Dev / Klein base | 50 | 4 |
 | FLUX.2 Klein distilled | 4 | 1 |
+| BluePixel-Turbo | 4 | 3 |
 | FLUX3 base / distilled | 50 / 16 | 4 / no CFG |
 | MOSS Image | 50 | 3 |
 | Krea2 raw / turbo | 28 / 8 | 5.5 / 1 |
+
+---
+
+[Documentation](../README.md) · [Parameter reference](parameters.md) · [Troubleshooting](../troubleshooting.md)

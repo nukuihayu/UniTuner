@@ -259,7 +259,7 @@ def _forward_steps(
 ) -> Iterator[StepResult]:
     """Autocast only forward graph construction; backward/optimizer/previews run outside.
 
-    Disable weight-cast caching because VBAR rebinds frozen parameter storage.
+    Disable weight-cast caching while frozen parameters are rebound during execution.
     Nonreentrant checkpoint captures this autocast policy for backward replay.
     BF16 uses FP32 optimizer masters and does not require FP16 loss scaling.
     """

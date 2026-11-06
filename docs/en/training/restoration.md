@@ -4,7 +4,7 @@
 
 [Documentation](../README.md) · [Training](README.md) · [Examples](../examples/README.md)
 
-Mid-timestep restoration feeds the encoded low-quality (LQ) latent directly into the model at a fixed intermediate time, then performs one restoration step. It adds no extra noise to the LQ latent. Models retain their native timestep units and velocity direction. Training, previews, checkpoints, and `unituner restore` share the same formula across eight image families, with adapter or full parameter training.
+Mid-timestep restoration feeds the encoded low-quality (LQ) latent directly into the model at a fixed intermediate time, then performs one restoration step. It adds no extra noise to the LQ latent. Models retain their native timestep units and velocity direction. Supported image models offer adapter or full-parameter training. Use the trained weights with `unituner restore`.
 
 <details>
 <summary>On this page</summary>
@@ -14,7 +14,7 @@ Mid-timestep restoration feeds the encoded low-quality (LQ) latent directly into
 - [Models and posterior policy](#models-and-posterior-policy)
 - [Data and commands](#data-and-commands)
 - [Mid-timestep settings](#mid-timestep-settings)
-- [Relationship to OMGSR](#relationship-to-omgsr)
+- [High-resolution restoration](#high-resolution-restoration)
 - [Outputs and one-step inference](#outputs-and-one-step-inference)
 - [Standalone calibration](#standalone-calibration)
 
@@ -53,25 +53,15 @@ Both `dino_weights` and `vgg_weights` accept `.pt`, `.pth`, and `.safetensors` w
 | `ms_ssim` | `0.0` | Five-scale RGB structural similarity: `1 - MS-SSIM` | None |
 | `phase` | `0.0` | Target-texture-protected periodic residual constraint; disabled by default | None |
 
-These are schema defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, `histogram`, or `ms_ssim`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
+These are configuration defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, `histogram`, or `ms_ssim`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
 
-For large datasets, startup indexing validates source images, captions, and cache files one record at a time, reading only cache header metadata rather than latent/text tensors. Dataset fingerprints stream individual records instead of retaining extra identity dictionaries and a complete JSON copy; the necessary file-pair index still scales with image count. Cache formats and resume fingerprints remain unchanged, so caches need not be rebuilt. The terminal displays per-image validation progress.
-
-Linux system/container RAM counters may also include file page cache. After fully hashing each HQ, LQ, and cache file, restoration indexing automatically requests release of its scanned pages with `POSIX_FADV_DONTNEED`, reducing cache buildup from the one-time scan. No configuration or administrator privileges are required. This is a best-effort kernel/filesystem hint; mapped, active, or dirty pages may remain. Unsupported platforms continue validation normally. Global caches are never flushed and content validation is never skipped. Later training reads may need to fetch these files from disk again.
-
-Restoration training also applies this policy when hashing model, VAE, and feature artifacts, including sharded weights. DINO/VGG ZIP-format PyTorch checkpoints use private source-file memory mappings when loading onto an accelerator, avoiding a complete anonymous CPU checkpoint copy. Legacy pickle files retain ordinary loading. Touched mapped pages may still count toward container RAM.
-
-All eight image families (Z-Image, FLUX.1, FLUX.2, FLUX3, MOSS, Qwen Image, Qwen Image2.1, and Krea2) share these optimizations: training/previews read only cached text conditions, plus FLUX.1 pooled features, preserving Krea2 selected-layer text without transferring unused image/reference latents; RGB decoding avoids extra full-image PIL copies, pads only when necessary, and creates a single HQ crop for synthetic degradation; batch size one avoids an extra image stack, and CPU crops are released after device transfer; generator latent/graph references are cleared before the discriminator phase once backward has completed. No configuration changes are needed. Crop/degradation RNG, loss weights, and model equations are preserved. Model, optimizer, and necessary activation storage are still required.
+Dataset checks can take time on large collections. Watch the terminal progress and allow enough host RAM for the image-pair index and model weights.
 
 ## MS-SSIM
 
-Enable with `[losses] ms_ssim = 0.1` (an example weight, not a tuned recommendation). The default is `0.0`, which skips computation and preserves existing resume identities. Enabled weights and the numerical policy are included in resume identity. The detached `ms_ssim` metric records the unweighted loss.
+Set `[losses] ms_ssim = 0.1` to add multiscale structural supervision; the default is `0.0`. The weight is an example, so tune it on held-out images. Both crop dimensions must exceed 160 pixels. No extra network weights are required.
 
-The loss is `1 - mean(MS-SSIM)` over samples and RGB channels, using five scales with exponents `[0.0448, 0.2856, 0.3001, 0.2363, 0.1333]`, an 11×11 Gaussian window with sigma 1.5, valid filtering, and K1=0.01/K2=0.03. Between scales it uses 2× average pooling with parity padding for odd dimensions. Both image dimensions must exceed 160 pixels; configuration validation rejects smaller training crops. It does not silently reduce the scale count.
-
-Statistics and reductions run in FP32 even during BF16/FP16 training. RGB is mapped from nominal `[-1,1]` to `[0,1]` without clipping decoder overshoots. Each scale score is clamped to `[1e-6,1]` before fractional powers, avoiding non-finite gradients for negative similarity; gradients saturate below that floor. HQ is detached. No extra feature networks or dependencies are required.
-
-MS-SSIM supervises structure across scales; it is not a dedicated periodic-artifact penalty. Combining it with L1 can retain pixel/color supervision. It is accepted as a standalone image objective, but numerical verification does not establish better restoration quality or guarantee that grids disappear. Tune its weight using held-out images.
+The logged `ms_ssim` value is the unweighted loss; lower is better. Combine with L1 when pixel and color fidelity matter. Check real details as well as structure when choosing the weight.
 
 ## Wavelet MSE
 
@@ -104,22 +94,7 @@ This is a configuration example, not an optimized weight recommendation. For wav
 
 ## Local periodic residual constraint
 
-`losses.phase` is a supplementary loss, disabled by default, for repeated phase bias relative to HQ. The implementation protects both local lighting planes and target-texture contrast instead of treating all such errors as grid artifacts.
-
-Within each window, fit and remove a plane from both `e = generated - target` and the target, obtaining `e_t` and `y_t`. Then compute:
-
-```text
-beta = mean(e_t * y_t) / (mean(y_t²) + 1e-6)
-r = e_t - beta * y_t
-m = means of r grouped by coordinates modulo phase_period, then centered
-phase = mean(sqrt(m² + phase_epsilon²) - phase_epsilon)
-```
-
-`beta` is a regularized local contrast fit. The variance ridge `1e-6`, in `[-1,1]` RGB units, keeps flat targets well conditioned. Backpropagation includes the fitted coefficient; only targets are detached. Statistics use FP32, with no extra feature-network forward or inference changes. This target-dependent linear transform followed by a robust penalty is not a single orthogonal projector.
-
-Correctly reconstructed periodic target textures incur no penalty. Local errors proportional to target texture are penalized less, leaving their supervision to L1/perceptual objectives. Misaligned edges and details can still be affected. Brightness protection in output space also does not guarantee unchanged brightness after training: shared model parameters couple error directions.
-
-Merge these fields into an existing recipe, keeping its other loss and model settings:
+`losses.phase` is an optional auxiliary loss for periodic or grid-like artifacts relative to the HQ target. It is disabled by default and needs no extra feature weights. Add these fields to your existing recipe:
 
 ```toml
 [losses]
@@ -131,18 +106,9 @@ phase_cycles = 8
 phase_epsilon = 0.001
 ```
 
-This uses `16 × 8 = 128` pixel windows; both training dimensions must be at least 128. Interior windows do not overlap. Incomplete edges get full windows touching those edges and overlapping their neighbors. No padding or discarded pixels; every window has equal weight. Period 16 is a Z-Image candidate, not an automatic model-specific choice. Select it from measured output periodicity instead of blindly stacking 2/4/8/16. This loss cannot supervise the complete image alone or repair misaligned training pairs.
+Both crop dimensions must be at least `phase_period * phase_cycles`, or 128 pixels in this example. Select the period from the artifacts visible in your output; it is not chosen automatically for each model. The weight shown is a starting example, not a general recommendation.
 
-Real-photo comparisons used Z-Image Turbo, official DINOv3 ConvNeXt Large, 512 crops, 80 training photos and 20 independent validation photos (40 crops), with native synthetic degradations. Each run used 300 updates, accumulation 4, learning rate `5e-5`, LoRA rank/alpha 8/8, encoder rank 4, explicit sigma 0.121, BF16, empty text conditioning, and no EMA. LRR/Dv3D/L1/GAN weights were 5/3/0.5/0.5; FDL and histogram were zero. Initialization, sample order, and noise were paired within each seed.
-
-| Seed | Local phase RMS change | PSNR (baseline → enabled) | Dv3D (baseline → enabled; lower is better) | SSIM (baseline → enabled) |
-| --- | --- | --- | --- | --- |
-| 123 | −26.1% | 26.495 → 26.734 dB | 0.12546 → 0.12450 | 0.6615 → 0.6810 |
-| 456 | −9.2% | 27.264 → 27.288 dB | 0.12235 → 0.12079 | 0.69944 → 0.69951 |
-
-All 20 validation photos improved in local phase error in both runs; mean smooth-region error fell by 26.4% and 11.2%. However, not every image or metric improved: edge error increased by about 1.3% in the second seed, whose mean SSIM was essentially unchanged; one source photo lost about 1 dB in mean PSNR. The earlier plane-only constraint lost about 0.39 dB in that seed, so only the target-texture-protected implementation is retained. Raising L1 from 0.5 to 1.0 also failed to consistently outperform each baseline; default L1 is unchanged.
-
-These are exploratory early-training comparisons with two seeds and synthetically degraded real photos. Validation data informed method selection; this is not an independent final test set or an official DIV2K benchmark. The results do not guarantee removal of all user artifacts or universally better converged quality. The loss remains disabled by default; 4.0 is only a tested starting point. Monitor repeated patterns, real details, edges, and colors together. Disabled phase preserves earlier resume identities; enabling or changing an effective loss parameter changes the identity and cannot silently resume the previous objective's full training state.
+Keep a primary image loss such as L1 or a perceptual loss. Compare held-out images for repeated patterns, real texture, edges, and color; reduce or disable phase if detail suffers. It cannot correct misaligned training pairs. Changing effective loss settings may prevent resuming the previous full training state.
 
 ## Models and posterior policy
 
@@ -151,17 +117,16 @@ These are exploratory early-training comparisons with two seeds and syntheticall
 | Z-Image | Current native variants | `sample` by default; optional `mean` |
 | FLUX | Dev | `sample` by default; optional `mean` |
 | FLUX.2 | Native Dev / Klein 4B / Klein 9B base/distilled combinations | `mean` |
+| BluePixel | Turbo | `mean` |
 | FLUX3 | Base, distilled | `mean` |
 | MOSS Image | Base, SFT | `mean` |
 | Qwen Image | Original | `sample` by default; optional `mean` |
 | Qwen Image 2.1 | Native image model | `sample` by default; optional `mean` |
 | Krea2 | RAW, Turbo | `sample` by default; optional `mean` |
 
-With LRR enabled, the shared step runs frozen HQ posterior encoding, LRR Gaussian noise, then trainable LQ posterior encoding. Sampling VAEs draw noise in logical shape so channels-last layout does not change the random-value/element mapping. Mean VAEs do not add posterior sampling. This follows the reference Trainer's effective LRR path while retaining native normalization, time, and prediction signs.
+`posterior = "sample"` introduces VAE sampling randomness during training; `"mean"` uses the posterior mean. Only choose values supported by the model in the table. Previews and restoration inference use the mean. Recheck cache and resume compatibility after changing this setting.
 
-Posterior sampling adds randomness without guaranteeing quality or speed improvements. Explicit mean supports deterministic variants. Disabling LRR skips unused HQ encoding and random draws, so stepwise RNG parity with the reference Trainer is not promised. Posterior/random-order changes cannot be silently resumed as the same trajectory. Previews and restoration inference use the posterior mean.
-
-FLUX Kontext/Fill, Qwen edit/layered, Wan, and H3 are outside restoration support. FLUX.2/FLUX3/MOSS use native packed-BN mean encoding and do not expose unverified posterior sampling.
+FLUX Kontext/Fill, Qwen edit/layered, Wan, and MiniMaxH3 are outside this restoration method.
 
 ## Data and commands
 
@@ -193,7 +158,7 @@ uv run unituner train train.toml --device cuda --midtimestep 244
 
 The integer range is 1..998 and applies only to restoration. An explicit CLI value overrides TOML; 244 is used only when both omit the value. Optional `method.restoration.sigma` directly specifies the noise fraction; `calibrate=true` estimates it from paired data.
 
-Selection order is calibration, explicit sigma, then integer mid-timestep. Calibration and explicit sigma are mutually exclusive. The CLI changes only the integer and does not cancel another time policy. No special restrictions arise from choosing an integer other than 244.
+Selection order is calibration, explicit sigma, then integer mid-timestep. Calibration and explicit sigma are mutually exclusive. The CLI changes only the integer and does not cancel another time policy.
 
 FLUX.1 uses a reverse index into the native 999-step shifted schedule:
 
@@ -203,33 +168,19 @@ build_schedule(999, (W//16)*(H//16))[-(midtimestep+1)]
 
 W/H are configured crop dimensions in pixels. Therefore FLUX.1 integer 244 **does not mean sigma 0.244**. Other current families use `midtimestep/1000`, retaining their native units and velocity direction. This is a starting convention rather than an independently optimized time for every model.
 
-Time conversion preserves native operation order, including FLUX's `full(sigma*1000)/1000`. FLUX.1 restoration uses guidance embedding 1.0, matching Trainer OMGSR-F without changing ordinary generation or flow matching. FLUX3 distilled keeps identical target/source training times from its original fine-tuning entry point.
+## High-resolution restoration
 
-## Relationship to OMGSR
+If high-resolution training runs out of memory, reduce batch size or crop resolution, then enable recomputation:
 
-Based on [OMGSR v2 §3 and supplement §6](https://arxiv.org/html/2508.08227v2):
+```toml
+[execution]
+recompute = "block"
+restoration_recompute = "block"
+```
 
-- Feed LQ latents directly, without added noise; train encoder adapters to narrow the representation gap.
-- The FM LRR target is `(1-sigma)*encode(HQ) + sigma*noise`, with frozen HQ encoding and MSE supervision.
-- Noise-minus-data models restore as `low - sigma*velocity`; Z-Image's sign is handled at the model boundary.
-- Calibration minimizes the mean absolute per-image SNR difference in equations 18/19. FLUX.1 candidates use the same shifted grid.
-- Frozen DINOv3-ConvNeXt's first three stages provide Dv3CD and multilevel discrimination; the generated-image branch retains gradients.
+Recomputation saves activation memory at the cost of additional computation. Perceptual and adversarial losses also require memory; enable only the terms you need and provide their weights. See [execution settings](execution.md) and [precision settings](precision.md).
 
-`[execution] recompute = "block"` also checkpoints DINO downsampling layers and ConvNeXt blocks, reducing activation memory for Dv3CD and generator GAN losses at the cost of extra backward recomputation. HQ features and the frozen backbone during discriminator updates need no image gradients and skip recomputation. Discriminator heads are not checkpointed, avoiding repeated spectral-normalization state updates. Set `recompute = "none"` to disable this memory/time tradeoff. DINO channel normalization uses native LayerNorm with FP32 accumulation for BF16 statistics; small numerical differences from elementwise BF16 normalization are expected.
-
-With `recompute = "block"`, restoration also checkpoints stateless VAE residual, spatial-attention and applicable resampling blocks to reduce high-resolution activation memory. The VAE stays in eval mode; decoder weights remain frozen and encoder LoRA gradients are preserved. Residual checkpointing covers Z-Image, the FLUX family and Qwen Image 2.1. Qwen Image/Krea2 temporal-history blocks keep their original path; only stateless spatial attention is checkpointed. Recomputation increases compute time and does not eliminate convolution workspace or DiT attention memory requirements.
-
-Training Inductor compilation scopes `triton.cudagraphs=false` and `epilogue_fusion=true` per graph, avoiding CUDA Graph private pools while retaining pointwise fusion without mutating process-global settings. The current compilation entry point targets DiT, not VAE/DINO. Maximum GEMM autotuning, coordinate-descent tuning and 1x1-convolution-to-matmul conversion are not enabled by default: benefits depend on the graph and hardware and can increase initial compilation time.
-
-`midtimestep = 244` is an initial default. Recalibrate when changing model, resolution, VAE, data or degradation distribution. Restoration uses the FM Euler formula.
-
-
-
-Default LRR/Dv3D/L1/GAN/FDL weights are 5/3/0.5/0.5/0.5. Histogram and phase losses are disabled by default.
-
-FDL uses orthonormal FFTs (`norm="ortho"`) to control amplitude scaling, with a phase term, 256 projections and a sum over levels. The loss is not bounded to [0,1]; set its weight with `losses.fdl`.
-
-Calibration uses the unadapted VAE with the configured posterior. FLUX defaults to sample, matching the official implementation. Isolated seeded posterior RNG leaves training RNG unchanged. Explicit mean is a deterministic variant. Candidate grids exclude endpoints 0 and 1, where SNR is undefined. SNR errors are averaged per image rather than calculated over a mixed batch. Effective sigma is saved in checkpoints and publications; resume does not recalibrate and inference reads the saved value.
+Recalibrate sigma after changing the model, VAE, resolution, dataset, or degradation settings. The calibrated sigma is saved in training outputs; resuming retains it rather than recalibrating.
 
 ## Outputs and one-step inference
 
@@ -245,7 +196,7 @@ See the [calibration example](../../examples/restoration-calibration.toml) and [
 
 By default it uses the first 32 unique pairs. Configure `calibration_pairs = 128` under `[method.restoration]`, with `calibrate=true`, to expand the sample. JSON output includes `midtimestep`, `sigma`, `mean_snr_error`, `pairs`, `posterior`, and `sampling`. The integer is an index; sigma is the actual noise fraction.
 
-Either write sigma into `method.restoration.sigma` and disable calibration, or enable calibration to estimate once before training. For non-FLUX results, copying sigma preserves FP32 candidate-grid rounding that the integer alone does not encode.
+Either write sigma into `method.restoration.sigma` and disable calibration, or enable calibration to estimate once before training.
 
 The standalone command accepts the training TOML directly, including the complete `[dataset.groups.<name>.degradation]` recipe. No pre-generated LQ files are needed for synthetic data. It extracts crops at `dataset.defaults.resolution` or the group override, applies the training degradation, then encodes each LQ/HQ pair for SNR statistics. Real pairs must already have matching aligned dimensions; they are not resized. Restoration uses fixed crops rather than text-to-image aspect-ratio buckets.
 
@@ -270,11 +221,7 @@ enabled = true
 
 In a minimal calibration-only TOML, put `calibration_sampling`, `calibration_pairs`, and `posterior` at the top level; training TOMLs use `[method.restoration]`. All groups must still share a resolution to avoid mixing FLUX resolution-dependent time grids. These are independent calibration crops, not tiled VAE encoding with stitched latents, and they do not change normal training's random crop policy.
 
-Standalone and pre-training calibration share `estimate_mid_timestep`, accumulating equations 18/19 statistics without retaining all latents. Each pair needs two VAE encodings and a vectorized candidate-error evaluation; the network is not rerun per timestep. All eight current restoration families use their native normalized latent space.
-
 The restoration objective uses the [OMGSR method](https://github.com/wuer5/OMGSR). Project loss defaults are listed in [parameters](parameters.md#losses); configure coefficients explicitly when using a different recipe.
-
-FDL retains all 256 projections and full spatial sorting, processing eight projection channels at a time. Backward recomputes projections and sorting instead of retaining all sort indices. The generated-image VGG branch also recomputes activations, trading compute for memory .
 
 
 ---

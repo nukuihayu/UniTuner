@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from importlib import import_module
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -84,12 +85,11 @@ def test_encoder_loading_keeps_native_arguments(monkeypatch, module, family, var
 
     name = "load_qwen_image_21_text" if module == "qwen_image_2_1" else f"load_{module}_text"
     fake_module(monkeypatch, f"unituner.models.{module}.text.encoder", **{name: load_text})
-    from unituner.models.components import image_encoders as native
-
     vae_family = (
         "flux2" if module in ("flux2", "flux3", "moss_image") else "qwen_image" if module == "krea2" else module
     )
     name = "load_qwen_image_21_vae" if vae_family == "qwen_image_2_1" else f"load_{vae_family}_vae"
+    native = import_module(f"unituner.models.{vae_family}.loading")
     monkeypatch.setattr(native, name, load_vae)
     model = model_config(family, variant, version)
     assert image_encoders.load_image_encoders(model, device=torch.device("cpu")) == (vae, text)
@@ -201,7 +201,7 @@ def test_text_policy_identity_preserves_default_and_tokenizer_only_sections():
     [
         ("wan", "wan", "produce_wan"),
         ("minimax-h3", "minimax_h3", "produce_minimax_h3"),
-        ("z-image", "images", "produce_images"),
+        *((family, "images", "produce_images") for _, family, _, _ in CASES),
     ],
 )
 def test_dispatch_preserves_shared_owners(monkeypatch, family, module, name):
@@ -217,6 +217,14 @@ def test_dispatch_preserves_shared_owners(monkeypatch, family, module, name):
 
     fake_module(monkeypatch, f"unituner.data.production.{module}", **{name: produce})
     assert _run(config, device="cuda:1", repa=repa, tokenizer_digests=digests) == 13
+
+
+def test_cache_dispatch_rejects_unknown_family_before_loading_image_producer(monkeypatch):
+    from unituner.data.build import _run
+
+    config = SimpleNamespace(model=SimpleNamespace(family="unknown"))
+    with pytest.raises(ValueError, match="No cache producer"):
+        _run(config, device="cpu", repa=None, tokenizer_digests={})
 
 
 @pytest.mark.parametrize("family,variant,version", [("qwen-image", "original", None), ("flux2", "distilled", "dev")])

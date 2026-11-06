@@ -3,12 +3,15 @@
 # Modified to separate native computation from training and execution policies.
 """Compute native Z-Image reverse-flow predictions with exact artifact key paths."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.z_image.config.model import ZImageConfig
 from unituner.models.z_image.layers import FinalLayer, RMSNorm, RopeEmbedder, TimestepEmbedder, ZImageTransformerBlock
@@ -22,6 +25,8 @@ class ZImageTransformer(nn.Module):
     Caption padding is rounded to 32 per sample. Returned predictions have the
     latent shape and native sign clean-minus-noise. No trainer is imported.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.Z_IMAGE
 
     def __init__(self, config: ZImageConfig) -> None:
         super().__init__()

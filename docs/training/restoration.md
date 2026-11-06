@@ -6,7 +6,7 @@
 
 公共训练设置见[训练指南](README.md)，全部配置入口见[示例索引](../examples/README.md)。
 
-Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间的模型，再做一步恢复；不向低清 latent 额外加噪。模型保留各自的时间单位和速度方向。八个图像家族均支持 LoRA 和 full，训练、预览、checkpoint 恢复和 `unituner restore` 使用同一公式。
+Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间的模型，再做一步恢复；不向低清 latent 额外加噪。模型保留各自的时间单位和速度方向。支持的图像模型可使用 LoRA 或全参数训练，训练后通过 `unituner restore` 修复图片。
 
 <details>
 <summary>本页导航</summary>
@@ -16,7 +16,7 @@ Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间�
 - [适用模型与后验](#适用模型与后验)
 - [数据与训练命令](#数据与训练命令)
 - [中间时间配置](#中间时间配置)
-- [与 OMGSR 论文的对应边界](#与-omgsr-论文的对应边界)
+- [高分辨率修复](#高分辨率修复)
 - [产物与修复推理](#产物与修复推理)
 - [独立计算中间时间](#独立计算中间时间)
 
@@ -55,25 +55,15 @@ Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间�
 | `ms_ssim` | `0.0` | 五尺度 RGB 结构相似度：`1 - MS-SSIM` | 无 |
 | `phase` | `0.0` | 保护目标纹理的局部周期残差约束，默认关闭 | 无 |
 
-这是 schema 默认值，不是适用于所有任务的推荐配方。未使用的损失要显式设为 0；仅省略 DINO／VGG 路径，却保留相应默认损失，会导致配置报错。至少启用一种图像输出损失（l1、dv3d、gan、fdl、histogram、ms_ssim，或启用有效频带的 `[method.wavelet]`），LRR 与 phase 都不能单独监督完整解码结果。
+这些是配置默认值，不是适用于所有任务的推荐配方。未使用的损失要显式设为 0；仅省略 DINO／VGG 路径，却保留相应默认损失，会导致配置报错。至少启用一种图像输出损失（l1、dv3d、gan、fdl、histogram、ms_ssim，或启用有效频带的 `[method.wavelet]`），LRR 与 phase 都不能单独监督完整解码结果。
 
-大数据集启动索引时，源图片、caption 和缓存文件逐项校验，缓存只读取头部元数据，不载入 latent／文本张量。数据集摘要逐条计算，避免保留额外的逐图身份字典和完整 JSON 副本；必要的文件配对索引仍随图片数量增长。该优化不改变缓存格式或续训摘要，无需重建缓存。终端会显示逐图校验进度。
-
-Linux 的系统／容器 RAM 统计也可能包含文件页缓存。修复索引在完整哈希每个 HQ、LQ 和缓存文件后，会自动用 `POSIX_FADV_DONTNEED` 提示内核释放该文件的已读页面，减少一次性扫描积累的页缓存；无需额外配置或管理员权限。此提示由内核／文件系统尽力执行，不保证释放仍被映射、使用或尚未写回的页面。不支持此接口的平台照常校验；不会清空全系统缓存，也不会跳过内容校验。后续训练读取图片时可能需要重新从磁盘读取。
-
-以上策略也用于修复训练的模型／VAE／特征权重摘要扫描，包括分片权重。DINO／VGG 的 ZIP 格式 PyTorch 权重在加载到 GPU 时采用只读源文件的私有内存映射，避免先把完整 checkpoint 复制到匿名 CPU 内存；旧版 pickle 文件保留普通读取方式。映射触及的文件页面仍可能计入容器 RAM。
-
-八个图像家族（Z-Image、FLUX.1、FLUX.2、FLUX3、MOSS、Qwen Image、Qwen Image2.1、Krea2）共用以下内存优化：训练／预览只读取缓存中的文本条件，FLUX.1 额外读取 pooled 特征，保留 Krea2 的选层文本布局，不搬运未使用的缓存 latent／参考图；RGB 解码避免额外的整图 PIL 副本，只在确实需要时做反射填充，合成退化只创建一份 HQ 裁剪；batch=1 不额外堆叠图像，CPU 裁剪在设备搬运后及时释放；生成器反向结束后，清理其临时 latent 和计算图引用，再进入判别器阶段。这些优化无需修改配置，不改变裁剪／退化随机数、损失权重或模型公式；不会降低模型、优化器和必要激活本身的存储需求。
+大数据集启动时需要检查图片和缓存，请留意终端进度，并为图片配对索引和模型权重预留主机内存。
 
 ## MS-SSIM
 
-在 `[losses]` 中设置 `ms_ssim = 0.1` 即可启用（仅为配置示例，不是实测推荐权重）。默认 `0.0` 时跳过计算，并保持旧配置的续训标识；启用后权重与数值策略纳入续训标识。日志中的 `ms_ssim` 是未乘权重、已 detach 的损失。
+设置 `[losses] ms_ssim = 0.1` 可增加多尺度结构监督，默认值为 `0.0`。权重仅作示例，需用验证图片调整。裁剪宽高都必须大于 160 像素，不需要额外网络权重。
 
-损失为按样本和 RGB 通道平均的 `1 - MS-SSIM`。使用五尺度权重 `[0.0448, 0.2856, 0.3001, 0.2363, 0.1333]`、11×11 高斯窗口（sigma=1.5）、valid 卷积和 K1=0.01/K2=0.03。尺度间采用 2× 平均池化，奇数尺寸按奇偶性补边。图像宽高都必须大于 160 像素，配置阶段会拒绝过小的训练裁剪，不会自动减少尺度数。
-
-BF16/FP16 训练时，统计和归约仍采用 FP32。将 nominal `[-1,1]` RGB 映射到 `[0,1]`，不裁断解码器的越界输出；各尺度分数在分数次幂前限制到 `[1e-6,1]`，避免负相似度产生非有限梯度，低于下限的分数梯度会饱和。HQ 停止梯度。不需要额外特征网络或依赖。
-
-MS-SSIM 监督多尺度结构，不是周期伪影专用损失。可与 L1 配合保留像素／颜色监督；配置也允许它单独作为图像输出损失。数值验证不代表真实恢复质量一定改善，也不能保证消除网格，需要在保留验证图片上选择权重。
+日志中的 `ms_ssim` 是未乘权重的损失，越低越好。需要保留像素和颜色准确性时可与 L1 配合，选择权重时也应检查真实细节。
 
 ## 小波 MSE
 
@@ -106,22 +96,7 @@ normalize_bands = false
 
 ## 局部周期残差约束
 
-`losses.phase` 是默认关闭的辅助损失，抑制恢复图相对 HQ 的重复相位偏差。最终实现同时保护局部亮度平面和目标纹理的对比度，避免把它们全部当成网格错误。
-
-每个窗口对残差 `e = generated - target` 和目标分别拟合并扣除平面，得到 `e_t`、`y_t`，再计算：
-
-```text
-beta = mean(e_t * y_t) / (mean(y_t²) + 1e-6)
-r = e_t - beta * y_t
-m = 按坐标模 phase_period 分组的 r 均值，再扣除相位均值
-phase = mean(sqrt(m² + phase_epsilon²) - phase_epsilon)
-```
-
-`beta` 是带正则化的局部对比度拟合，`1e-6` 是按 `[-1,1]` RGB 计的方差正则项，防止平坦目标产生不稳定系数。系数参与正常反向；只有目标停止梯度。统计使用 FP32，不增加特征网络前向，不改模型推理。这个与目标有关的线性变换加稳健惩罚，不是单个正交投影。
-
-正确重建的真实周期纹理不受罚；与目标纹理成比例的局部误差会减轻处罚，由 L1、感知等主损失继续监督。错位边缘和细节仍可能受影响。输出空间的亮度保护也不保证训练后亮度完全不变，因为共享网络参数会耦合不同误差方向。
-
-在已有配置中合入以下字段即可启用，其他损失和模型设置沿用原配方：
+`losses.phase` 用于抑制恢复图相对 HQ 的周期或网格伪影，默认关闭，不需要额外特征权重。在已有配方中加入：
 
 ```toml
 [losses]
@@ -133,18 +108,9 @@ phase_cycles = 8
 phase_epsilon = 0.001
 ```
 
-窗口为 `16 × 8 = 128` 像素，每幅训练图宽高都必须至少为 128。内部窗口不重叠；末端不足一个窗口时追加贴边完整窗口，与相邻窗口重叠。不填充、不丢弃边缘，每个窗口等权。周期 16 是 Z-Image 的候选值，不会按模型自动选择；应根据原始输出测得的周期设置，勿盲目叠加 2/4/8/16。此损失不能单独监督完整图像，也不能修复未对齐的训练对。
+训练裁剪宽高都必须至少为 `phase_period * phase_cycles`，本例为 128 像素。周期应根据输出中实际出现的伪影选择，不会按模型自动设置。这里的权重只是起点示例，并非通用推荐。
 
-真实照片对照使用 Z-Image Turbo、官方 DINOv3 ConvNeXt Large、512 裁剪，80 张照片训练、20 张独立照片验证（40 裁剪），由项目原生流程合成退化。每组 300 次更新、累积 4、学习率 `5e-5`，LoRA rank/alpha 8/8、编码器 rank 4、显式 sigma 0.121、BF16、空文本条件，无 EMA。LRR/Dv3D/L1/GAN 为 5/3/0.5/0.5，FDL 与 histogram 为 0；同种子内初始化、样本顺序和噪声完全配对。
-
-| 种子 | 局部相位 RMS 变化 | PSNR（基线 → 启用） | Dv3D（基线 → 启用，越低越好） | SSIM（基线 → 启用） |
-| --- | --- | --- | --- | --- |
-| 123 | −26.1% | 26.495 → 26.734 dB | 0.12546 → 0.12450 | 0.6615 → 0.6810 |
-| 456 | −9.2% | 27.264 → 27.288 dB | 0.12235 → 0.12079 | 0.69944 → 0.69951 |
-
-两次试验中，20 张验证照片的局部相位误差均下降；平滑区域平均误差分别下降 26.4% 和 11.2%。但并非逐图各项都改善：第二个种子的边缘误差增加约 1.3%，SSIM 平均基本持平，个别原图的平均 PSNR 下降约 1 dB。仅去除亮度平面的早期版本在第二个种子上损失约 0.39 dB，因此最终只保留上述目标纹理保护实现。单纯把 L1 从 0.5 提至 1.0，也没有稳定优于各自基线，未修改默认 L1。
-
-这只是两个种子、训练初期的探索性对照，使用真实照片的合成退化；验证集参与方案筛选，不是独立最终测试集或官方 DIV2K 基准。它不保证消除用户数据中的全部伪影，也未证明长期收敛质量普遍提升。保持默认关闭，4.0 只是经测试的起点；开启后应同时观察重复纹理、真实细节、边缘与颜色。关闭 phase 保留此前的续训身份；启用或改变有效损失参数会改变身份，不能静默接续原损失的完整训练状态。
+保留 L1 或感知损失等主要图像监督。用验证图片同时检查重复纹理、真实细节、边缘和颜色；细节受损时降低权重或关闭。该损失不能修正未对齐的训练对。修改有效损失设置后，可能无法接续原来的完整训练状态。
 
 ## 适用模型与后验
 
@@ -153,17 +119,16 @@ phase_epsilon = 0.001
 | Z-Image | 当前原生变体 | 默认 sample，可选 mean |
 | FLUX | Dev | 默认 sample，可选 mean |
 | FLUX.2 | Dev、Klein 4B/9B 的原生 base/distilled 组合 | mean |
+| BluePixel | Turbo | mean |
 | FLUX3 | base、distilled | mean |
 | MOSS Image | Base、SFT | mean |
 | Qwen Image | original | 默认 sample，可选 mean |
 | Qwen Image 2.1 | 原生图像模型 | 默认 sample，可选 mean |
 | Krea2 | RAW、Turbo | 默认 sample，可选 mean |
 
-启用 LRR 时，共享修复步骤按“冻结 HQ 后验编码 → LRR 高斯噪声 → 可训练 LQ 后验编码”执行。采样型 VAE 的后验噪声按逻辑形状生成，避免 channels-last 改变随机值与元素的对应关系；均值型 VAE 不增加后验采样。该顺序对齐 Trainer 的有效 LRR 路径，不改变各模型原生 latent 归一化、时间或预测符号。
+`posterior = "sample"` 会在训练中引入 VAE 后验采样随机性；`"mean"` 使用均值。请按表格选择模型支持的值。预览和修复推理使用均值。修改此设置后，需要检查缓存与续训兼容性。
 
-后验采样增加训练随机性，不能视为确定的质量或速度提升；显式 mean 仍可用于确定性变体。关闭 LRR 时跳过无用 HQ 编码及其随机抽取，因此不承诺与 Trainer 保持逐步 RNG 一致。旧训练的后验/随机顺序变化不允许静默续训。预览和修复推理仍取均值。
-
-FLUX Kontext/Fill 和 Qwen edit 系列不在修复范围内；Qwen layered 需要独立图层监督，当前修复入口仅支持 original。Wan、MiniMaxH3 是视频/音视频流程，不接入此方法。FLUX.2/FLUX3/MOSS 共用原生 packed-BN VAE 的均值编码，不提供未经原生实现验证的 posterior sample。
+FLUX Kontext/Fill、Qwen edit/layered、Wan 和 MiniMaxH3 不适用此修复方法。
 
 ## 数据与训练命令
 
@@ -194,43 +159,26 @@ unituner train train.toml --device cuda --midtimestep 244
 
 `midtimestep` 接受 1..998 的整数，仅适用于图像修复。省略 CLI 选项时保留 TOML 值；两者都省略才取244。
 `method.restoration.sigma` 默认未指定，可直接给定噪声比例；`calibrate = true` 则按成对数据选择。
-不再根据 midtimestep 是否等于244产生限制。选时顺序为：启用校准则使用校准结果，否则使用显式 sigma，最后使用 midtimestep。
+选时顺序为：启用校准则使用校准结果，否则使用显式 sigma，最后使用 midtimestep。
 `calibrate` 与显式 sigma 仍互斥；CLI 只覆盖 midtimestep 数值，不取消已配置的校准或 sigma 策略。
 
-FLUX.1 的整数表示 Trainer 原生999步时间表的反向索引：
+FLUX.1 的整数表示 999 步移位时间表的反向索引：
 `build_schedule(999, (W//16)*(H//16))[-(midtimestep+1)]`，W/H 为数据集配置的像素裁剪尺寸。
 因此 FLUX.1 的244 **不等于 sigma=0.244**。其余已接入家族当前使用 `midtimestep/1000`，
 保留各自原生时间单位和速度方向；这不是为所有模型重新估计出的最优时间。
-时间换算保留原生运算顺序，例如 FLUX 系列的 `full(sigma*1000)/1000`。
-FLUX.1 修复使用固定 guidance embedding=1.0，与 Trainer OMGSR-F 一致，不改变流匹配或普通采样的默认值。
-FLUX3 distilled 的训练目标时间与源时间相同，沿用原 finetuning 入口。
+## 高分辨率修复
 
-## 与 OMGSR 论文的对应边界
+高分辨率训练显存不足时，先减小 batch 或裁剪尺寸，再启用重算：
 
-依据 [OMGSR v2 §3 与补充材料 §6](https://arxiv.org/html/2508.08227v2)：
+```toml
+[execution]
+recompute = "block"
+restoration_recompute = "block"
+```
 
-- LQ latent 直接输入，不额外加噪；训练 VAE encoder adapter 以缩小表示差距。
-- FM 的 LRR 目标为 `(1-sigma)*encode(HQ) + sigma*noise`，HQ 分支冻结；使用均方误差。
-- noise-minus-data 模型恢复为 `low - sigma*velocity`；Z-Image 的符号在模型边界处理。
-- 校准使用公式18/19的逐图 SNR 差绝对值的平均目标，FLUX.1 的候选取同一移位网格。
-- 冻结 DINOv3-ConvNeXt 的前三阶段用于 Dv3CD 与多级判别，生成图像分支保留梯度。
+重算以额外计算时间换取激活显存。感知和对抗损失也会占用显存，仅启用需要的损失并准备对应权重。详见[执行设置](execution.md)和[精度设置](precision.md)。
 
-`[execution] recompute = "block"` 同时对 DINO 的降采样层和 ConvNeXt 块启用激活重算，减少 Dv3CD 与生成器 GAN 分支的激活显存，以额外反向重算为代价。HQ 特征和判别器更新中的冻结骨干不需要图像梯度，不执行重算；判别头也不重算，以避免重复更新 spectral normalization 状态。设置 `recompute = "none"` 可关闭这项时间与显存交换。 DINO 通道归一化使用原生 LayerNorm，BF16 统计以 FP32 累积；与逐元素 BF16 归一化相比允许小幅数值差异。
-
-启用 `recompute = "block"` 时，图像恢复还会重算 VAE 的无状态残差、空间注意力及适用的采样块，降低高分辨率训练的激活显存；VAE 保持 eval，解码器权重仍冻结，编码器 LoRA 梯度保留。Z-Image、FLUX 家族和 Qwen Image 2.1 支持残差块重算；Qwen Image/Krea2 的时间历史块保持原路径，仅重算无状态空间注意力。重算增加计算耗时，且不能消除大卷积工作区或 DiT 注意力的显存需求。
-
-训练 Inductor 编译按图设置 `triton.cudagraphs=false` 和 `epilogue_fusion=true`，避免 CUDA Graph 私有内存池并保留逐元素融合；不修改进程全局配置。当前编译入口针对 DiT，不会自动编译 VAE/DINO。GEMM 最大调优、坐标下降调优和 1×1 卷积转矩阵乘不作为默认优化；它们的收益依赖具体图与硬件，可能增加首次编译时间。
-
-`midtimestep = 244` 是起始默认值。更换模型、分辨率、VAE、数据或退化分布后，应重新校准。当前修复入口使用 FM Euler 公式。
-
-默认 LRR/Dv3D/L1/GAN/FDL 权重为 5/3/0.5/0.5/0.5；直方图和 phase 默认关闭。
-
-FDL 使用正交归一化 FFT（`norm="ortho"`）控制幅值尺度，保留相位项、256 个投影及分层求和。损失不限定在 0～1，权重通过 `losses.fdl` 设置。
-
-校准使用未适配 VAE，按修复的 posterior 策略编码；FLUX 默认 sample，与官方一致。
-后验噪声使用隔离、固定种子的 RNG，校准前后不改变训练 RNG；显式 mean 可做确定性均值变体。
-当前网格排除0/1端点，避免无定义 SNR；逐图平均符合论文公式19，而不是对一个批次混合求 SNR。
-最终有效 sigma 保存进 checkpoint 和训练产物，续训不重新校准，推理读取相同值。
+更换模型、VAE、分辨率、数据或退化配置后，建议重新校准 sigma。校准结果会保存在训练产物中，续训时沿用该值，不会重新校准。
 
 ## 产物与修复推理
 
@@ -248,8 +196,6 @@ unituner mid-timestep docs/examples/restoration-calibration.toml --device cuda
 `[method.restoration] calibrate = true`、`calibration_pairs = 128` 可扩大计算样本。
 结果打印 JSON：`midtimestep` 是索引，`sigma` 是实际噪声比例，另含 `mean_snr_error`、`pairs`、`posterior`、`sampling`。
 可以把结果中的 sigma 写入 `method.restoration.sigma` 并关闭 calibrate，或启用 calibrate 在训练前自动估计一次。
-直接复制非FLUX结果时，使用输出的 sigma 可以保留候选网格 FP32 舍入结果；整数索引本身不携带这些舍入位。
-
 训练 TOML 可直接用于独立命令，合成数据会读取 `[dataset.groups.<名称>.degradation]` 的完整配方，不需要先保存 LQ 图像。先按 `dataset.defaults.resolution` 或组内覆盖的 `[宽, 高]` 取块，再执行与训练相同的退化，最后分别编码 LQ/HQ 计算 SNR。真实配对图必须已经同尺寸对齐，不会自动拉伸或缩放。修复使用固定裁剪尺寸，不采用文生图的宽高比分桶。
 
 ```toml
@@ -273,15 +219,8 @@ enabled = true
 
 独立的最小校准 TOML 将 `calibration_sampling`、`calibration_pairs`、`posterior` 放在顶层；训练 TOML 放在 `[method.restoration]`。所有组仍须共享同一个分辨率，避免混合 FLUX 分辨率相关时间网格。分块是校准样本提取，不是把整图 VAE 编码切块后拼接，也不会改变正式训练的随机裁剪策略。
 
-独立命令与训练前校准共用 `estimate_mid_timestep`，流式累积公式18/19的统计量，不保存全部 latent；
-计算开销为每个图像对各两次 VAE 编码加一组向量化候选误差，无需对每个 timestep 重复跑网络。
-支持 Z-Image、FLUX.1、FLUX.2、FLUX3、MOSS、Qwen Image、Qwen Image2.1、Krea2 的当前修复变体。
-前者按各自 VAE 归一化后计算；FLUX.1 使用其移位时间表，其他当前训练入口使用 t/1000。
-
 
 修复目标采用 [OMGSR 方法](https://github.com/wuer5/OMGSR)。项目损失默认值见[参数手册](parameters.md#losses)；使用不同配方时显式填写系数。
-
-FDL 保留全部 256 个投影以及完整空间排序，每次仅处理 8 个投影通道。反向重算投影与排序，不长期保存全部排序索引；VGG 生成图分支也使用激活重算，以计算时间换取显存。
 
 
 ---

@@ -5,6 +5,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
+from unituner.models.catalog import IMAGE_SPECS, backbone_family
+
 # Shared exclusions follow convert_to_quant 5d2f539, extended by native
 # model boundaries below. Match nested conditioning/adapters too: a block
 # allowlist alone does not protect auxiliary projections inside that block.
@@ -189,16 +191,9 @@ def language_boundaries(keys: Iterable[str]) -> frozenset[str]:
     )
 
 
-FAMILIES = ("auto", "generic", *POLICIES)
+FAMILIES = ("auto", "generic", *POLICIES, *(family.value for family in IMAGE_SPECS if family not in POLICIES))
 _METADATA = {
-    "z_image": "z-image",
-    "flux": "flux",
-    "flux2": "flux2",
-    "flux3": "flux3",
-    "moss_image": "moss-image",
-    "qwen_image": "qwen-image",
-    "qwen_image_2_1": "qwen-image-2-1",
-    "krea2": "krea2",
+    **{family.value.replace("-", "_"): family.value for family in IMAGE_SPECS},
     "wan": "wan",
     "minimax_h3": "minimax-h3",
 }
@@ -270,7 +265,7 @@ def protection_reason(family: str, key: str, boundaries: Iterable[str] = ()) -> 
     name = unprefixed(key)
     if family in TEXT_FAMILIES and any(name.startswith(prefix) for prefix in boundaries):
         return f"{family}: first/last language block"
-    policy = POLICIES.get(family)
+    policy = POLICIES.get(backbone_family(family))
     if policy is None:
         return (
             "sensitive normalization/embedding/conditioning"

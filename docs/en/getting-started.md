@@ -32,7 +32,7 @@ uv sync --locked --no-dev
 uv run --no-dev unituner --help
 ```
 
-The default installation includes image/video/audio I/O, text encoders, tokenizers, comfy-kitchen, and comfy-aimdo. Run subsequent commands from the repository root.
+The default installation includes image/video/audio I/O, text encoders, tokenizers, and comfy-kitchen. Run subsequent commands from the repository root.
 
 If you need the Tsinghua PyPI mirror:
 

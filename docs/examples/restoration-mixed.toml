@@ -203,8 +203,8 @@ eps = 1e-08
 backend = "auto"
 
 [execution]
-# resident 常驻；frozen-blocks/vbar 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
-# resident keeps weights on device; frozen-blocks/vbar manage frozen weights; trainable-blocks is reserved and currently unsupported.
+# resident 常驻；frozen-blocks 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。
+# resident keeps weights on device; frozen-blocks manages frozen weights; trainable-blocks is reserved and currently unsupported.
 residency = "resident"
 # none 保存激活；block 按块重算以降低激活显存，增加计算量。
 # none retains activations; block recomputes blocks to reduce activation memory at extra compute cost.

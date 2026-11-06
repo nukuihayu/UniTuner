@@ -58,7 +58,9 @@ def validate_image_sampling(
         or sampling.slg_stop != 1
         or sampling.training_shift != 1
     )
-    if sampling.reference_images and family not in ("flux2", "flux3", "qwen-image", "qwen-image-2-1", "moss-image"):
+    if sampling.reference_images and family not in (
+        "flux2", "flux3", "qwen-image", "qwen-image-2-1", "moss-image", "bluepixel"
+    ):
         raise ValueError("Sampling reference_images requires FLUX.2, FLUX3 or Qwen Image")
     if sampling.output_layers is not None and (family != "qwen-image" or variant != "layered"):
         raise ValueError("Sampling output_layers requires Qwen Image layered")
@@ -116,6 +118,15 @@ def validate_image_sampling(
             raise ValueError("FLUX.2 distilled Klein fixes steps4 and guidance1")
         if sampling.guidance is not None and sampling.guidance < 0:
             raise ValueError("FLUX.2 guidance must be nonnegative")
+    if family == "bluepixel":
+        if variant != "turbo" or version is not None or len(sampling.reference_images) != 1:
+            raise ValueError("BluePixel-Turbo requires one reference image and model.variant=turbo")
+        if min(sampling.width, sampling.height) < 64 or sampling.width % 64 or sampling.height % 64:
+            raise ValueError("BluePixel output width/height must be multiples of 64")
+        if sampling.negative_prompt is not None or (sampling.guidance is not None and sampling.guidance < 0):
+            raise ValueError("BluePixel uses an empty negative prompt and nonnegative CFG guidance")
+        if sampling.shift is not None or sampling.conditioning_resize != "preferred" or moss_controls:
+            raise ValueError("BluePixel uses its empirical flow schedule and does not support conditioning_resize or MOSS controls")
     if family == "flux3":
         if len(sampling.reference_images) > 10:
             raise ValueError("FLUX3 supports at most ten reference images")

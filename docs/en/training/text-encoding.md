@@ -11,7 +11,7 @@ Text encoders accept floating or Kitchen packed weights and can quantize floatin
 - [Tokenizer sources](#tokenizer-sources)
 - [Quantize before encoding](#quantize-before-encoding)
 - [Load a converted encoder](#load-a-converted-encoder)
-- [Safeguards and cache identity](#safeguards-and-cache-identity)
+- [Quality and recaching](#quality-and-recaching)
 
 </details>
 
@@ -25,7 +25,7 @@ Model topology never downloads at runtime. Tokenizer/processor sources remain in
 
 ## Tokenizer sources
 
-Tokenizers/processors default to Musubi's Hub sources. Downloads are restricted to vocabulary, template and processor metadata files; encoder weights remain local under `model.text_encoder`, with their local model configuration. Remote Python code is never executed.
+Tokenizers/processors use the Hub repositories listed below. Downloads are restricted to vocabulary, template and processor metadata files; encoder weights remain local under `model.text_encoder`, with their local model configuration. Remote Python code is never executed.
 
 | Model | Repository / subfolder |
 | --- | --- |
@@ -34,6 +34,7 @@ Tokenizers/processors default to Musubi's Hub sources. Downloads are restricted 
 | FLUX.2 Dev | `mistralai/Mistral-Small-3.1-24B-Instruct-2503` |
 | FLUX.2 Klein 4B / 9B | `Qwen/Qwen3-4B` / `Qwen/Qwen3-8B` respectively |
 | Qwen Image | `Qwen/Qwen-Image` / `tokenizer`; processor: `Qwen/Qwen-Image-Edit` / `processor` |
+| BluePixel | Local `tokenizer` under `model.assets` |
 | Krea2 | `Qwen/Qwen3-VL-4B-Instruct` |
 | Wan | `Wan-AI/Wan2.1-T2V-14B` / `google/umt5-xxl` |
 | MiniMaxH3 | `MiniMaxAI/MiniMax-H3` / `processor` |
@@ -46,7 +47,7 @@ revision = "main"                # Prefer a commit SHA for reproducibility
 offline = false
 ```
 
-Omit `source` to use the defaults above, or `revision` to use the repository default branch. `offline = true` uses existing Hub cache files only; local directories never access the network. Gated repositories use your Hugging Face credentials. CLI overrides such as `--set model.text.tokenizer.offline=true` use the same schema. `HF_HUB_OFFLINE=1` also disables Hub access.
+Omit `source` to use the defaults above, or `revision` to use the repository default branch. `offline = true` uses existing Hub cache files only; local directories never access the network. Gated repositories use your Hugging Face credentials. CLI overrides such as `--set model.text.tokenizer.offline=true` use the same fields. `HF_HUB_OFFLINE=1` also disables Hub access.
 
 FLUX accepts a separate `[model.text.clip_tokenizer]` table; Qwen Image accepts `[model.text.processor]`, both with the same fields. When omitted, these sources inherit the primary offline flag; set revisions separately. An explicit Qwen Image primary `source` also supplies its processor unless the processor table is provided, so that directory must contain complete processor assets. Other multimodal families use the primary tokenizer table for their complete processor.
 
@@ -66,7 +67,7 @@ precision = "bf16"
 quantization = "float8_e4m3fn"
 ```
 
-Keep `model.text_encoder` pointing to local source assets. `unituner cache train.toml --device cuda` loads the floating text model on CPU, quantizes each projection on GPU, returns packed layers to CPU, then places the encoder on its inference device. The complete floating encoder never needs to occupy GPU memory; host memory must still fit the floating source. CPU execution quantizes on CPU. Source files are unchanged.
+Keep `model.text_encoder` pointing to local source assets and run `unituner cache train.toml --device cuda`. Quantization reduces GPU weight memory, but preparation still needs enough host RAM for the floating source model. Source files are unchanged.
 
 | Field | Default | Purpose |
 | --- | --- | --- |
@@ -91,13 +92,13 @@ uv run unituner weights convert models/qwen3/model.safetensors models/qwen3-fp8/
   --family qwen3 --precision float8_e4m3fn --device cuda
 ```
 
-Set `model.text_encoder` to `models/qwen3-fp8` and keep `model.text.quantization = "none"`. Per-layer `*.comfy_quant` metadata selects layouts while scales, codebooks, and rotation tensors retain their storage dtypes. An explicit quantization target must match existing packed layers; lossy weights are never implicitly requantized. Conversion preserves source keys/prefixes, so automatic detection continues to work; an explicit `model.text_source_format` override must match the original namespace.
+Set `model.text_encoder` to `models/qwen3-fp8` and keep `model.text.quantization = "none"` to use the file’s existing quantization. An explicit target must match already quantized layers. If you set `model.text_source_format`, it must match the source format.
 
-File conversion also supports `--precision bf16`, `fp16`, and `fp32`, reconstructing quantized input first. This cannot recover lost information. Online quantization after selecting a computation dtype can produce different codes from offline quantization in the source dtype. For a direct comparison, first convert offline sources to the same floating dtype and use matching quantization parameters, device, and backend.
+File conversion also supports `--precision bf16`, `fp16`, and `fp32`. Returning to floating point cannot recover information lost during quantization. Use matching precision, quantization options, and devices when comparing online and offline conversion.
 
 | Model family | Text conversion preset |
 | --- | --- |
-| Z-Image, FLUX.2 Klein | `qwen3` |
+| Z-Image, FLUX.2 Klein, BluePixel | `qwen3` |
 | MOSS Image | `qwen3-5` |
 | FLUX | `t5` for the primary text directory and `clip` for the auxiliary directory; convert separately |
 | FLUX.2 Dev | `mistral` |
@@ -109,11 +110,11 @@ FLUX online settings apply to both T5 and CLIP. Convert each offline for differe
 
 MiniMaxH3 uses language layers 0–49. Online preparation protects layers 0 and 49 automatically. When converting a complete, untruncated Qwen3-VL source offline, also pass `--exclude '*layers.49.*'`; a file matching the native truncated topology is preferable. Text loaders accept artifacts with already quantized first/last layers or other protected paths and preserve their packed storage without requiring reconversion. Keys, shapes, layouts, and explicit quantization parameters must still pass validation.
 
-## Safeguards and cache identity
+## Quality and recaching
 
-Online preparation and file conversion share [text safeguards](../weight-conversion.md#text-encoder-protections): numeric first/last blocks, normalization, embeddings, vocabularies/LM heads, vision/audio branches, multimodal projectors, MTP, and Qwen3.5 sensitive projections. Hidden-state selection, padding, image/video tokens, and RoPE retain native family conventions. T5 activation dtype checks use floating computation precision instead of packed storage dtype.
+Sensitive text layers automatically retain higher precision. Use the matching encoder, tokenizer, and processor assets for your model.
 
-Cache identity includes source assets, explicit precision/quantization settings, and effective layouts/computation dtypes. Rerun `cache` after changing them. Feature storage follows existing schemas, usually FP32, while retaining FLUX3's native BF16 feature boundary. Storing low-precision results in FP32 does not recover information lost during computation.
+Rerun `unituner cache train.toml --device cuda` after changing the encoder, tokenizer, revision, precision, or quantization settings. Keep these settings fixed when comparing training results. Saving features as FP32 does not recover information lost during lower-precision encoding.
 
 ---
 

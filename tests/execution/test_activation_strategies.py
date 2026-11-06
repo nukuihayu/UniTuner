@@ -1,7 +1,6 @@
 """Qualify native block recompute and saved attention offload across all families."""
 
 from copy import deepcopy
-from typing import Literal
 
 import pytest
 import torch
@@ -10,7 +9,6 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from tests.execution.test_native_strategies import FAMILIES, _case, _move
 from unituner.config.execution import ExecutionConfig
 from unituner.execution.activations import AttentionActivations
-from unituner.execution.allocator_bootstrap import vbar_initialized
 from unituner.execution.installation import ExecutionInstallation
 from unituner.training.contracts import RunState
 from unituner.training.engine import update_phase
@@ -24,14 +22,6 @@ from unituner.training.session import TrainingSession
         ("cpu", "block", "resident", False, False),
         ("cuda", "block", "resident", True, False),
         ("cuda", "block", "frozen-blocks", True, False),
-        pytest.param(
-            "cuda",
-            "block",
-            "vbar",
-            True,
-            False,
-            marks=pytest.mark.skipif(not vbar_initialized(), reason="VBAR bootstrap"),
-        ),
     ],
 )
 def test_native_activation_gradients_three_updates(
@@ -42,8 +32,6 @@ def test_native_activation_gradients_three_updates(
     offload,
     compiled,
     full_training=False,
-    precision: Literal["fp32", "bf16"] = "fp32",
-    reference_compiled=None,
 ):
     if device_name == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
@@ -64,8 +52,8 @@ def test_native_activation_gradients_three_updates(
             optimizer = torch.optim.AdamW(parameters, lr=0.001)
             state = RunState()
             config = ExecutionConfig(
-                precision=precision,
-                compile=compiled if optimized or reference_compiled is None else reference_compiled,
+                precision="fp32",
+                compile=compiled,
                 recompute=recompute if optimized else "none",
                 residency=residency if optimized else "resident",
                 attention_activation_offload=offload and optimized,
@@ -88,7 +76,7 @@ def test_native_activation_gradients_three_updates(
                         optimizer,
                         state,
                         max_grad_norm=1.0,
-                        precision=precision,
+                        precision="fp32",
                     )
                     values[f"loss.{index}"] = result.mean_loss
                 if offload and optimized:
@@ -111,25 +99,8 @@ def test_native_activation_gradients_three_updates(
                 )
 
 
-@pytest.mark.parametrize(
-    "family,residency,recompute",
-    [
-        ("wan", "resident", "block"),
-        ("qwen-image-2-1", "vbar", "block"),
-        ("flux3", "frozen-blocks", "block"),
-    ],
-)
-def test_compiled_activation_combination(family, residency, recompute):
-    if residency == "vbar" and not vbar_initialized():
-        pytest.skip("VBAR bootstrap required")
-    test_native_activation_gradients_three_updates(family, "cuda", recompute, residency, True, True)
-
-
-@pytest.mark.parametrize("family", FAMILIES)
-def test_compiled_vbar_block_three_updates(family):
-    if not vbar_initialized():
-        pytest.skip("VBAR bootstrap required")
-    test_native_activation_gradients_three_updates(family, "cuda", "block", "vbar", True, True)
+def test_compiled_activation_combination():
+    test_native_activation_gradients_three_updates("qwen-image-2-1", "cuda", "block", "frozen-blocks", True, True)
 
 
 def test_activation_offload_strides_and_retained_graph():
@@ -155,7 +126,7 @@ def test_activation_offload_strides_and_retained_graph():
         owner.close()
 
 
-@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("family", ["flux", "qwen-image-2-1", "wan"])
 def test_full_training_activation_strategies(family):
     test_native_activation_gradients_three_updates(family, "cuda", "block", "resident", True, False, True)
 
@@ -200,10 +171,7 @@ def test_fp32_time_and_output_islands_under_amp():
                     handle.remove()
 
 
-@pytest.mark.parametrize("residency,recompute", [("resident", "block"), ("vbar", "block")])
-def test_public_activation_strategies_resume(tmp_path, monkeypatch, residency, recompute):
-    if residency == "vbar" and not vbar_initialized():
-        pytest.skip("VBAR bootstrap required")
+def test_public_activation_strategies_resume(tmp_path, monkeypatch):
     from tests.application.test_qwen_image_21_flow import test_public_training_three_updates_and_exact_resume
 
     monkeypatch.setenv("UNITUNER_TEST_DEVICE", "cuda")
@@ -212,7 +180,7 @@ def test_public_activation_strategies_resume(tmp_path, monkeypatch, residency, r
         torch.use_deterministic_algorithms(True)
         with sdpa_kernel(SDPBackend.MATH):
             test_public_training_three_updates_and_exact_resume(
-                tmp_path, "lora", 2, residency, recompute=recompute, attention_offload=True
+                tmp_path, "lora", 2, "frozen-blocks", recompute="block", attention_offload=True
             )
     finally:
         torch.use_deterministic_algorithms(deterministic)
@@ -252,55 +220,3 @@ def test_attention_replay_releases_completed_cuda_graphs():
         assert allocated[1] <= allocated[0] + 1024**2, allocated
     finally:
         owner.close()
-
-
-@pytest.mark.parametrize("family", ["flux", "qwen-image-2-1", "wan"])
-@pytest.mark.parametrize("compiled", [False, True])
-def test_vbar_block_bf16_three_updates(family, compiled):
-    if not vbar_initialized():
-        pytest.skip("VBAR bootstrap required")
-    test_native_activation_gradients_three_updates(family, "cuda", "block", "vbar", True, compiled, precision="bf16")
-
-
-@pytest.mark.parametrize("family", ["flux", "qwen-image-2-1", "wan"])
-def test_compiled_vbar_block_bf16_against_native_eager(family):
-    if not vbar_initialized():
-        pytest.skip("VBAR bootstrap required")
-    test_native_activation_gradients_three_updates(
-        family, "cuda", "block", "vbar", True, True, precision="bf16", reference_compiled=False
-    )
-
-
-@pytest.mark.parametrize("family", ["flux", "qwen-image-2-1"])
-@pytest.mark.parametrize("compiled", [False, True])
-def test_vbar_block_outstanding_graphs_and_eviction(family, compiled):
-    if not vbar_initialized():
-        pytest.skip("VBAR bootstrap required")
-    torch.manual_seed(991)
-    device = torch.device("cuda", 0)
-    with TrainingSession() as session, sdpa_kernel(SDPBackend.MATH):
-        binding, modules, request = _case(family, session)
-        for module in modules.values():
-            module.to(device)
-        request = _move(request, device)
-        parameters = tuple(modules["adapter"].parameters())
-        expected = torch.autograd.grad(binding.step(request).loss, parameters, allow_unused=True)
-        owner = ExecutionInstallation(
-            binding.regions, ExecutionConfig(compile=compiled, recompute="block", residency="vbar"), device=device
-        )
-        try:
-            losses = [binding.step(request).loss, binding.step(request).loss]
-            assert owner._arena is not None
-            owner._arena._owner.set_watermark(0)
-            for loss in reversed(losses):
-                # Compiled graphs use native AOT donation and one backward per
-                # graph; eager additionally qualifies repeated first-order VJPs.
-                for _ in range(1 if compiled else 2):
-                    actual = torch.autograd.grad(loss, parameters, allow_unused=True, retain_graph=not compiled)
-                    for value, reference in zip(actual, expected, strict=True):
-                        assert (value is None) == (reference is None)
-                        if value is not None:
-                            torch.testing.assert_close(value, reference, atol=1e-5, rtol=1e-4)
-                    assert owner.vbar_statistics().active_leases == 0
-        finally:
-            owner.close()

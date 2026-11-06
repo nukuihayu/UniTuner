@@ -1,6 +1,5 @@
 """Install shared region execution owners consistently for image and AV workflows."""
 
-from collections.abc import Callable
 from contextlib import ExitStack
 
 import torch
@@ -8,10 +7,8 @@ import torch
 from unituner.artifacts.formats.quantization import canonical_quantization
 from unituner.config.execution import ExecutionConfig
 from unituner.execution.activations import AttentionActivations, AttentionOffloadInstallation
-from unituner.execution.allocator_bootstrap import vbar_initialized
 from unituner.execution.compiler import CompilerInstallation
 from unituner.execution.frozen_blocks import FrozenBlockInstallation
-from unituner.execution.mapped_weights import VbarArena, VbarStatistics
 from unituner.execution.prefetch import WeightPrefetch
 from unituner.execution.recompute import RecomputeInstallation
 from unituner.execution.regions import ModelRegions
@@ -67,8 +64,6 @@ def validate_training_execution(config: ExecutionConfig, *, device: torch.device
         raise ValueError("Training Inductor execution requires CUDA")
     if config.attention_activation_offload and device.type != "cuda":
         raise ValueError("Attention activation offload requires CUDA")
-    if config.residency == "vbar" and not vbar_initialized():
-        raise ValueError("VBAR requires early initialization; use unituner train or initialize_vbar() before Torch")
     if config.offloads_frozen_weights:
         if device.type != "cuda" or not adapter:
             raise ValueError("Frozen block H2D residency requires CUDA adapter training")
@@ -81,8 +76,6 @@ class ExecutionInstallation:
 
     def __init__(self, regions: ModelRegions, config: ExecutionConfig, *, device: torch.device) -> None:
         self._owners: ExitStack = ExitStack()
-        self._statistics: list[Callable[[], VbarStatistics]] = []
-        self._arena: VbarArena | None = None
         self._activations: AttentionActivations | None = None
         prefetch: WeightPrefetch | None = None
         self._cache: H2dCache | None = None
@@ -101,29 +94,6 @@ class ExecutionInstallation:
                     raise ValueError("Attention activation offload requires CUDA")
                 self._activations = AttentionActivations(device)
                 self._owners.callback(self._activations.close)
-            if config.residency == "vbar":
-                size_bytes = 0
-                region_sizes: list[tuple[int, ...]] = []
-                for region in regions.regions:
-                    groups: dict[torch.dtype, int] = {}
-                    for parameter in region.module.parameters():
-                        if not parameter.requires_grad and parameter.is_contiguous():
-                            groups[parameter.dtype] = groups.get(parameter.dtype, 0) + parameter.nbytes
-                    size_bytes += sum((size + 511) // 512 * 512 for size in groups.values())
-                    if groups:
-                        region_sizes.append(tuple(groups.values()))
-                if size_bytes:
-                    self._arena = VbarArena(
-                        size_bytes,
-                        device=device,
-                        defer_release=True,
-                        allocation_workspace_bytes=allocation_workspace_bytes
-                        if config.precision in ("bf16", "fp16")
-                        else 0,
-                    )
-                    self._owners.callback(self._arena.close)
-                    self._arena.plan_regions(region_sizes)
-                    prefetch = WeightPrefetch(device, arena=self._arena)
             if config.residency == "frozen-blocks":
                 self._cache = H2dCache(
                     device=device,
@@ -177,13 +147,9 @@ class ExecutionInstallation:
                         device=device,
                         use_pinned_memory=config.use_pinned_memory_for_block_swap is not False,
                         cache=self._cache,
-                        use_vbar=config.residency == "vbar",
-                        vbar_arena=self._arena,
                         prefetch=prefetch,
                     )
                     self._owners.callback(owner.close)
-                    if config.residency == "vbar":
-                        self._statistics.append(owner.vbar_statistics)
                 elif config.recompute == "block":
                     recompute = RecomputeInstallation(
                         region,
@@ -202,21 +168,7 @@ class ExecutionInstallation:
     def close(self) -> None:
         """Release installed callables and H2D masters after all backward work completes."""
         self._owners.close()
-        self._statistics.clear()
 
     def h2d_statistics(self) -> H2dStatistics | None:
         """Report the shared cache including current/lookahead and active-graph storage."""
         return None if self._cache is None else self._cache.statistics()
-
-    def vbar_statistics(self) -> VbarStatistics:
-        """Aggregate physical residency and invocation leases across all frozen regions."""
-        values = tuple(read() for read in self._statistics)
-        return VbarStatistics(
-            sum(value.hits for value in values),
-            sum(value.transfers for value in values),
-            sum(value.fallbacks for value in values),
-            0 if self._arena is None else self._arena.loaded_bytes(),
-            sum(value.active_leases for value in values),
-            0 if self._arena is None else self._arena.staging.pinned_bytes,
-            0 if self._arena is None else self._arena.staging.registered_bytes,
-        )

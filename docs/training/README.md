@@ -195,7 +195,7 @@ adapter 的正式权重使用对应模型的 ComfyUI 加载键；选择匹配基
 
 | 现象 | 先检查 |
 | --- | --- |
-| 字段 unknown/extra | 是否写错表路径，或把推理配置交给 validate |
+| 字段 unknown/extra | 检查表路径；验证推理配置时指定对应的 `--for` |
 | 缓存身份不匹配 | 图片、提示词、编码器或预处理变化后重建缓存 |
 | 权重形状不匹配 | 家族、variant/version、VAE、文本编码器是否匹配 |
 | 找不到 tokenizer | 本地 source 是否直接包含分词文件，offline=true 时缓存是否完整 |

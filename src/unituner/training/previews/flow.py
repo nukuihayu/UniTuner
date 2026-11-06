@@ -10,8 +10,13 @@ from unituner.config.training import TrainingConfig
 from unituner.data.media.image import save_image
 from unituner.inference.decoding import decode_on_device
 from unituner.inference.sampling import generate_latents
+from unituner.models.bluepixel.inference.conditioning import read_reference
+from unituner.models.bluepixel.inference.sampling import sample_latents as sample_bluepixel
+from unituner.models.bluepixel.transformer import BluePixelTransformer
+from unituner.models.bluepixel.vae import BluePixelVAE
 from unituner.models.components.conditioning import Caption
 from unituner.models.components.image_encoders import load_image_text, load_image_vae
+from unituner.models.components.image_geometry import image_latent_geometry
 from unituner.models.flux.conditioning import FluxTextFeatures
 from unituner.models.flux.inference.conditioning import build_flux_condition
 from unituner.models.flux.transformer import FluxTransformer
@@ -21,10 +26,12 @@ from unituner.models.flux2.transformer import Flux2Transformer
 from unituner.models.flux2.vae import Flux2VAE
 from unituner.models.flux3.inference.conditioning import build_flux3_references
 from unituner.models.flux3.transformer import Flux3Transformer
+from unituner.models.image import model_latent_channels, validate_model_selection
 from unituner.models.moss_image.inference.conditioning import encode_references
 from unituner.models.moss_image.transformer import MossImageTransformer
 from unituner.models.z_image.transformer import ZImageTransformer
 from unituner.models.z_image.vae import ZImageVAE
+from unituner.precision import sampling_dtype
 from unituner.training.previews.publication import CaptionCache, publish_images
 
 if TYPE_CHECKING:
@@ -39,19 +46,7 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
     """Cache CPU captions and borrow the live model for each completed update."""
 
     def __init__(self, config: TrainingConfig, model: CachedImageModel) -> None:
-        families = (
-            (FluxTransformer, "flux"),
-            (Flux2Transformer, "flux2"),
-            (Flux3Transformer, "flux3"),
-            (MossImageTransformer, "moss-image"),
-            (ZImageTransformer, "z-image"),
-        )
-        if not any(isinstance(model, cls) and config.model.family == family for cls, family in families):
-            raise ValueError("Preview configuration and native model family differ")
-        if config.model.variant != model.config.variant:
-            raise ValueError("Preview configuration and artifact variant differ")
-        if isinstance(model, Flux2Transformer) and config.model.version != model.config.version:
-            raise ValueError("Preview configuration and artifact version differ")
+        validate_model_selection(config.model, model)
         self.config = config
         self.model = model
         self.captions = None
@@ -66,7 +61,7 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
             flux_text = cast("FluxTextEncoder", text)
             return tuple((flux_text.encode([sample.prompt]), None) for sample in config.preview.samples)
         encoder = cast("PromptTextEncoder", text)
-        default_negative = " " if isinstance(model, Flux2Transformer) else ""
+        default_negative = " " if isinstance(model, Flux2Transformer) and not isinstance(model, BluePixelTransformer) else ""
         requires_negative = isinstance(model, MossImageTransformer) or (
             isinstance(model, Flux2Transformer | Flux3Transformer) and model.config.variant == "base"
         )
@@ -80,36 +75,19 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
             for sample in config.preview.samples
         )
 
-    def load_vae(self) -> tuple[FluxVAE | Flux2VAE | ZImageVAE, int]:
+    def load_vae(self) -> tuple[FluxVAE | Flux2VAE | ZImageVAE | BluePixelVAE, int]:
         """Load the frozen CPU decoder and validate native latent channels."""
         config, model = self.config, self.model
         if config.model.vae is None:
             raise ValueError("Image previews require VAE weights")
         vae = cast(
-            FluxVAE | Flux2VAE | ZImageVAE,
+            FluxVAE | Flux2VAE | ZImageVAE | BluePixelVAE,
             load_image_vae(Path(config.model.vae), family=config.model.family, device=torch.device("cpu")),
         )
-        if isinstance(model, FluxTransformer):
-            vae = cast(FluxVAE, vae)
-            channels, vae_channels = model.config.out_channels // 4, vae.config.latent_channels
-            factor = vae.config.spatial_factor
-        elif isinstance(model, ZImageTransformer):
-            vae = cast(ZImageVAE, vae)
-            channels, vae_channels = model.config.in_channels, vae.config.latent_channels
-            factor = 2 ** (len(vae.config.block_channels) - 1)
-        else:
-            vae = cast(Flux2VAE, vae)
-            if isinstance(model, Flux2Transformer):
-                channels = model.config.in_channels
-            elif isinstance(model, Flux3Transformer):
-                channels = model.config.image_channels
-            else:
-                channels = model.config.latent_channels
-            vae_channels = 4 * vae.config.latent_channels
-            factor = vae.config.spatial_factor
-        if channels != vae_channels:
+        geometry = image_latent_geometry(vae)
+        if model_latent_channels(model) != geometry.channels:
             raise ValueError("Preview vae/model latent channels differ")
-        return vae, factor
+        return vae, geometry.spatial_factor
 
     def __call__(self, update: int) -> None:
         """Render samples in order using native conditioning and pixel rounding."""
@@ -124,6 +102,26 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
             entry: tuple[SamplingConfig, tuple[Caption | FluxTextFeatures, Caption | None]],
         ) -> tuple[torch.Tensor, ...]:
             sample, (positive, negative) = entry
+            if isinstance(model, BluePixelTransformer):
+                if not isinstance(positive, Caption) or not isinstance(negative, Caption):
+                    raise ValueError("BluePixel preview requires positive and empty-prompt captions")
+                reference_pixels = read_reference(
+                    Path(sample.reference_images[0]), width=sample.width, height=sample.height
+                )
+                reference = cast(BluePixelVAE, vae).encode(reference_pixels)[0]
+                generator = torch.Generator(device="cpu").manual_seed(sample.seed)
+                noise = torch.randn(reference.shape, generator=generator).to(torch.bfloat16)
+                dtype = sampling_dtype(model)
+                latents = sample_bluepixel(
+                    model,
+                    noise.to(device=device, dtype=dtype),
+                    reference.unsqueeze(0).to(device=device, dtype=dtype),
+                    positive.features[0].to(device=device, dtype=dtype),
+                    negative.features[0].to(device=device, dtype=dtype),
+                    steps=sample.steps or 4,
+                    guidance=3.0 if sample.guidance is None else sample.guidance,
+                )
+                return (decode_on_device(vae, latents, device=device)[0],)
             condition, references = None, ()
             if isinstance(model, FluxTransformer):
                 condition = build_flux_condition(cast(FluxVAE, vae), sample, variant=model.config.variant)

@@ -392,9 +392,6 @@ def _main(argv: Sequence[str] | None = None) -> int:
         status(f"[train] Output directory: {config.output.directory}")
         status(f"[train] Log file: {path}")
         status("[train] Configuration loaded; importing training runtime")
-        if config.execution.residency == "vbar":
-            bootstrap = import_module("unituner.execution.allocator_bootstrap").initialize_vbar
-            bootstrap()
         entry = import_module("unituner.training.run").run
         if not callable(entry):
             raise TypeError("Training command entry must be callable")

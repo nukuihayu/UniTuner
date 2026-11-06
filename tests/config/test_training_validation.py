@@ -31,7 +31,7 @@ def test_global_validation_runs_once_and_group_checks_retain_each_group(monkeypa
 
 
 @pytest.mark.parametrize(
-    "residency, offloads", [("resident", False), ("frozen-blocks", True), ("vbar", True), ("trainable-blocks", False)]
+    "residency, offloads", [("resident", False), ("frozen-blocks", True), ("trainable-blocks", False)]
 )
 def test_derived_residency_policy_does_not_change_serialized_config(residency, offloads):
     config = ExecutionConfig(residency=residency)

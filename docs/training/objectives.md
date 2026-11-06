@@ -4,7 +4,7 @@
 
 [文档目录](../README.md) · [训练指南](README.md) · [示例配置](../examples/README.md)
 
-LayerSync、REPA 和 TREAD 可组合用于当前十个家族的流匹配训练，不接入图像修复。
+LayerSync、REPA 和 TREAD 可组合用于支持模型的流匹配训练，不接入图像修复。
 LoRA／LoHa／LoKr 和 full 使用相同方法配置，层窗口须符合所选原生模型拓扑。
 重算、编译和驻留是独立的[执行策略](execution.md)，不改变这里定义的训练目标。
 
@@ -94,7 +94,7 @@ REPA 清单绑定每个原生缓存记录的完整摘要，训练前检查覆盖
 
 ## Wavelet loss
 
-八个图像家族的流匹配和图像修复可以附加 DWT 频带损失，适用于 adapter 和 full。
+支持的图像模型在流匹配和图像修复时可以附加 DWT 频带损失，适用于 adapter 和 full。
 流匹配作用于模型原生速度 prediction/target；图像修复作用于解码图像 generated/HQ，
 不会把速度目标误当成干净图像。Wan、MiniMaxH3 暂不接入此图像目标。
 

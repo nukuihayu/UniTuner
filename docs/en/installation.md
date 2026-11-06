@@ -13,7 +13,6 @@ Prepare the environment here, then follow [your first training run](getting-star
 - [Check CUDA](#check-cuda)
 - [Tokenizers and offline use](#tokenizers-and-offline-use)
 - [Mirrors and fixed environments](#mirrors-and-fixed-environments)
-- [Development](#development)
 
 </details>
 
@@ -45,16 +44,16 @@ Commands assume the repository root as the working directory. Installing depende
 
 ## Default runtime dependencies
 
-A normal installation or `uv sync --locked --no-dev` installs all runtime dependencies. The `media`, `text`, `kitchen`, and `vbar` extras are no longer provided:
+`uv sync --locked --no-dev` installs the runtime dependencies needed for caching, training and inference:
 
 | Dependencies | Purpose |
 | --- | --- |
 | transformers, torchvision, sentencepiece, ftfy | Text encoding, tokenizers, and processors |
+| diffusers | BluePixel's DCAE autoencoder |
 | av, opencv-python-headless, pillow | Image, video, and audio I/O |
 | comfy-kitchen | Quantization, weight conversion, and corresponding inference operators |
-| comfy-aimdo | VBAR memory-page management |
 
-Installing dependencies does not enable quantization or VBAR and does not download models. CUDA-specific features still require compatible devices, drivers, and configuration. Text encoders remain lazily loaded when needed.
+Prepare model weights separately. Enable quantization and offload in your configuration when needed. CUDA features require compatible devices and drivers.
 
 ## Check CUDA
 
@@ -64,7 +63,6 @@ uv run --no-sync --no-dev python -c "import torch; print('Torch:', torch.__versi
 
 If CUDA is unavailable, check the driver, active Python environment, and Torch build. `--device cuda` selects a device; it does not install drivers or replace Torch. For CPU workflows explicitly choose `--device cpu --execution.precision fp32`. Automatic precision follows the weights and does not guarantee a CPU-compatible selection.
 
-The `unituner train` entry initializes VBAR before Torch. If a Notebook process already imported Torch, launch a fresh CLI process for VBAR.
 
 ## Tokenizers and offline use
 
@@ -87,16 +85,6 @@ UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync --locked --no-
 ```
 
 This controls Python package sources, not model or interpreter downloads. After installation, `uv run --no-sync --no-dev unituner …` avoids synchronizing dependencies at launch.
-
-## Development
-
-```bash
-uv sync --locked --group dev
-make check
-make test
-```
-
-`make check` runs Ruff, Ty, and Pyright; `make test` runs project tests. Some tests require CUDA or local assets. See [architecture](architecture.md) for model integration and resource ownership.
 
 ---
 

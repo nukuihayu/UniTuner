@@ -98,7 +98,7 @@ alpha = 7.0
 '''
         if wavelet:
             body += "[method.wavelet]\nweight = 0.5\nlevels = 2\n"
-        selected_recompute = recompute if recompute is not None else ("block" if residency != "vbar" else None)
+        selected_recompute = recompute if recompute is not None else "block"
         body += f'''[execution]
 precision = "{precision}"
 residency = "{residency}"

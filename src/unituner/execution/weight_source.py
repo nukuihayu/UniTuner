@@ -119,8 +119,7 @@ class WeightStaging:
         """Pin streaming sources in place within an automatic budget, retaining owners.
 
         Merge shared page intervals: adjacent parameters may share host pages,
-        and CUDA rejects overlapping registrations. Cold VBAR loads
-        do not register sources; this cache is reserved for repeated fallbacks.
+        and CUDA rejects overlapping registrations.
         """
         if self._registration_budget is None:
             self._registration_budget = _registration_budget()

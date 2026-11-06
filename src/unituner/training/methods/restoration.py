@@ -21,9 +21,10 @@ from unituner.inference.restoration.vae import (
 from unituner.logging import clear_context, set_context
 from unituner.models.components.conditioning import Caption, batch_captions
 from unituner.models.components.image_encoders import load_image_vae
+from unituner.models.components.image_geometry import image_latent_geometry
 from unituner.models.features.loading import load_dino_convnext, load_vgg19_features
 from unituner.models.flux.conditioning import FluxTextFeatures
-from unituner.models.flux2.vae import Flux2VAE
+from unituner.models.image import model_latent_channels
 from unituner.models.krea2.conditioning import Krea2TextFeatures, batch_text
 from unituner.models.qwen_image.vae import QwenImageVAE
 from unituner.precision import compute_context
@@ -102,21 +103,7 @@ class RestorationMethod:
         status("[train] Restoration VAE loaded; installing encoder adapters")
         self.vae.compute_precision = self.compute_precision
         self.posterior: Literal["mean", "sample"] = restoration_posterior(config.model.family, options.posterior)
-        vae_channels = self.vae.config.latent_channels * (4 if isinstance(self.vae, Flux2VAE) else 1)
-        channels = (
-            binding.model.config.out_channels // 4
-            if isinstance(binding, FluxBinding)
-            else binding.model.config.in_channels
-            if isinstance(binding, Flux2Binding)
-            else binding.model.config.image_channels
-            if isinstance(binding, Flux3Binding)
-            else binding.model.config.latent_channels
-            if isinstance(binding, MossImageBinding)
-            else binding.model.config.out_channels
-            if isinstance(binding, QwenImageBinding | QwenImage21Binding)
-            else binding.model.config.in_channels
-        )
-        if vae_channels != channels:
+        if image_latent_geometry(self.vae).channels != model_latent_channels(binding.model):
             raise ValueError("Restoration vae/model latent channels differ")
         if isinstance(self.vae, QwenImageVAE) and (
             self.vae.config.input_channels != 3

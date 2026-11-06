@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/unituner-logo.png" alt="UniTuner" width="560"></p>
+<p align="center"><img src="assets/unituner-logo.svg" alt="UniTuner" width="560"></p>
 
 # 使用文档
 
@@ -29,7 +29,7 @@
 | --- | --- |
 | [完整参数手册](training/parameters.md) | 字段类型、默认值、范围与填写位置 |
 | [模型与资产](training/models.md) | 家族、变体、条件输入与资产组合 |
-| [显存与执行策略](training/execution.md) | 常驻、H2D、VBAR、重算与编译 |
+| [显存与执行策略](training/execution.md) | 常驻、H2D、重算与编译 |
 | [精度](training/precision.md) | 存储、计算、AMP 与导出精度 |
 | [量化基模](training/quantized-base.md) | 冻结量化底模的适配器训练 |
 | [文本编码](training/text-encoding.md) | 编码器、分词器、计算精度与量化 |
@@ -45,10 +45,3 @@
 | [权重分析](weight-analysis.md) | 查看训练权重与适配器变化 |
 | [日志与 TensorBoard](logging.md) | 终端、JSONL 与事件指标 |
 | [故障排查](troubleshooting.md) | 资产、缓存、显存不足、续训与效果差异 |
-
-## 项目维护参考
-
-| 页面 | 内容 |
-| --- | --- |
-| [项目架构](architecture.md) | 模块边界与资源所有权 |
-| [执行机制](training/execution-internals.md) | 权重生命周期与训练执行边界 |

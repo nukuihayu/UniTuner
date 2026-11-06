@@ -11,6 +11,8 @@ from collections.abc import Iterable, Mapping
 import torch
 from torch import Tensor
 
+from unituner.models.catalog import backbone_family
+
 
 def dequantize_transformer(tensors: Mapping[str, Tensor]) -> dict[str, Tensor]:
     """Decode packed projections when a different layout requires split/fusion."""
@@ -42,6 +44,7 @@ def strip_transformer_prefix(tensors: Mapping[str, Tensor]) -> dict[str, Tensor]
 
 def is_diffusers_transformer(family: str, keys: Iterable[str]) -> bool:
     """Identify layouts whose keys differ from the corresponding owned model."""
+    family = backbone_family(family)
     prefixes = {
         "flux": ("x_embedder.", "context_embedder."),
         "flux2": ("x_embedder.", "context_embedder."),
@@ -262,6 +265,7 @@ def _h3_sources(key: str) -> tuple[str, ...]:
 
 def official_projection_sources(family: str, key: str) -> tuple[str, ...]:
     """Map a native parameter to ordered official parameters, retaining fusion boundaries."""
+    family = backbone_family(family)
     if family in {"flux", "flux2"}:
         return _flux_sources(key, second=family == "flux2")
     if family == "flux3":
@@ -283,6 +287,7 @@ def convert_transformer(
     Native quantized layouts pass through unchanged. Fused external quantized
     projections cannot be split as floating tensors and fail explicitly.
     """
+    family = backbone_family(family)
     source = strip_transformer_prefix(tensors)
     if family == "z_image":
         if any(".attention.qkv." in key for key in source):

@@ -1,81 +1,98 @@
-# Final weight analysis
+# Analyze trained weights
+
+[简体中文](../weight-analysis.md) · [Documentation](README.md)
+
+Inspect where adapter updates concentrate, check nonfinite values and compare trained weights with the base. Use fixed-prompt previews or a validation set to judge output quality.
+
+## Generate your first report
 
 ```bash
-uv run unituner analyze runs/my-run --base /models/base.safetensors
 uv run unituner analyze --list
+uv run unituner analyze runs/my-run --base /models/base.safetensors
 ```
 
-The analyzer selects unnumbered portable exports in `weights/`, including separate encoder exports. Legacy root-level exports and explicit safetensors/index paths are supported. Numbered periodic exports and `resume/` states are excluded; missing final exports produce an error. The training writer may refresh the unnumbered latest export during training: this filename does not prove completion. Reports use recorded update metadata.
+Replace `runs/my-run` with the training output and use the original training base for `--base`. You can also select a weight file directly:
+
+```bash
+uv run unituner analyze runs/my-run/weights/model.safetensors --base /models/base.safetensors
+```
+
+Without `--base`, weight statistics remain available but base-relative comparisons are limited. Encoder adapters need the matching VAE base.
+
+The default selects unnumbered exports in `weights/` and analyzes encoder adapters separately. Numbered periodic exports and resume states are not accepted as analysis inputs. An unnumbered file can be the most recent export from an ongoing run; check the report's recorded update count.
+
+## View and save reports
+
+Results default to `analysis/<timestamp>/` inside the training directory. Choose another location with:
+
+```bash
+uv run unituner analyze runs/my-run --base /models/base.safetensors \
+  --output reports/my-run --show never
+```
+
+| File | Use |
+| --- | --- |
+| `summary.md` | Analysis summary |
+| `figures.pdf` and PNG charts | View, share or retain comparisons |
+| `layers.csv` | Per-layer weight statistics |
+| `diagnostics.csv`, `allocation.csv` | Update magnitudes, nonfinite values and distribution |
+| `labels.csv` | Short chart labels mapped to full layer names |
+| `heads.csv`, `subspaces.csv` | Results when those analyses are enabled |
+
+`--show never` disables automatic display while still saving charts and tables. Avoid overwriting a weight file while it is being analyzed.
+
+## Read the charts
+
+| Chart | Look for |
+| --- | --- |
+| Layer energy ranking | Layers carrying most of the update |
+| Update magnitude distribution | Unusually large, small or persistently zero updates among similar modules |
+| Spectrum and effective rank | Adapter capacity use; useful for planning a lower-rank comparison |
+| Base-relative movement | Update size relative to the original weights |
+| Training log curves | Loss, learning rate, gradients and memory over time |
+
+LoRA reports analyze effective weight updates. Full-parameter reports use trained-minus-base differences when a matching base is supplied; otherwise read values labeled as stored weights accordingly.
+
+Investigate NaN/Inf first. Large updates, low effective rank or concentrated updates alone do not establish failure or overfitting. Compare generated results too.
+
+## Select layers and comparison scope
+
+```bash
+uv run unituner analyze runs/my-run --base /models/base.safetensors \
+  --layer '*attn*' --top-k 64 --top-layers 6
+```
+
+| Option | Use |
+| --- | --- |
+| `--layer` | Filter layer names; repeat for multiple selectors |
+| `--top-layers` | Change the number of layers analyzed in detail; default is up to 3 |
+| `--top-k` | Control the number of directions in subspace comparison |
+| `--compare` | Add another complete weight file |
+| `--key-map` | Supply an explicit layer-name mapping |
+| `--heads` | Inspect head statistics when output-row groups are known |
+
+Head plots describe weight size and direction, not image-generation attention maps. Check grouping before analyzing fused or special head layouts. Supply floating base weights when packed quantization prevents a full logical comparison.
+
+## Use in a notebook
 
 ```python
 from unituner.analysis import analyze_run
+
 report = analyze_run("runs/my-run", show="auto")
 ```
 
-All charts use Plotly, without Matplotlib or Seaborn. Notebook calls display interactive Plotly figures with zoom and full-path hover details. Terminal calls print tables and display images where supported; headless terminals save results. Use `--show never` to disable display. Results go to `project/analysis/<timestamp>/`: PNGs, multipage PDF, CSV tables and Markdown, with no HTML or intermediate datasets.
+Direct Python-cell calls show interactive charts with zoom and layer-name hover. When launching through `!uv run`, open the saved report files.
 
-Static PNG/PDF export uses Kaleido and requires Chrome/Chromium. Install with `uv run plotly_get_chrome -y`; Linux also needs the browser system libraries. Set `BROWSER_PATH` for an existing browser. Renderer failures retain numeric tables and report the missing dependency rather than switching plotting libraries.
+## If chart export fails
 
-<details>
-<summary>On this page</summary>
+PNG/PDF export requires Chrome or Chromium. The first run can download a browser automatically. Offline, set `BROWSER_PATH` to an existing browser. You can also install one in advance:
 
-- [Visuals and tables](#visuals-and-tables)
-- [Scientific interpretation](#scientific-interpretation)
-- [Matching and budgets](#matching-and-budgets)
-- [Update versus merged LoRA weights](#update-versus-merged-lora-weights)
+```bash
+uv run plotly_get_chrome -y
+```
 
-</details>
-
-## Visuals and tables
-
-Figures use a restrained paper style: white background, consistent serif typography, thin axes and a colorblind-friendly palette. Explanatory text and coverage belong in `figure-captions.md`, not inside plot panels.
-
-- Energy ranking: top 20 layers, normalized by the complete eligible role population.
-- Fixed-size scatter: rank usage versus relative baseline movement; fewer than three observations do not produce a relationship plot.
-- Unfilled box plots with observation points: module RMS distributions, 10 modules per page.
-- Spectral curves: up to six eligible layers. Interactive notebook buttons switch views; static exports omit buttons.
-- Numeric reference tables: 24 rows per page, shorter canvases for small samples.
-- Actual two-dimensional matrices: coolwarm for module, subspace and head maps, with explicit scales and consistent page limits.
-- Separate telemetry plots: units are not mixed, notebook hover and range controls remain available.
-
-The PDF preserves vector text, axes and curves; heatmap representation follows the renderer. A specific journal may impose additional dimensions, typography and format requirements.
-
-Official references: [Plotly](https://plotly.com/python/), [Box](https://plotly.com/python/box-plots/), [Table](https://plotly.com/python/table/), [Heatmap](https://plotly.com/python/heatmaps/), [Hover](https://plotly.com/python/hover-text-and-formatting/).
-
-## Scientific interpretation
-
-LoRA uses effective `ΔW=(alpha/r)BA`, preserving factor-gauge invariance. Encoder and other adapters use their actual scaling/composition. `layers.csv` contains finite-aware FP64 moments, nonfinite counts, sampled quantiles, matched baseline changes and spectral diagnostics.
-
-`diagnostics.csv` and `allocation.csv` include squared-norm energy fractions, layers needed for 90% energy, effective layer count `1/sum(p²)`, stable rank, energy rank, and LoRA rank-capacity fractions. Energy populations are separated by module role; dense exports use matched baseline differences when available, otherwise explicitly labeled stored-weight energy. Large matrices naturally contribute more energy; inspect RMS too.
-
-LoRA capacity is `min(r,in,out)`, not a denominator for LoHa/LoKr. Peer scale scores use `0.67448975*(log10(RMS)-median)/MAD` within matching role, algorithm, shape and final module token; at least five positive finite observations and nonzero MAD are required. A score above 3.5 in magnitude is a heuristic observation, not a significance test or training failure.
-
-Subspace overlap and principal angles are more reliable than individual singular-vector alignment for repeated singular values. Norms and ranks are descriptive: they cannot establish quality or overfitting. Rank reductions, target-layer changes and optimizer adjustments require validation and fixed-seed previews.
-
-## Matching and budgets
-
-Use `--base`, `--compare`, repeatable `--layer`, `--top-k`, `--top-layers`, and explicit `--key-map` when needed. Names and shapes must match; fuzzy mappings are not inferred. Encoders require their own matching VAE reference. Spectra and subspaces have explicit compute budgets; randomized SVD uses a fixed seed and reports captured energy. Packed quantization is storage-only unless exported to floating weights.
-
-Baselines can be single files, indexed shards or local official transformer directories. Reference-only views handle documented ComfyUI/official layout differences: Qwen Image 2.1 `[gate_layer; proj]`, Z-Image QKV including unequal-width GQA, FLUX QKV and fused single-stream inputs, FLUX3 QKV, and H3 QKV/SwiGLU ordering. Other supported families reuse explicit official projection mappings from the model importer. Only the required reference matrix is joined; the full model is never allocated or rewritten. Both ComfyUI down/up/alpha and Diffusers A/B LoRA factors are recognized, including official PEFT alpha/pattern and RSLoRA scaling metadata. Vanilla PEFT A/B without explicit alpha uses unit scaling; DoRA is not approximated as vanilla LoRA.
-
-Layout compatibility does not establish base-model identity. Packed quantization remains unavailable for logical comparisons; provide floating base weights. Qwen 2.1 LoRA projections stay separate according to [ComfyUI's mapping](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy/lora.py); the A/B scaling convention follows [Diffusers PEFT loading](https://github.com/huggingface/diffusers/blob/main/src/diffusers/utils/peft_utils.py).
-
-Final exports cannot recover parameter trajectories. Recorded loss/gradient/LR curves are separate telemetry, not inferred weight histories.
-
-Sources: [LoRA](https://arxiv.org/abs/2106.09685), [LyCORIS](https://arxiv.org/abs/2309.14859), [Randomized matrix decompositions](https://arxiv.org/abs/0909.4061).
-
-Legends use a reserved right sidebar rather than the axis-title area. Tick and legend text is 24 px, body text 26 px, and titles 30 px, scaled proportionally on export. Energy rankings reserve 44 px per row; distribution pages show at most six groups with uniform dark-blue outlines. Spectrum controls remain interactive in notebooks and are omitted from static PNG/PDF exports.
-
-## Update versus merged LoRA weights
-
-With a compatible `--base`, adapter subspace/head analysis compares the effective **ΔW** with **W₀+ΔW**. Original per-layer baseline statistics still compare with W₀. Singular-vector maps use absolute cross-basis cosine on a coolwarm log scale (data-dependent lower bound, floored at 10⁻⁴, to 1); equal nonzero k is used on both sides and energy coverage is recomputed at that k. Repeated singular values allow basis rotations, so principal angles and overlap are more reliable than individual diagonal entries.
-
-Head maps show both `‖ΔW_h‖F / ‖(W₀+ΔW)_h‖F` (log magnitude) and signed `cos(ΔW_h, (W₀+ΔW)_h)` (blue opposing, neutral orthogonal, red aligned; symmetric data-dependent limits about zero). Undefined ratios/cosines are blank. These are weight statistics, not activation attention maps or head importance. Explicit `--heads` declares contiguous output-row groups; fused QKV, GQA and transposed projections are not inferred. Each page contains at most 24 layers and 32 heads with shared metric limits. Default selection covers at most three layers; use `--top-layers` or explicit `--layer` selectors to expand it. `heads.csv` identifies the comparison, and `principal-angles.csv` saves each principal angle. Full-weight analysis retains trained-versus-base semantics.
-
-All figures use a common sans-serif publication style and blue/red palette. Artifact analysis is primary: effective ΔW for adapters, matched W_trained−W₀ for dense update RMS, and explicitly labeled stored weights when no base is available. Raw stored moments are retained in layers.csv; diagnostics.csv identifies its RMS source via rms_kind. Dense spectra remain explicitly labeled trained-weight spectra.
+Linux also needs the browser's system libraries. Check the error log if export fails; any generated CSV tables and `summary.md` remain usable.
 
 ---
 
-[Documentation](README.md) · [Parameter reference](training/parameters.md) · [Troubleshooting](troubleshooting.md)
-
-Static export reuses an installed Chrome/Chromium or automatically downloads Chrome to Kaleido’s user cache on first use, without administrator privileges. The first download requires network access and has a 180-second timeout; set `BROWSER_PATH` for an existing browser in offline environments. Linux still needs the browser’s system libraries. Download, browser startup and rendering failures propagate to the caller while preserving CSV tables and `summary.md`. `--show never` disables display, not PNG/PDF export.
+[Documentation](README.md) · [Inference](inference.md) · [Troubleshooting](troubleshooting.md)

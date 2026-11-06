@@ -20,6 +20,7 @@ from unituner.artifacts.formats.transformer import (
 )
 from unituner.artifacts.quantization import json_tensor
 from unituner.artifacts.tensors import TensorReader, resolve_shards, save_tensor_stream
+from unituner.models.catalog import IMAGE_FAMILIES, backbone_family, image_family_spec
 from unituner.models.components.transformer_artifacts import published_config
 
 TRANSFORMER_TYPES = {
@@ -94,15 +95,16 @@ def comfyui_source(source: Path, *, family: str, precision: str) -> Generator[tu
             yield source, resolved
             return
         names = {unprefixed(key) for key in readers}
-        module, stem = TRANSFORMER_TYPES[resolved]
+        module, stem = TRANSFORMER_TYPES[backbone_family(resolved)]
+        metadata_module = resolved.replace("-", "_")
         external = is_diffusers_transformer(module, names)
         z_split = resolved == "z-image" and any(".attention.to_q." in key for key in names)
-        serialized = metadata.get(f"unituner.{module}.config")
+        serialized = metadata.get(f"unituner.{metadata_module}.config")
         if resolved == "qwen-image" and serialized is None:
             from unituner.models.qwen_image.config.model import QwenImageConfig
 
             serialized = published_config(source, QwenImageConfig).model_dump_json()
-            metadata[f"unituner.{module}.config"] = serialized
+            metadata[f"unituner.{metadata_module}.config"] = serialized
         edit_marker = (
             resolved == "qwen-image"
             and serialized is not None
@@ -117,11 +119,16 @@ def comfyui_source(source: Path, *, family: str, precision: str) -> Generator[tu
         expected: dict[str, Tensor] = {}
         if external:
             cls = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")
-            config = cls.model_validate_json(serialized) if serialized is not None else published_config(source, cls)
+            spec = image_family_spec(resolved) if resolved in IMAGE_FAMILIES else None
+            config = cls.model_validate_json(serialized) if serialized is not None else published_config(
+                source, cls,
+                variant=None if spec is None else spec.native_variant,
+                version=None if spec is None else spec.native_version,
+            )
             constructor = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")
             with torch.device("meta"):
                 expected = constructor(config).state_dict()
-            metadata[f"unituner.{module}.config"] = config.model_dump_json()
+            metadata[f"unituner.{metadata_module}.config"] = config.model_dump_json()
         prefix = next(
             (
                 prefix

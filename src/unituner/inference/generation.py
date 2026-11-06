@@ -1,13 +1,13 @@
 """Select a family-owned image generation application after validating the device."""
 
-from importlib import import_module
 from typing import Protocol, cast
 
 import torch
 
 from unituner.config.generation import GenerationConfig
 from unituner.execution.runtime import runtime_scope
-from unituner.models.catalog import ModelFamily
+from unituner.models.catalog import image_family_spec
+from unituner.models.providers import load_provider
 
 
 class ImageGeneration(Protocol):
@@ -24,21 +24,5 @@ def run(config: GenerationConfig, *, device: str) -> int:
     selected = torch.device(device)
     if selected.type not in {"cpu", "cuda"}:
         raise ValueError("Generation entry supports CPU and CUDA devices")
-    module = {
-        ModelFamily.FLUX: "unituner.inference.images",
-        ModelFamily.FLUX2: "unituner.inference.images",
-        ModelFamily.FLUX3: "unituner.inference.images",
-        ModelFamily.MOSS_IMAGE: "unituner.inference.images",
-        ModelFamily.Z_IMAGE: "unituner.inference.images",
-        ModelFamily.QWEN_IMAGE: "unituner.models.qwen_image.inference.run",
-        ModelFamily.QWEN_IMAGE_2_1: "unituner.models.qwen_image_2_1.inference.run",
-        ModelFamily.KREA2: "unituner.models.krea2.inference.run",
-    }.get(config.model.family)
-    if module is None:
-        raise ValueError("Image generation requires a supported image model family")
-    entry = import_module(module).run
-    if not callable(entry):
-        raise TypeError(f"Image generation entry is not callable: {module}.run")
-    # Family application signatures are checked statically; importlib is the lazy provider boundary.
-    generate = cast(ImageGeneration, entry)
+    generate = cast(ImageGeneration, load_provider(image_family_spec(config.model.family).generation))
     return generate(config, device=selected)

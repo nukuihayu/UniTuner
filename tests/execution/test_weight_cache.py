@@ -234,7 +234,7 @@ def test_branching_outstanding_graphs_and_repeated_eager_backward(compiled):
                 ExecutionInstallation(
                     regions,
                     ExecutionConfig(
-                        residency=cast(Literal["resident", "frozen-blocks", "vbar", "trainable-blocks"], residency),
+                        residency=cast(Literal["resident", "frozen-blocks", "trainable-blocks"], residency),
                         compile=compiled,
                         recompute="block",
                         frozen_weight_cache_mb=0,

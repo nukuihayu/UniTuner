@@ -40,9 +40,9 @@ Both forms select the same file. Relative paths resolve from the working directo
 | `execution` | Compute and memory policies | Training |
 | `preview` / `output` | Previews, weights, resume, logging | Training |
 | `sampling` / `adapter` | Sampling controls and loaded adapter | Generation |
-| `runtime` | TF32 and cuDNN controls | Commands whose schemas expose this table |
+| `runtime` | TF32 and cuDNN controls | Commands that accept this table |
 
-Include tables needed by the task. Image generation, video generation, restoration inference, and time calibration have distinct schemas; a training file is not a universal command input.
+Include tables needed by the task. Image generation, video generation, restoration inference, and time calibration use different configuration fields; a training file is not a universal command input.
 
 ## TOML syntax
 
@@ -82,7 +82,7 @@ Quote the complete assignment when it contains spaces, arrays, JSON objects, or 
 
 | Command | Input and result |
 | --- | --- |
-| `validate` | Checks configuration, using the training schema by default; does not load models |
+| `validate` | Checks configuration, for training by default; does not load models |
 | `cache` | Encodes data and replaces cache directories after success |
 | `train` | Updates parameters and publishes weights and resume state |
 | `generate` | Image generation with an optional adapter |
@@ -92,7 +92,7 @@ Quote the complete assignment when it contains spaces, arrays, JSON objects, or 
 | `weights` | Weight import/conversion; consult its `--help` for subcommands |
 | `caches import` | Imports explicitly specified external MiniMaxH3 caches |
 
-Validate the appropriate schema:
+Validate settings for the intended command:
 
 ```bash
 uv run --no-dev unituner validate image-cache.toml --for cache

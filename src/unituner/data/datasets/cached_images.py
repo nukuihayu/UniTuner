@@ -52,7 +52,7 @@ def index_cached_images(
             raise ValueError("Training cache family/version differs from the selected model")
         if family == "moss-image" and manifest.variant != ("edit" if variant == "edit" else None):
             raise ValueError("MOSS cache edit contract differs from the training variant")
-        if family in ("flux", "flux2", "flux3", "qwen-image") and manifest.variant != variant:
+        if family in ("flux", "flux2", "flux3", "qwen-image", "bluepixel") and manifest.variant != variant:
             raise ValueError("Training cache variant differs from the selected model")
         digests.append({"group": name, "manifest": file_sha256(directory / "manifest.json")})
         for entry in manifest.entries:

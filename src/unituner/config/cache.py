@@ -10,7 +10,7 @@ from unituner.config.diagnostics import ConfigRuleError
 from unituner.config.features import RepaConfig
 from unituner.config.model import EncoderModelConfig
 from unituner.config.runtime import RuntimeConfig
-from unituner.models.catalog import ModelFamily
+from unituner.models.catalog import ModelFamily, cache_alignment
 
 
 class CacheOptions(BaseModel):
@@ -65,7 +65,7 @@ class CacheConfig(BaseModel):
         for name, data in self.dataset.groups.items():
             try:
                 data.validate_for(model.family, model.variant, kind=data.kind)
-                alignment = 32 if model.family in (ModelFamily.MINIMAX_H3, ModelFamily.QWEN_IMAGE_2_1) else 16
+                alignment = cache_alignment(model.family)
                 if any(size < alignment or size % alignment for size in data.resolution):
                     raise ValueError(f"Cache resolution requires {alignment}-aligned dimensions")
                 if data.wan is not None and model.family != ModelFamily.WAN:

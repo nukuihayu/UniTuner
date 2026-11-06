@@ -8,7 +8,7 @@ from unituner.config.text import TokenizerSourceConfig
 from unituner.data.cache.feature_encoding import RepaCacheWriter
 from unituner.data.cache.rebuild import fresh_cache_config
 from unituner.execution.runtime import runtime_scope
-from unituner.models.catalog import ModelFamily
+from unituner.models.catalog import IMAGE_FAMILIES, ModelFamily, image_family_spec
 from unituner.models.text_assets import pin_tokenizer_sources
 from unituner.progress import status
 
@@ -36,6 +36,15 @@ def _produce(config: CacheConfig, *, device: str) -> int:
         text_config = text_config.model_copy(
             update={"tokenizer": TokenizerSourceConfig(source=h3.text_processor, offline=True)}
         )
+    if config.model.family in IMAGE_FAMILIES and image_family_spec(config.model.family).tokenizer_in_assets:
+        if config.model.assets is None:
+            raise ValueError(f"{config.model.family} cache requires model.assets with a local tokenizer directory")
+        tokenizer = Path(config.model.assets) / "tokenizer"
+        if not tokenizer.is_dir():
+            raise ValueError(f"{config.model.family} cache requires a local model.assets/tokenizer directory")
+        text_config = text_config.model_copy(
+            update={"tokenizer": TokenizerSourceConfig(source=str(tokenizer), offline=True)}
+        )
     pinned, tokenizer_digests = pin_tokenizer_sources(
         text_config,
         config.model.family,
@@ -60,6 +69,8 @@ def _run(config: CacheConfig, *, device: str, repa: RepaCacheWriter | None, toke
         from unituner.data.production.wan import produce_wan
 
         return produce_wan(config, device=device, repa=repa, tokenizer_digests=tokenizer_digests)
+    if config.model.family not in IMAGE_FAMILIES:
+        raise ValueError(f"No cache producer for {config.model.family}")
     from unituner.data.production.images import produce_images
 
     return produce_images(config, device=device, repa=repa, tokenizer_digests=tokenizer_digests)

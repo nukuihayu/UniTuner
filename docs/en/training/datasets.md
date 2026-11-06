@@ -46,7 +46,7 @@ rank = 32
 alpha = 32.0
 ```
 
-This minimal configuration passes training schema validation. Caching also needs actual model, tokenizer and image files. The default method is flow matching; default training precision follows the base weights.
+This minimal configuration passes training configuration checks. Caching also needs actual model, tokenizer and image files. The default method is flow matching; default training precision follows the base weights.
 
 ## Multiple groups and defaults
 

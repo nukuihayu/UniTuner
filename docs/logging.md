@@ -28,15 +28,13 @@ log_every_seconds = 120.0
 
 ## Jupyter / Notebook
 
-在 Python 单元格内直接调用时，有 `ipywidgets` 则使用 widget 进度条，否则回退到文本进度条。`%%bash`、`!python` 启动的是独立子进程，不能直接创建内核 widget；检测到继承的 `JPY_PARENT_PID` 时会显示文本进度条，而不是关闭进度显示。
-
-如果 notebook 环境没有传递该变量，在原有 `%%bash` 单元格的训练命令之前加一行即可：
+Notebook 单元格会在支持的环境中自动显示进度。没有进度显示时，在训练命令前设置：
 
 ```bash
 export UNITUNER_PROGRESS=always
 ```
 
-`UNITUNER_PROGRESS` 默认为 `auto`；`always` 强制显示，`never` 禁用进度条，适合重定向日志或消费 JSON stdout。进度条写入 stderr，启用时不再重复打印训练 INFO／JSON 摘要；完整逐步指标仍写入 JSONL 和 TensorBoard。Notebook 前端控制文本回车的呈现，子进程模式不要求安装 `ipywidgets`。
+默认值为 `auto`；保存终端输出时可用 `never` 关闭进度条。无论是否显示进度，JSONL 与 TensorBoard 都会记录每步完整指标。
 
 ## JSONL 完整指标
 

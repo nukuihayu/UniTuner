@@ -1,8 +1,7 @@
-"""Prefetch frozen weight misses within available fallback capacity."""
+"""Prefetch frozen weight misses within available H2D cache capacity."""
 
 import torch
 
-from unituner.execution.mapped_weights import VbarArena
 from unituner.execution.weight_lease import FrozenWeights, PrefetchUnavailable, WeightLease
 
 
@@ -15,8 +14,7 @@ class WeightPrefetch:
     or ring size is required. Providers own capacity decisions.
     """
 
-    def __init__(self, device: torch.device, *, arena: VbarArena | None = None) -> None:
-        self._arena: VbarArena | None = arena
+    def __init__(self, device: torch.device) -> None:
         self._stream: torch.cuda.Stream = torch.cuda.Stream(device=device)
         self._weights: list[FrozenWeights] = []
         self._indices: dict[FrozenWeights, int] = {}
@@ -36,16 +34,13 @@ class WeightPrefetch:
         if prepared is None:
             if self._pending and weights.needs_transfer():
                 self.cancel()
-            if not self._pending and self._arena is not None:
-                self._arena.wait_retired()
             return weights.acquire()
         self._pending.remove(prepared)
         _, leases, ready = prepared
         stream = torch.cuda.current_stream(weights.device)
         stream.wait_event(ready)
         for lease in leases:
-            if lease.allocation is None:
-                lease.tensor.record_stream(stream)
+            lease.tensor.record_stream(stream)
         return leases
 
     def next(self, weights: FrozenWeights, *, backward: bool) -> None:
@@ -62,8 +57,6 @@ class WeightPrefetch:
                 if not target.prefetch_past_resident:
                     return
                 continue
-            if self._arena is not None:
-                self._arena.drain()
             try:
                 with torch.cuda.stream(self._stream):
                     leases = target.acquire(speculative=True)

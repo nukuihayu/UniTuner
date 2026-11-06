@@ -1,12 +1,15 @@
 # Derived from Krea2 and pinned Musubi Tuner; see THIRD_PARTY_NOTICES.md.
 """Compute Krea2 image-first single-stream velocity with native checkpoint geometry."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.krea2.config.model import Krea2Config
 from unituner.models.krea2.layers import (
@@ -26,6 +29,8 @@ class Krea2Transformer(nn.Module):
     lengths are validated host prefix sizes. Native parameters keep their exact
     artifact names, including zero-centered scales and raw modulation offsets.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.KREA2
 
     def __init__(self, config: Krea2Config) -> None:
         super().__init__()

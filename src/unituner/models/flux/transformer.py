@@ -1,11 +1,14 @@
 # Derived from Black Forest Labs FLUX, Apache-2.0.
 """Compute native FLUX.1 tokens without trainer, routing or execution-policy state."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.flux.config.model import FluxConfig
 from unituner.models.flux.layers import (
@@ -25,6 +28,8 @@ class FluxTransformer(nn.Module):
     channels. Native timesteps are noise fractions, not a 0-1000 clock. Execution
     owners may wrap blocks; this module does not install or discover resources.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.FLUX
 
     def __init__(self, config: FluxConfig) -> None:
         super().__init__()

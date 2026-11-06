@@ -13,20 +13,16 @@ from unituner.inference.sampling import generate_latents
 from unituner.models.catalog import ModelFamily
 from unituner.models.components.conditioning import Caption
 from unituner.models.components.image_encoders import load_image_text, load_image_vae
+from unituner.models.components.image_geometry import image_latent_geometry
 from unituner.models.flux.conditioning import FluxTextFeatures
 from unituner.models.flux.inference.conditioning import build_flux_condition
 from unituner.models.flux.transformer import FluxTransformer
 from unituner.models.flux.vae import FluxVAE
 from unituner.models.flux2.inference.conditioning import build_flux2_references
-from unituner.models.flux2.transformer import Flux2Transformer
 from unituner.models.flux2.vae import Flux2VAE
 from unituner.models.flux3.inference.conditioning import build_flux3_references
-from unituner.models.flux3.transformer import Flux3Transformer
-from unituner.models.image import load_image_model
+from unituner.models.image import load_image_model, model_latent_channels, validate_model_selection
 from unituner.models.moss_image.inference.conditioning import encode_references
-from unituner.models.moss_image.transformer import MossImageTransformer
-from unituner.models.z_image.transformer import ZImageTransformer
-from unituner.models.z_image.vae import ZImageVAE
 
 if TYPE_CHECKING:
     from unituner.models.components.image_encoders import PromptTextEncoder
@@ -89,19 +85,11 @@ def run(config: GenerationConfig, *, device: torch.device) -> int:
     condition = None
     if isinstance(model, FluxTransformer):
         condition = build_flux_condition(cast(FluxVAE, vae), config.sampling, variant=model.config.variant)
-        channels = model.config.out_channels // 4
-    elif isinstance(model, Flux3Transformer):
-        channels = model.config.image_channels
-    elif isinstance(model, MossImageTransformer):
-        channels = model.config.latent_channels
-    elif isinstance(model, Flux2Transformer | ZImageTransformer):
-        channels = model.config.in_channels
-    else:
-        raise TypeError("Shared generation requires FLUX, FLUX.2, FLUX3, MOSS or Z-Image")
-    vae_channels = vae.config.latent_channels * (4 if isinstance(vae, Flux2VAE) else 1)
-    if model.config.variant != config.model.variant or channels != vae_channels:
+    geometry = image_latent_geometry(vae)
+    validate_model_selection(config.model, model)
+    if model_latent_channels(model) != geometry.channels:
         raise ValueError("Generation model variant/channels differ from the supplied model/vae")
-    factor = 2 ** (len(vae.config.block_channels) - 1) if isinstance(vae, ZImageVAE) else vae.config.spatial_factor
+    factor = geometry.spatial_factor
     with torch.autocast(device.type, enabled=False), image_adapter(model, config.adapter):
         latents = generate_latents(
             model,

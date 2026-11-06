@@ -195,7 +195,7 @@ Adapters export ComfyUI keys for their matching model. Load them with that base 
 
 | Symptom | First check |
 | --- | --- |
-| Unknown/extra field | Correct table path; inference configs do not go through validate |
+| Unknown/extra field | Check table paths; select the matching `--for` when validating inference |
 | Cache identity mismatch | Rebuild after changes to images, captions, encoders or preprocessing |
 | Weight shape mismatch | Family, variant/version, VAE and text encoder compatibility |
 | Missing tokenizer | Point source at actual files; offline mode needs all files cached |

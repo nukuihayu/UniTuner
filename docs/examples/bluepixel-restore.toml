@@ -1,0 +1,11 @@
+input = "images/damaged.png"
+output = "runs/bluepixel/restored.png"
+prompt = "Remove scratches and restore details while preserving the original composition"
+
+[model]
+family = "bluepixel"
+variant = "turbo"
+weights = "models/BluePixel-Turbo/transformer"
+vae = "models/BluePixel-Turbo/vae"
+text_encoder = "models/BluePixel-Turbo/text_encoder"
+assets = "models/BluePixel-Turbo"

@@ -2,11 +2,14 @@
 # Apache-2.0; see THIRD_PARTY_NOTICES.md and licenses/Apache-2.0.txt.
 """Compute Qwen Image 2.1 target velocities from native interleaved conditioning."""
 
+from typing import ClassVar
+
 import torch
 from torch import Tensor, nn
 
 from unituner.config.routing import TreadConfig
 from unituner.execution.routing import TargetSpan, sample_token_route
+from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
 from unituner.models.qwen_image_2_1.layers import FinalNorm, QwenImage21Block, TextProjection, TimeEmbedding
@@ -20,6 +23,8 @@ class QwenImage21Transformer(nn.Module):
     Explicit CPU geometry excludes padding, inserts references among text and
     appends targets. Execution owners can install recompute/compile on blocks.
     """
+
+    family: ClassVar[ModelFamily] = ModelFamily.QWEN_IMAGE_2_1
 
     def __init__(self, config: QwenImage21Config) -> None:
         super().__init__()
