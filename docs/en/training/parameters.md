@@ -417,7 +417,7 @@ Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) f
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
-| `scale` | `8.0` | OMGSR-F downsampling factor within 1..16 |
+| `scale` | `4.0` | Fixed 1..16 or continuous per-sample `[min,max]`; an explicit integer target grid prevents phase offset |
 | `first / second` | `subtable` | StageConfig / SecondStageConfig |
 | `final_sinc_probability` | `0.8` | Final sinc on native LQ, before alignment / 对齐放大前的 LQ sinc |
 | `gray_probability / color_jitter_probability` | `0 / 0` | Optional output augmentation / 输出增强 |
@@ -437,7 +437,7 @@ Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) f
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
 | `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
-| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | Relative to HQ/8; may undershoot native LQ before resizing back |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | Relative to native LQ; may undershoot before resizing back |
 
 ## `BlurConfig`
 
@@ -457,27 +457,30 @@ Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) f
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `gaussian_probability` | `0.5` | Gaussian vs Poisson / 两种采集噪声的选择概率 |
+| `gaussian_probability / iso_probability` | `1/3 / 1/3` | Absolute Gaussian and ISO probabilities; the remainder selects Poisson |
 | `gaussian_sigma / poisson_scale` | `[1,15] / [0.05,2]` | OMGSR standard deviation (8-bit units) / Poisson amplitude / OMGSR 幅度 |
-| `gray_probability` | `0.4` | Gray vs color Gaussian/Poisson / 灰度噪声概率 |
+| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.0002,0.004] / [0.00005,0.001] / [0.95,1.05]` | Signal-dependent camera ISO model |
+| `gray_probability` | `0.4` | Gray probability for all three noise types |
 
 ## `SecondNoiseConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `gaussian_sigma / poisson_scale` | `[1,12] / [0.05,1]` | Other fields inherited / 其余继承 |
+| `iso_shot_noise / iso_read_noise` | `[0.0002,0.003] / [0.00005,0.0008]` | Weaker second-stage ISO ranges |
 
 ## `CompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `jpeg_quality` | `[60,95]` | First-stage uniform DiffJPEG quality range |
+| `jpeg_probability` | `0.5` | Equal-probability DiffJPEG or WebP selection |
+| `jpeg_quality / webp_quality` | `[60,95] / [60,95]` | First-stage quality ranges |
 
 ## `SecondCompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `jpeg_quality` | `[60,100]` | OMGSR uniform range with an exclusive upper draw |
+| `jpeg_quality / webp_quality` | `[60,100] / [60,100]` | Second-stage quality ranges with exclusive upper draws |
 
 ## `restore` command
 

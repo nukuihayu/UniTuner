@@ -168,35 +168,38 @@ The switch itself does not change resume identity, allowing unchanged data to re
 
 ### Synthetic super-resolution degradation
 
-The default degradation exactly follows [OMGSR](https://github.com/wuer5/OMGSR/tree/main/dataset)'s two-stage Real-ESRGAN configuration and operator order. The only intentional difference is phase-stable resizing: every resize first computes its integer output dimensions, then interpolates with `size` and `align_corners=false` so floating-scale rounding cannot accumulate a small phase offset.
+The default degradation uses [OMGSR](https://github.com/wuer5/OMGSR/tree/main/dataset)'s two-stage Real-ESRGAN parameters and operator order. Every resize first computes integer output dimensions and interpolates with `size` and `align_corners=false`, preventing a floating-scale phase offset. Downscaling resize, noise and compression choices add nearest, ISO and WebP respectively.
 
 1. Crop/paired flip, then use original HQ for both the degradation source and supervised GT.
-2. Blur/sinc → resize → Gaussian/Poisson → compression.
-3. Optional second blur/sinc → resize → Gaussian/Poisson.
+2. Blur/sinc → resize → one of Gaussian/Poisson/ISO → one of JPEG/WebP.
+3. Optional second blur/sinc → resize → one of Gaussian/Poisson/ISO.
 4. Equal-probability native [resize+sinc] → compression or compression → [resize+sinc].
-5. Resize to HQ with a random area/bilinear/bicubic mode, then clip and quantize to 8-bit.
+5. Resize to HQ with a random area/bilinear/bicubic mode, then clip and quantize to 8-bit. Nearest participates only in downscaling, never upscaling or same-size resize.
 
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
-scale = 8.0
+scale = 4.0
 
 [dataset.groups.synthetic.degradation.first.compression]
+jpeg_probability = 0.5
 jpeg_quality = [60.0, 95.0]
+webp_quality = [60.0, 95.0]
 
 [dataset.groups.synthetic.degradation.second.compression]
 jpeg_quality = [60.0, 100.0]
+webp_quality = [60.0, 100.0]
 ```
 
-The two resize ranges are [0.3,1.5] / [0.6,1.2], with up/down/keep probabilities [0.2,0.7,0.1] / [0.3,0.4,0.3]. As in OMGSR, stage two may shrink below native LQ before resizing back up. `scale` defaults to OMGSR-F-1024's 8x and can be explicitly set within [1,16].
+The two resize ranges are [0.3,1.5] / [0.6,1.2], with up/down/keep probabilities [0.2,0.7,0.1] / [0.3,0.4,0.3]. Stage two may undershoot native LQ: at 1024, 4x and 0.6 it reaches 153 before returning to native 256. `scale` defaults to fixed 4x; a fixed value within 1..16 or a continuous deterministic per-sample range such as `[4.0,8.0]` remains supported. Every interpolation uses an explicit integer size rather than floating `scale_factor`, so undershoot does not introduce a slight phase offset.
 
-Kernel geometry is fixed to OMGSR-F-1024: odd support is sampled from 11..41 and zero-padded to 41. Sigma, noise amplitude and JPEG blocks do not scale with the execution grid. Tiny LQ grids use repeated reflection when Torch reflection padding cannot fit.
+Kernel geometry is fixed to OMGSR-F-1024: odd support is sampled from 11..41 and zero-padded to 41. Sigma, noise amplitude and compression quality do not scale with the execution grid. Tiny LQ grids use repeated reflection when Torch reflection padding cannot fit.
 
-Both stages add Gaussian/Poisson with equal probability, 40% gray. Following OMGSR, sigma is [1,15]/[1,12], Poisson amplitude [0.05,2]/[0.05,1], directly on the resized grid with no gain/attenuation. Clip after addition, without rounding. Only Poisson's sampling signal is quantized before counting unique levels.
+Each stage selects Gaussian, Poisson or ISO with equal probability and uses 40% gray noise. Gaussian sigma is [1,15]/[1,12], Poisson amplitude [0.05,2]/[0.05,1], and ISO uses independent shot/read variance with [0.95,1.05] red/blue gains. Addition clips without immediate rounding; only the Poisson sampling signal is quantized before counting unique levels.
 
 Mixed blur uses six probabilities [0.45,0.25,0.12,0.03,0.12,0.03], base support 11..41 and sigma [0.2,3]/[0.2,1.5]. Second blur runs 50%; conditional sinc replacement is 10% per stage, final sinc 80%. Stage cutoff is π/3..π for base support <25 and π/5..π otherwise; final cutoff π/3..π. No taper.
 
-Both stages always use float DiffJPEG, with quality [60,95]/[60,100), 4:2:0 chroma, nearest chroma reconstruction and zero padding to multiples of 16. Training and calibration share `degrade_pair`, returning aligned LQ and the original supervision GT; `degrade_image` is for diagnostics. Trace records actual grids, kernels, noise and codecs. Recalibrate after changing degradation parameters.
+Each compression independently selects float DiffJPEG or OpenCV WebP with equal probability; both use quality [60,95]/[60,100). Training and calibration share `degrade_pair`, returning aligned LQ and the original supervision GT; `degrade_image` is for diagnostics. Trace records actual grids, kernels, noise and codecs. Recalibrate after changing degradation parameters.
 
 
 ## Editing, references, masks and layers

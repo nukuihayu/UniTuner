@@ -2,18 +2,26 @@
 
 import math
 
+import cv2
 import numpy as np
 import torch
 from numpy.typing import NDArray
 from torch.nn import functional as F
 
 from unituner.data.degradation import color as image_ops
-from unituner.data.degradation.config import BlurConfig, CompressionConfig, DegradationConfig, NoiseConfig, StageConfig
+from unituner.data.degradation.config import (
+    BlurConfig,
+    CompressionConfig,
+    DegradationConfig,
+    NoiseConfig,
+    Scale,
+    StageConfig,
+)
 from unituner.data.degradation.diffjpeg import diffjpeg
 
 type Pixels = NDArray[np.float32]
 
-_RESIZE_MODES = ("area", "bilinear", "bicubic")
+_RESIZE_MODES = ("area", "bilinear", "bicubic", "nearest")
 _KERNEL_SIZES = tuple(range(11, 42, 2))
 _KERNEL_MAX = 41
 _KERNEL_MID = 25
@@ -50,6 +58,10 @@ def _sample(bounds: tuple[float, float], rng: np.random.Generator) -> float:
     return float(rng.uniform(*bounds))
 
 
+def _sample_scale(scale: Scale, rng: np.random.Generator) -> float:
+    return _sample(scale, rng) if isinstance(scale, tuple) else scale
+
+
 def mixed_blur_kernel(rng: np.random.Generator, settings: BlurConfig) -> Pixels:
     """Sample and pad an OMGSR-F mixed blur kernel."""
     size = int(rng.choice(_KERNEL_SIZES))
@@ -73,9 +85,7 @@ def mixed_blur_kernel(rng: np.random.Generator, settings: BlurConfig) -> Pixels:
         kernel = np.exp(-0.5 * radius_squared**beta)
     else:
         beta = (
-            rng.uniform(settings.plateau_beta[0], 1)
-            if rng.random() < 0.5
-            else rng.uniform(1, settings.plateau_beta[1])
+            rng.uniform(settings.plateau_beta[0], 1) if rng.random() < 0.5 else rng.uniform(1, settings.plateau_beta[1])
         )
         kernel = 1 / (1 + radius_squared**beta)
     return _pad_kernel((kernel / kernel.sum()).astype(np.float32))
@@ -94,6 +104,12 @@ def _filter(image: Pixels, kernel: Pixels) -> Pixels:
     return F.conv2d(value, weight, groups=3)[0].permute(1, 2, 0).contiguous().numpy()
 
 
+def _resize_modes_for_shape(image: Pixels, height: int, width: int) -> tuple[str, ...]:
+    source_height, source_width = image.shape[:2]
+    downscaling = height <= source_height and width <= source_width and (height < source_height or width < source_width)
+    return _RESIZE_MODES if downscaling else _RESIZE_MODES[:-1]
+
+
 def _resize(
     image: Pixels,
     height: int,
@@ -103,9 +119,12 @@ def _resize(
     mode: str | None = None,
 ) -> Pixels:
     """Resize on the integer grid so repeated half-pixel mappings compose."""
-    selected = str(rng.choice(_RESIZE_MODES)) if mode is None else mode
+    available = _resize_modes_for_shape(image, height, width)
+    selected = str(rng.choice(available)) if mode is None else mode
     if selected not in _RESIZE_MODES:
         raise ValueError(f"Unsupported OMGSR resize mode: {selected}")
+    if selected not in available:
+        raise ValueError("Nearest resize is only supported for downscaling")
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)[None]
     return (
         F.interpolate(
@@ -136,21 +155,35 @@ def add_noise(
     *,
     trace: list[dict] | None = None,
 ) -> Pixels:
-    """Apply OMGSR Gaussian or Poisson noise and clip without rounding."""
-    gaussian = rng.random() < settings.gaussian_probability
+    """Apply one Gaussian, Poisson or camera-ISO noise draw and clip."""
+    poisson_probability = 1 - settings.gaussian_probability - settings.iso_probability
+    kind_index = int(rng.choice(3, p=(settings.gaussian_probability, poisson_probability, settings.iso_probability)))
     gray = rng.random() < settings.gray_probability
-    if gaussian:
+    if kind_index == 0:
         parameter = _sample(settings.gaussian_sigma, rng)
         shape = (*image.shape[:2], 1 if gray else 3)
         noise = rng.normal(0, parameter / 255, shape)
         kind = "gaussian"
-    else:
+    elif kind_index == 1:
         signal = (image * np.array([0.2989, 0.5870, 0.1140])).sum(2, keepdims=True) if gray else image
         signal = (signal * 255).round().clip(0, 255) / 255
         levels = 2 ** math.ceil(math.log2(max(1, np.unique(signal).size)))
         parameter = _sample(settings.poisson_scale, rng)
         noise = (rng.poisson(signal * levels) / levels - signal) * parameter
         kind = "poisson"
+    else:
+        shot = _sample(settings.iso_shot_noise, rng)
+        read = _sample(settings.iso_read_noise, rng)
+        gains = np.array(
+            [_sample(settings.iso_color_gain, rng), 1.0, _sample(settings.iso_color_gain, rng)],
+            dtype=np.float32,
+        )
+        variance = image.clip(0, 1) * gains * shot + read
+        noise = rng.normal(0, 1, image.shape) * np.sqrt(variance.clip(1e-10))
+        if gray:
+            noise = np.repeat(noise.mean(2, keepdims=True), 3, axis=2)
+        parameter = {"shot": shot, "read": read, "gains": gains.tolist()}
+        kind = "iso"
     if trace is not None:
         trace.append(
             {
@@ -165,16 +198,36 @@ def add_noise(
     return (image + noise).clip(0, 1).astype(np.float32)
 
 
+def _webp(image: Pixels, quality: float) -> Pixels:
+    bgr = np.ascontiguousarray((image.clip(0, 1)[..., ::-1] * 255).round().astype(np.uint8))
+    success, encoded = cv2.imencode(".webp", bgr, [int(cv2.IMWRITE_WEBP_QUALITY), round(quality)])
+    if not success:
+        raise RuntimeError("OpenCV failed to encode WebP degradation")
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if decoded is None:
+        raise RuntimeError("OpenCV failed to decode WebP degradation")
+    return (decoded[..., ::-1].astype(np.float32) / 255).copy()
+
+
 def _compress(
     image: Pixels,
     settings: CompressionConfig,
     rng: np.random.Generator,
     trace: list[dict] | None,
 ) -> Pixels:
-    quality = _sample(settings.jpeg_quality, rng)
-    result = diffjpeg(image.clip(0, 1).astype(np.float32), quality)
+    jpeg = rng.random() < settings.jpeg_probability
+    bounds = settings.jpeg_quality if jpeg else settings.webp_quality
+    quality = _sample(bounds, rng)
+    result = diffjpeg(image.clip(0, 1).astype(np.float32), quality) if jpeg else _webp(image, quality)
     if trace is not None:
-        trace.append({"op": "compression", "codec": "diffjpeg", "quality": quality, "shape": list(image.shape[:2])})
+        trace.append(
+            {
+                "op": "compression",
+                "codec": "diffjpeg" if jpeg else "webp",
+                "quality": quality,
+                "shape": list(image.shape[:2]),
+            }
+        )
     return result
 
 
@@ -199,16 +252,20 @@ def degrade_pair(
     ):
         raise ValueError("Degradation requires CPU float32 CHW RGB [0,1], dimensions >=32")
     rng = np.random.default_rng(seed)
-    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(12)]
+    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(13)]
     image = high.detach().permute(1, 2, 0).numpy().copy()
     height, width = image.shape[:2]
-    target = (max(1, int(height / settings.scale)), max(1, int(width / settings.scale)))
+    scale = _sample_scale(settings.scale, streams[12])
+    target = (max(1, int(height / scale)), max(1, int(width / scale)))
 
     def record(op: str, value: Pixels, **params) -> None:
         if trace is not None:
             trace.append({"op": op, "shape": list(value.shape[:2]), **params})
 
-    record("source", image, scale=settings.scale, target=list(target))
+    if isinstance(settings.scale, tuple):
+        record("source", image, scale=scale, scale_range=list(settings.scale), target=list(target))
+    else:
+        record("source", image, scale=scale, target=list(target))
 
     def blur(value: Pixels, stage: StageConfig, index: int) -> Pixels:
         blur_rng = streams[(index - 1) * 4]

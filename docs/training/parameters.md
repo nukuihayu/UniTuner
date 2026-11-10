@@ -417,7 +417,7 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
-| `scale` | `8.0` | OMGSR-F downsampling factor, 1..16 / OMGSR-F 降采样倍率 |
+| `scale` | `4.0` | 固定 1～16，或 `[min,max]` 按样本连续采样；整数目标网格避免相位偏移 / Fixed 1..16 or continuous per-sample `[min,max]` |
 | `first / second` | `subtable` | StageConfig / SecondStageConfig |
 | `final_sinc_probability` | `0.8` | Final sinc on native LQ, before alignment / 对齐放大前的 LQ sinc |
 | `gray_probability / color_jitter_probability` | `0 / 0` | Optional output augmentation / 输出增强 |
@@ -437,7 +437,7 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
 | `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
-| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | 相对 HQ/8；允许低于原生 LQ 后再放大 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | 相对原生 LQ；允许低于原生 LQ 后再放大 |
 
 ## `BlurConfig`
 
@@ -457,27 +457,30 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `gaussian_probability` | `0.5` | Gaussian vs Poisson / 两种采集噪声的选择概率 |
+| `gaussian_probability / iso_probability` | `1/3 / 1/3` | Gaussian 与 ISO 的绝对概率；剩余概率为 Poisson |
 | `gaussian_sigma / poisson_scale` | `[1,15] / [0.05,2]` | OMGSR standard deviation (8-bit units) / Poisson amplitude / OMGSR 幅度 |
-| `gray_probability` | `0.4` | Gray vs color Gaussian/Poisson / 灰度噪声概率 |
+| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.0002,0.004] / [0.00005,0.001] / [0.95,1.05]` | 信号相关相机 ISO 噪声 |
+| `gray_probability` | `0.4` | 三种噪声的灰度概率 |
 
 ## `SecondNoiseConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `gaussian_sigma / poisson_scale` | `[1,12] / [0.05,1]` | Other fields inherited / 其余继承 |
+| `iso_shot_noise / iso_read_noise` | `[0.0002,0.003] / [0.00005,0.0008]` | 第二阶段较弱 ISO 范围 |
 
 ## `CompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `jpeg_quality` | `[60,95]` | 第一阶段 DiffJPEG 均匀质量区间 |
+| `jpeg_probability` | `0.5` | DiffJPEG 与 WebP 等概率选择 |
+| `jpeg_quality / webp_quality` | `[60,95] / [60,95]` | 第一阶段质量区间 |
 
 ## `SecondCompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `jpeg_quality` | `[60,100]` | OMGSR 均匀采样，上界不取到 |
+| `jpeg_quality / webp_quality` | `[60,100] / [60,100]` | 第二阶段质量区间，上界不取到 |
 
 ## `restore` 独立命令
 

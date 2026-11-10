@@ -67,9 +67,9 @@ horizontal_flip_probability = 0.5
 # 启用该组的合成退化；真实 LQ 配对任务不添加此表。
 # Enable synthetic degradation for this group; omit this table for real paired LQ data.
 enabled = true
-# 默认使用 OMGSR-F-1024 的 8x，可显式覆盖。
-# OMGSR-F-1024 defaults to 8x and can be overridden explicitly.
-scale = 8.0
+# 固定 4x 最终倍率；也可填写 [4.0, 8.0] 连续采样。
+# Fixed 4x final scale; use [4.0, 8.0] for continuous sampling.
+scale = 4.0
 
 [method]
 # 训练目标：flow-matching 或 restoration。

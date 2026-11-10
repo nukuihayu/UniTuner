@@ -11,6 +11,12 @@ def _range(value: tuple[float, float]) -> tuple[float, float]:
     return value
 
 
+def _scale_range(value: tuple[float, float]) -> tuple[float, float]:
+    if not 1 <= value[0] <= value[1] <= 16:
+        raise ValueError("Scale range must be ordered within [1,16]")
+    return value
+
+
 def _probabilities(value: tuple[float, ...]) -> tuple[float, ...]:
     if min(value) < 0 or abs(sum(value) - 1) > 1e-12:
         raise ValueError("Probabilities must be nonnegative and sum to one")
@@ -18,6 +24,7 @@ def _probabilities(value: tuple[float, ...]) -> tuple[float, ...]:
 
 
 type Range = Annotated[tuple[float, float], AfterValidator(_range)]
+type Scale = Annotated[float, Field(ge=1, le=16)] | Annotated[tuple[float, float], AfterValidator(_scale_range)]
 type Probabilities = Annotated[tuple[float, float, float], AfterValidator(_probabilities)]
 type Probability = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 
@@ -53,23 +60,36 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """Exactly one Gaussian or Poisson draw per stage."""
+    """Exactly one Gaussian, Poisson or camera-ISO draw per stage."""
 
-    gaussian_probability: Probability = 0.5
+    gaussian_probability: Probability = 1 / 3
+    iso_probability: Probability = 1 / 3
     gaussian_sigma: Range = (1.0, 15.0)
     poisson_scale: Range = (0.05, 2.0)
+    iso_shot_noise: Range = (0.0002, 0.004)
+    iso_read_noise: Range = (0.00005, 0.001)
+    iso_color_gain: Range = (0.95, 1.05)
     gray_probability: Probability = 0.4
+
+    @model_validator(mode="after")
+    def validate_noise_probabilities(self) -> Self:
+        if self.gaussian_probability + self.iso_probability > 1:
+            raise ValueError("Gaussian and ISO probabilities must sum to at most one")
+        return self
 
 
 class CompressionConfig(DistributionConfig, frozen=True):
-    """OMGSR DiffJPEG quality range; uniform sampling excludes the upper bound."""
+    """Random DiffJPEG or WebP compression parameters."""
 
+    jpeg_probability: Probability = 0.5
     jpeg_quality: Range = (60.0, 95.0)
+    webp_quality: Range = (60.0, 95.0)
 
     @model_validator(mode="after")
     def validate_quality(self) -> Self:
-        if not 0 < self.jpeg_quality[0] < 100 or self.jpeg_quality[1] > 100:
-            raise ValueError("DiffJPEG quality bounds must lie within (0,100]")
+        ranges = (self.jpeg_quality, self.webp_quality)
+        if any(not 0 < bounds[0] < 100 or bounds[1] > 100 for bounds in ranges):
+            raise ValueError("Compression quality bounds must lie within (0,100]")
         return self
 
 
@@ -93,10 +113,13 @@ class StageConfig(DistributionConfig, frozen=True):
 class SecondNoiseConfig(NoiseConfig, frozen=True):
     gaussian_sigma: Range = (1.0, 12.0)
     poisson_scale: Range = (0.05, 1.0)
+    iso_shot_noise: Range = (0.0002, 0.003)
+    iso_read_noise: Range = (0.00005, 0.0008)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):
     jpeg_quality: Range = (60.0, 100.0)
+    webp_quality: Range = (60.0, 100.0)
 
 
 class SecondBlurConfig(BlurConfig, frozen=True):
@@ -115,10 +138,10 @@ class SecondStageConfig(StageConfig, frozen=True):
 
 
 class DegradationConfig(DistributionConfig, frozen=True):
-    """OMGSR-F-1024 degradation with an explicit, overridable 8x scale."""
+    """OMGSR-F-1024 degradation with a fixed or continuously sampled scale."""
 
     enabled: bool = False
-    scale: Annotated[float, Field(ge=1, le=16)] = 8.0
+    scale: Scale = 4.0
     first: StageConfig = Field(default_factory=StageConfig)
     second: SecondStageConfig = Field(default_factory=SecondStageConfig)
     final_sinc_probability: Probability = 0.8

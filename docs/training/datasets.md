@@ -168,35 +168,38 @@ skip_dataset_validation = true
 
 ### 合成超分退化
 
-默认退化严格采用 [OMGSR](https://github.com/wuer5/OMGSR/tree/main/dataset) 的两阶段 Real-ESRGAN 配置与算子顺序。唯一有意差异是所有缩放先计算实际整数尺寸，再使用 `size` 和 `align_corners=false` 插值，避免浮点倍率取整在连续缩放中积累轻微相位偏移。
+默认退化采用 [OMGSR](https://github.com/wuer5/OMGSR/tree/main/dataset) 的两阶段 Real-ESRGAN 参数与算子顺序。所有缩放先计算实际整数尺寸，再使用 `size` 和 `align_corners=false` 插值，避免浮点倍率取整在连续缩放中积累轻微相位偏移；缩小时的 resize、噪声和压缩候选分别扩展了 nearest、ISO 和 WebP。
 
 1. 裁剪/配对水平翻转后，使用原始 HQ 作为退化源和监督 GT。
-2. 第一阶段 blur/sinc → resize → Gaussian/Poisson → 压缩。
-3. 第二阶段可选 blur/sinc → resize → Gaussian/Poisson。
+2. 第一阶段 blur/sinc → resize → Gaussian/Poisson/ISO 三选一 → JPEG/WebP 二选一。
+3. 第二阶段可选 blur/sinc → resize → Gaussian/Poisson/ISO 三选一。
 4. 等概率选择原生 LQ [resize+sinc] → 压缩或压缩 → [resize+sinc]。
-5. 从 area/bilinear/bicubic 随机选择模式回 HQ，最后裁剪和 8-bit 量化。
+5. 使用 area/bilinear/bicubic 随机模式回 HQ，最后裁剪和 8-bit 量化；nearest 仅参与缩小，不用于放大或同尺寸 resize。
 
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
-scale = 8.0
+scale = 4.0
 
 [dataset.groups.synthetic.degradation.first.compression]
+jpeg_probability = 0.5
 jpeg_quality = [60.0, 95.0]
+webp_quality = [60.0, 95.0]
 
 [dataset.groups.synthetic.degradation.second.compression]
 jpeg_quality = [60.0, 100.0]
+webp_quality = [60.0, 100.0]
 ```
 
-两阶段 resize 范围为 [0.3,1.5] / [0.6,1.2]，上采样／下采样／保持概率为 [0.2,0.7,0.1] / [0.3,0.4,0.3]。与 OMGSR 一样，第二阶段可低于原生 LQ 尺寸后再放大。`scale` 默认为 OMGSR-F-1024 的 8x，可在 [1,16] 内显式覆盖。
+两阶段 resize 范围为 [0.3,1.5] / [0.6,1.2]，上采样／下采样／保持概率为 [0.2,0.7,0.1] / [0.3,0.4,0.3]。第二阶段允许低于原生 LQ：1024、4x、0.6 时先到 153，再回到原生 256。`scale` 默认固定 4x，仍可填写 1～16 的固定倍率，或用 `[4.0,8.0]` 按样本连续、确定性采样。所有插值均使用明确的整数尺寸，不使用浮点 `scale_factor`，因此 undershoot 不会引入轻微相位偏移。
 
-核尺寸固定使用 OMGSR-F-1024 参数：从 11～41 奇数支撑采样并补零到 41。sigma、噪声幅度和 JPEG 块不随执行网格缩放。极小 LQ 网格无法使用 Torch reflect 时采用重复反射。
+核尺寸固定使用 OMGSR-F-1024 参数：从 11～41 奇数支撑采样并补零到 41。sigma、噪声幅度和压缩质量不随执行网格缩放。极小 LQ 网格无法使用 Torch reflect 时采用重复反射。
 
-两阶段 Gaussian/Poisson 各 50%、灰噪声 40%；sigma [1,15]/[1,12]、Poisson scale [0.05,2]/[0.05,1]，对齐 OMGSR，直接用于 resize 后网格，不加增益或衰减。加噪后 clip、不立即量化；仅 Poisson 采样信号预先量化并统计唯一值数。
+每阶段在 Gaussian、Poisson、ISO 中等概率选择一种，灰噪声概率 40%。Gaussian sigma 为 [1,15]/[1,12]，Poisson scale 为 [0.05,2]/[0.05,1]；ISO 使用独立的 shot/read 方差和 [0.95,1.05] 红蓝增益。加噪后 clip、不立即量化；仅 Poisson 采样信号预先量化并统计唯一值数。
 
 混合 blur 六类概率 [0.45,0.25,0.12,0.03,0.12,0.03]，基础支撑 11～41、sigma [0.2,3]/[0.2,1.5]。第二阶段 blur 50%，每个阶段有 10% 替换 sinc，final sinc 80%。阶段 cutoff 为 π/3～π（基础核<25）或 π/5～π，final 为 π/3～π，不加窗。
 
-两阶段均固定使用浮点 DiffJPEG，quality 为 [60,95]/[60,100)；采用 4:2:0、最近邻色度重建和补零至 16 倍数。训练/标定共享 `degrade_pair` 返回对齐 LQ 和原始监督 GT；`degrade_image` 仅用于诊断。trace 记录实际网格、核、噪声和编码。修改退化分布后需要重新标定。
+每次压缩等概率选择浮点 DiffJPEG 或 OpenCV WebP，两个 codec 的 quality 均为 [60,95]/[60,100)。训练/标定共享 `degrade_pair` 返回对齐 LQ 和原始监督 GT；`degrade_image` 仅用于诊断。trace 记录实际网格、核、噪声和 codec。修改退化分布后需要重新标定。
 
 
 ## 编辑、参考图、掩码和图层
