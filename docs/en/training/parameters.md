@@ -412,19 +412,12 @@ Weighted DWT band MSE. In restoration this compares decoded RGB output to detach
 
 ## `DegradationConfig`
 
-Configure synthetic blur, noise, resizing, compression, and final grain here. See [datasets](datasets.md) for a complete recipe.
+Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) for the complete recipe.
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
-| `scales / scale_range` | `null / [1,8]` | Explicit factors override log-uniform range, 1..16 / 离散倍率优先 |
-| `reference_resolution / resolution_exponent` | `512 / 0.5` | HQ scale capped on smaller execution grids; exponent=0 disables adaptation / HQ 系数按实际执行网格限制额外放大 |
-| `second_order_probability` | `1.0` | Probability of running stage two; final delivery always runs / 第二阶段概率 |
-| `use_usm / sharpen_target` | `false / true` | USM off by default; optional HYPIR USM uses fixed support 51 / 默认关闭 USM，启用后可同时锐化监督 GT |
-| `final_grain` | `subtable` | GrainConfig after alignment / 回原尺寸后的 grain |
-| `resize_antialias` | `false` | Optional antialias for bilinear/bicubic downsampling / 可选抗混叠 |
-| `output_mode` | `aligned` | aligned or native; datasets/calibration require aligned / 原生 LQ 仅用于直接调用 |
-| `resize_modes` | `["area","bilinear","bicubic"]` | Random stage interpolation; nearest is opt-in / 阶段插值候选 |
+| `scale` | `8.0` | OMGSR-F downsampling factor within 1..16 |
 | `first / second` | `subtable` | StageConfig / SecondStageConfig |
 | `final_sinc_probability` | `0.8` | Final sinc on native LQ, before alignment / 对齐放大前的 LQ sinc |
 | `gray_probability / color_jitter_probability` | `0 / 0` | Optional output augmentation / 输出增强 |
@@ -435,9 +428,8 @@ Configure synthetic blur, noise, resizing, compression, and final grain here. Se
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | BlurConfig / NoiseConfig / CompressionConfig |
-| `blur_probability / sinc_probability` | `1.0 / 0.1` | Stage filter probability / conditional sinc replacement probability / 阶段滤波及条件 sinc 概率 |
-| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.3,1.5]` | Up/down/keep; grid bounded by native LQ / 升降保持，实际尺寸不得低于最终 LQ |
-| `noise_probability / compression_probability` | `1.0 / 1.0` | Each runs once at its fixed position / 固定顺序各一次 |
+| `sinc_probability` | `0.1` | Conditional sinc replacement probability |
+| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.3,1.5]` | OMGSR up/down/keep using actual integer interpolation sizes |
 
 ## `SecondStageConfig`
 
@@ -445,14 +437,13 @@ Configure synthetic blur, noise, resizing, compression, and final grain here. Se
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
 | `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
-| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | Relative to HQ/scale; no undershoot / 相对最终 LQ，不允许中途缩得更小 |
-| `noise_probability / compression_probability` | `1.0 / 1.0` | Final compression exchanges with native resize+sinc / 末端压缩只与 resize+sinc 整组交换 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | Relative to HQ/8; may undershoot native LQ before resizing back |
 
 ## `BlurConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `sigma` | `[0.2,3.0]` | Uniform reference-pixel sigma; enlargement capped by execution grid / 独立均匀 sigma，按执行网格限制额外放大 |
+| `sigma` | `[0.2,3.0]` | Uniform OMGSR pixel sigma |
 | `probabilities` | `[0.45,0.25,0.12,0.03,0.12,0.03]` | Isotropic/anisotropic Gaussian, generalized, plateau / 各向同性与异性六类 |
 | `generalized_beta / plateau_beta` | `[0.5,4] / [1,2]` | Official beta distributions / 官方 beta 分布 |
 
@@ -476,29 +467,17 @@ Configure synthetic blur, noise, resizing, compression, and final grain here. Se
 | --- | --- | --- |
 | `gaussian_sigma / poisson_scale` | `[1,12] / [0.05,1]` | Other fields inherited / 其余继承 |
 
-## `GrainConfig`
-
-| Field / 字段 | Default / 默认 | Meaning / 说明 |
-| --- | --- | --- |
-| `probability` | `0.1` | One post-alignment draw; skipped for native / 回原尺寸后只抽一次 |
-| `sigma / correlation` | `[1,8] / [0.3,0.8]` | 8-bit RMS and output-pixel radius, no spatial multiplier / 不随倍率或分辨率放大 |
-
 ## `CompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `probabilities` | `[0.85,0.10,0.05]` | JPEG / WebP / JPEG2000 |
-| `jpeg_backend` | `diffjpeg` | HYPIR float JPEG; opencv selects real JPEG / 默认浮点 JPEG，可切换真实编码器 |
-| `jpeg_quality / webp_quality / jpeg2000_quality` | `[60,95] / [60,98] / [250,900]` | Uniform codec-native ranges / 编码器质量区间 |
-| `recompression_probability` | `0` | Optional extra encoding, disabled in baseline / 默认关闭额外重编码 |
+| `jpeg_quality` | `[60,95]` | First-stage uniform DiffJPEG quality range |
 
 ## `SecondCompressionConfig`
 
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
-| `probabilities` | `[0.8,0.15,0.05]` | JPEG / WebP / JPEG2000 |
-| `jpeg_quality` | `[60,99]` | OMGSR range capped below DiffJPEG quality 100 / 避开质量 100 的除零奇点 |
-| `jpeg2000_quality` | `[200,900]` | Other quality fields inherited / 其余质量区间继承 |
+| `jpeg_quality` | `[60,100]` | OMGSR uniform range with an exclusive upper draw |
 
 ## `restore` command
 

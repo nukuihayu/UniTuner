@@ -168,51 +168,35 @@ skip_dataset_validation = true
 
 ### 合成超分退化
 
-以 [HYPIR 官方配置与实现](https://github.com/XPixelGroup/HYPIR/tree/b61d107c6cef38f01a93c7833558869731cfa8c1/HYPIR/dataset) 为基础，对齐 OMGSR 较轻的噪声、二阶段 blur 和 JPEG 分布，使用下述受限缩放，扩展不同尺寸/倍率、多种压缩和末端 10% grain。
+默认退化严格采用 [OMGSR](https://github.com/wuer5/OMGSR/tree/main/dataset) 的两阶段 Real-ESRGAN 配置与算子顺序。唯一有意差异是所有缩放先计算实际整数尺寸，再使用 `size` 和 `align_corners=false` 插值，避免浮点倍率取整在连续缩放中积累轻微相位偏移。
 
-1. 裁剪/配对水平翻转后，默认 USM 关闭，使用原始 HQ 作为退化源和监督 GT。显式 `use_usm=true` 时启用 HYPIR USM（固定核 51、weight=0.5、threshold=10）；`sharpen_target=true` 同时锐化监督 GT，设 false 仅锐化退化源。
+1. 裁剪/配对水平翻转后，使用原始 HQ 作为退化源和监督 GT。
 2. 第一阶段 blur/sinc → resize → Gaussian/Poisson → 压缩。
 3. 第二阶段可选 blur/sinc → resize → Gaussian/Poisson。
 4. 等概率选择原生 LQ [resize+sinc] → 压缩或压缩 → [resize+sinc]。
-5. bicubic 回 HQ，10% 概率只添加一次亮度 grain，最后裁剪和 8-bit 量化。
+5. 从 area/bilinear/bicubic 随机选择模式回 HQ，最后裁剪和 8-bit 量化。
 
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
-scale_range = [1.0, 8.0]
-# scales = [2.0, 4.0, 6.0, 8.0]
-reference_resolution = 512
-resolution_exponent = 0.5
-use_usm = false
-sharpen_target = true
+scale = 8.0
 
 [dataset.groups.synthetic.degradation.first.compression]
-probabilities = [0.85, 0.10, 0.05]
-jpeg_backend = "diffjpeg"
+jpeg_quality = [60.0, 95.0]
 
 [dataset.groups.synthetic.degradation.second.compression]
-probabilities = [0.8, 0.15, 0.05]
-jpeg_backend = "diffjpeg"
-
-[dataset.groups.synthetic.degradation.final_grain]
-probability = 0.1
-sigma = [1.0, 8.0]
-correlation = [0.3, 0.8]
+jpeg_quality = [60.0, 100.0]
 ```
 
-两阶段 resize 范围为 [0.3,1.5] / [0.6,1.2]，上采样／下采样／保持概率为 [0.2,0.7,0.1] / [0.3,0.4,0.3]。每个中间尺寸均不小于最终的 `floor(HQ/倍率)`。`scale_range` 在 [1,16] 内按对数均匀分布抽样；显式 `scales` 优先。
+两阶段 resize 范围为 [0.3,1.5] / [0.6,1.2]，上采样／下采样／保持概率为 [0.2,0.7,0.1] / [0.3,0.4,0.3]。与 OMGSR 一样，第二阶段可低于原生 LQ 尺寸后再放大。`scale` 默认为 OMGSR-F-1024 的 8x，可在 [1,16] 内显式覆盖。
 
-空间适配是扩展：HQ 系数 `k=clamp((HQ短边/reference_resolution)^resolution_exponent,0.5,2)`。执行网格缩小时，混合核 sigma/支撑和 sinc 逆截止频率采用 `min(k,max(1,clamp((执行短边/reference_resolution)^resolution_exponent,0.5,2)))`，避免将 HQ 的额外核放大照搬到小 LQ 网格；低分辨率 HQ 仍保留温和适配。512 时系数为 1；指数设 0 可保留官方固定像素核。USM 固定 51，不缩放噪声幅度或 JPEG 块。极小 LQ 网格无法使用 Torch reflect 时采用重复反射。
+核尺寸固定使用 OMGSR-F-1024 参数：从 11～41 奇数支撑采样并补零到 41。sigma、噪声幅度和 JPEG 块不随执行网格缩放。极小 LQ 网格无法使用 Torch reflect 时采用重复反射。
 
 两阶段 Gaussian/Poisson 各 50%、灰噪声 40%；sigma [1,15]/[1,12]、Poisson scale [0.05,2]/[0.05,1]，对齐 OMGSR，直接用于 resize 后网格，不加增益或衰减。加噪后 clip、不立即量化；仅 Poisson 采样信号预先量化并统计唯一值数。
 
-混合 blur 六类概率 [0.45,0.25,0.12,0.03,0.12,0.03]，基础支撑 7～21、sigma [0.2,3]/[0.2,1.5]。第二阶段 blur 50%，每个已启用阶段有 10% 替换 sinc，final sinc 80%。阶段 cutoff 为 π/3～π（基础核<13）或 π/5～π，final 为 π/3～π，不加窗。
+混合 blur 六类概率 [0.45,0.25,0.12,0.03,0.12,0.03]，基础支撑 11～41、sigma [0.2,3]/[0.2,1.5]。第二阶段 blur 50%，每个阶段有 10% 替换 sinc，final sinc 80%。阶段 cutoff 为 π/3～π（基础核<25）或 π/5～π，final 为 π/3～π，不加窗。
 
-压缩概率按 JPEG/WebP/JPEG2000 排列：第一阶段 [0.85,0.10,0.05]，第二阶段 [0.8,0.15,0.05]。JPEG 默认使用浮点 DiffJPEG，quality 为 [60,95]/[60,99]，采用 4:2:0、最近邻色度重建和补零至 16 倍数。`jpeg_backend="opencv"` 切换为真实 JPEG。WebP quality 为 [60,98]；JPEG2000 为 [250,900]/[200,900]。真实编码器先量化至 8-bit，quality 取整。DiffJPEG quality 必须严格介于 0 和 100，默认关闭再次压缩。
-
-仅使用 JPEG 时，将两阶段压缩概率设为 [1,0,0]；关闭末端 grain 可设置其概率为 0。
-
-末端 grain RMS [1,8]/255、相关半径 [0.3,0.8] 个输出像素，只在回原尺寸后抽取一次，native 输出跳过。训练/标定共享 `degrade_pair` 返回 LQ 和监督 GT；`degrade_image` 仅用于诊断。trace 记录实际网格、核、噪声和编码。修改监督或退化分布后需要重新标定。
+两阶段均固定使用浮点 DiffJPEG，quality 为 [60,95]/[60,100)；采用 4:2:0、最近邻色度重建和补零至 16 倍数。训练/标定共享 `degrade_pair` 返回对齐 LQ 和原始监督 GT；`degrade_image` 仅用于诊断。trace 记录实际网格、核、噪声和编码。修改退化分布后需要重新标定。
 
 
 ## 编辑、参考图、掩码和图层

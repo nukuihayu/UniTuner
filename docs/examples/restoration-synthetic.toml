@@ -67,23 +67,9 @@ horizontal_flip_probability = 0.5
 # 启用该组的合成退化；真实 LQ 配对任务不添加此表。
 # Enable synthetic degradation for this group; omit this table for real paired LQ data.
 enabled = true
-# 合成降采样倍率区间；按对数均匀分布连续采样。
-# Synthetic downsampling factor range, sampled continuously in log space.
-scale_range = [1.0, 8.0]
-# 可选离散小数倍率；填写后覆盖 scale_range。
-# Optional explicit fractional factors override scale_range.
-# scales = [2.5, 4.0, 6.0, 8.0]
-reference_resolution = 512
-resolution_exponent = 0.5
-second_order_probability = 1.0
-use_usm = false
-sharpen_target = true
-resize_antialias = false
-
-[dataset.groups.main.degradation.final_grain]
-probability = 0.1
-sigma = [1.0, 8.0]
-correlation = [0.3, 0.8]
+# 默认使用 OMGSR-F-1024 的 8x，可显式覆盖。
+# OMGSR-F-1024 defaults to 8x and can be overridden explicitly.
+scale = 8.0
 
 [method]
 # 训练目标：flow-matching 或 restoration。

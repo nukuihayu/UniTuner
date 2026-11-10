@@ -1,10 +1,6 @@
-"""Immutable dataset-owned two-stage degradation distributions.
+"""Strict immutable OMGSR-F-1024 degradation parameters."""
 
-Ranges use inclusive bounds;
-probability tuples follow the explicit orders documented on their fields.
-"""
-
-from typing import Annotated, Literal, Self
+from typing import Annotated, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -27,17 +23,13 @@ type Probability = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 
 
 class DistributionConfig(BaseModel, frozen=True):
-    """Strict immutable input; NaN, infinity and unknown distribution keys fail."""
+    """Reject NaN, infinity and parameters outside the OMGSR schema."""
 
     model_config = ConfigDict(frozen=True, strict=True, extra="forbid", allow_inf_nan=False)
 
 
 class BlurConfig(DistributionConfig, frozen=True):
-    """Gaussian, generalized-Gaussian and plateau blur kernels.
-
-    Spatial ranges use the configured HQ reference resolution; the pipeline
-    computes an HQ multiplier and caps extra enlargement on smaller grids.
-    """
+    """OMGSR mixed Gaussian/generalized-Gaussian/plateau kernels."""
 
     sigma: Range = (0.2, 3.0)
     probabilities: Annotated[tuple[float, float, float, float, float, float], AfterValidator(_probabilities)] = (
@@ -61,51 +53,33 @@ class BlurConfig(DistributionConfig, frozen=True):
 
 
 class NoiseConfig(DistributionConfig, frozen=True):
-    """OMGSR acquisition noise: exactly one Gaussian or Poisson draw."""
+    """Exactly one Gaussian or Poisson draw per stage."""
 
     gaussian_probability: Probability = 0.5
     gaussian_sigma: Range = (1.0, 15.0)
     poisson_scale: Range = (0.05, 2.0)
-    gray_probability: Probability = 0.40
-
-
-class GrainConfig(DistributionConfig, frozen=True):
-    """Optional luminance grain added once after alignment, in output pixels."""
-
-    probability: Probability = 0.1
-    sigma: Range = (1.0, 8.0)
-    correlation: Range = (0.3, 0.8)
+    gray_probability: Probability = 0.4
 
 
 class CompressionConfig(DistributionConfig, frozen=True):
-    """HYPIR JPEG with optional real WebP/JPEG2000 and real-JPEG backend."""
+    """OMGSR DiffJPEG quality range; uniform sampling excludes the upper bound."""
 
-    probabilities: Probabilities = (0.85, 0.10, 0.05)
-    jpeg_backend: Literal["diffjpeg", "opencv"] = "diffjpeg"
-    recompression_probability: Probability = 0.0
     jpeg_quality: Range = (60.0, 95.0)
-    webp_quality: Range = (60.0, 98.0)
-    jpeg2000_quality: Range = (250.0, 900.0)
 
     @model_validator(mode="after")
     def validate_quality(self) -> Self:
-        if self.jpeg_quality[1] > 100 or self.webp_quality[1] > 100 or self.jpeg2000_quality[1] > 1000:
-            raise ValueError("JPEG/WebP quality must be <=100; JPEG2000 uses OpenCV's 0..1000 scale")
-        if self.jpeg_backend == "diffjpeg" and not 0 < self.jpeg_quality[0] <= self.jpeg_quality[1] < 100:
-            raise ValueError("DiffJPEG quality must be strictly between 0 and 100")
+        if not 0 < self.jpeg_quality[0] < 100 or self.jpeg_quality[1] > 100:
+            raise ValueError("DiffJPEG quality bounds must lie within (0,100]")
         return self
 
 
 class StageConfig(DistributionConfig, frozen=True):
-    """Ordered acquisition stage; optional intermediate encoding for web reposts."""
+    """First OMGSR degradation stage."""
 
     blur: BlurConfig = Field(default_factory=BlurConfig)
-    blur_probability: Probability = 1.0
     sinc_probability: Probability = 0.1
     resize_probabilities: Probabilities = (0.2, 0.7, 0.1)
     resize_range: Range = (0.3, 1.5)
-    noise_probability: Probability = 1.0
-    compression_probability: Probability = 1.0
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
     compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
@@ -117,62 +91,34 @@ class StageConfig(DistributionConfig, frozen=True):
 
 
 class SecondNoiseConfig(NoiseConfig, frozen=True):
-    """Second-stage camera distribution with independently overridable fields."""
-
-    gaussian_probability: Probability = 0.5
     gaussian_sigma: Range = (1.0, 12.0)
     poisson_scale: Range = (0.05, 1.0)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):
-    """Second-stage codec distribution with independently overridable fields."""
-
-    probabilities: Probabilities = (0.8, 0.15, 0.05)
-    # OMGSR samples up to 100; keep DiffJPEG quantization tables nonsingular.
-    jpeg_quality: Range = (60.0, 99.0)
-    webp_quality: Range = (60.0, 98.0)
-    jpeg2000_quality: Range = (200.0, 900.0)
+    jpeg_quality: Range = (60.0, 100.0)
 
 
 class SecondBlurConfig(BlurConfig, frozen=True):
-    """Milder second-stage blur ranges with the same resolution adaptation."""
-
     sigma: Range = (0.2, 1.5)
 
 
 class SecondStageConfig(StageConfig, frozen=True):
-    """Second-stage defaults also apply when TOML overrides only one nested field."""
+    """Second OMGSR degradation stage."""
 
     blur: SecondBlurConfig = Field(default_factory=SecondBlurConfig)
     blur_probability: Probability = 0.5
-    sinc_probability: Probability = 0.1
     resize_probabilities: Probabilities = (0.3, 0.4, 0.3)
     resize_range: Range = (0.6, 1.2)
-    noise_probability: Probability = 1.0
-    compression_probability: Probability = 1.0
     noise: SecondNoiseConfig = Field(default_factory=SecondNoiseConfig)
     compression: SecondCompressionConfig = Field(default_factory=SecondCompressionConfig)
 
 
 class DegradationConfig(DistributionConfig, frozen=True):
-    """Real-ESRGAN ordering with explicit resolution and codec/noise extensions."""
+    """OMGSR-F-1024 degradation with an explicit, overridable 8x scale."""
 
     enabled: bool = False
-    scales: tuple[Annotated[float, Field(ge=1, le=16)], ...] | None = None
-    scale_range: Range = (1.0, 8.0)
-    reference_resolution: Annotated[int, Field(ge=32)] = 512
-    resolution_exponent: Annotated[float, Field(ge=0, le=1)] = 0.5
-    second_order_probability: Probability = 1.0
-    use_usm: bool = False
-    sharpen_target: bool = True
-    final_grain: GrainConfig = Field(default_factory=GrainConfig)
-    resize_antialias: bool = False
-    output_mode: Literal["aligned", "native"] = "aligned"
-    resize_modes: tuple[Literal["area", "bilinear", "bicubic", "nearest"], ...] = (
-        "area",
-        "bilinear",
-        "bicubic",
-    )
+    scale: Annotated[float, Field(ge=1, le=16)] = 8.0
     first: StageConfig = Field(default_factory=StageConfig)
     second: SecondStageConfig = Field(default_factory=SecondStageConfig)
     final_sinc_probability: Probability = 0.8
@@ -184,11 +130,7 @@ class DegradationConfig(DistributionConfig, frozen=True):
     hue: tuple[float, float] = (-0.1, 0.1)
 
     @model_validator(mode="after")
-    def validate_choices(self) -> Self:
-        if not 1 <= self.scale_range[0] <= self.scale_range[1] <= 16:
-            raise ValueError("scale_range must be within [1,16]")
-        if self.scales == () or not self.resize_modes:
-            raise ValueError("Degradation scales and resize modes cannot be empty")
+    def validate_hue(self) -> Self:
         if not -0.5 <= self.hue[0] <= self.hue[1] <= 0.5:
             raise ValueError("Hue range must be ordered within [-0.5,0.5]")
         return self
