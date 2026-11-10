@@ -437,7 +437,7 @@ Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) f
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
 | `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
-| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | Relative to native LQ; may undershoot before resizing back |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.8,1.2]` | Relative to native LQ; may undershoot before resizing back |
 
 ## `BlurConfig`
 

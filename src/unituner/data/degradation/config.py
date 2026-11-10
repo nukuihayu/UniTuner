@@ -133,7 +133,7 @@ class SecondStageConfig(StageConfig, frozen=True):
     blur: SecondBlurConfig = Field(default_factory=SecondBlurConfig)
     blur_probability: Probability = 0.5
     resize_probabilities: Probabilities = (0.3, 0.4, 0.3)
-    resize_range: Range = (0.6, 1.2)
+    resize_range: Range = (0.8, 1.2)
     noise: SecondNoiseConfig = Field(default_factory=SecondNoiseConfig)
     compression: SecondCompressionConfig = Field(default_factory=SecondCompressionConfig)
 

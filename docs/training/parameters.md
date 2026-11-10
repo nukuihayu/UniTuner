@@ -437,7 +437,7 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 | --- | --- | --- |
 | `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
 | `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
-| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.6,1.2]` | 相对原生 LQ；允许低于原生 LQ 后再放大 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.8,1.2]` | 相对原生 LQ；允许低于原生 LQ 后再放大 |
 
 ## `BlurConfig`
 

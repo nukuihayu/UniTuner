@@ -191,7 +191,7 @@ jpeg_quality = [60.0, 100.0]
 webp_quality = [60.0, 100.0]
 ```
 
-The two resize ranges are [0.3,1.5] / [0.6,1.2], with up/down/keep probabilities [0.2,0.7,0.1] / [0.3,0.4,0.3]. Stage two may undershoot native LQ: at 1024, 4x and 0.6 it reaches 153 before returning to native 256. `scale` defaults to fixed 4x; a fixed value within 1..16 or a continuous deterministic per-sample range such as `[4.0,8.0]` remains supported. Every interpolation uses an explicit integer size rather than floating `scale_factor`, so undershoot does not introduce a slight phase offset.
+The two resize ranges are [0.3,1.5] / [0.8,1.2], with up/down/keep probabilities [0.2,0.7,0.1] / [0.3,0.4,0.3]. Stage two may undershoot native LQ: at 1024, 4x and 0.8 it reaches 204 before returning to native 256. `scale` defaults to fixed 4x; a fixed value within 1..16 or a continuous deterministic per-sample range such as `[4.0,8.0]` remains supported. Every interpolation uses an explicit integer size rather than floating `scale_factor`, so undershoot does not introduce a slight phase offset.
 
 Kernel geometry is fixed to OMGSR-F-1024: odd support is sampled from 11..41 and zero-padded to 41. Sigma, noise amplitude and compression quality do not scale with the execution grid. Tiny LQ grids use repeated reflection when Torch reflection padding cannot fit.
 

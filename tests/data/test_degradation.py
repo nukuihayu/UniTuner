@@ -71,7 +71,7 @@ def test_defaults_match_omgsr_flux_1024():
     assert cfg.first.compression.webp_quality == (60.0, 95.0)
     assert cfg.second.blur_probability == 0.5
     assert cfg.second.resize_probabilities == (0.3, 0.4, 0.3)
-    assert cfg.second.resize_range == (0.6, 1.2)
+    assert cfg.second.resize_range == (0.8, 1.2)
     assert cfg.second.noise.gaussian_sigma == (1.0, 12.0)
     assert cfg.second.noise.poisson_scale == (0.05, 1.0)
     assert cfg.second.noise.iso_shot_noise == (0.001, 0.02)
@@ -221,9 +221,9 @@ def test_sinc_is_untapered_official_circular_filter():
 def test_second_stage_can_undershoot_native_lq_with_integer_phase_stable_size():
     cfg = DegradationConfig()
     assert cfg.first.resize_range == (0.3, 1.5)
-    assert cfg.second.resize_range == (0.6, 1.2)
+    assert cfg.second.resize_range == (0.8, 1.2)
     draws = [_resize_scale(cfg.second, np.random.default_rng(seed)) for seed in range(1000)]
-    assert min(draws) >= 0.6 and min(draws) < 0.61
+    assert min(draws) >= 0.8 and min(draws) < 0.81
     assert 1.19 < max(draws) <= 1.2
     undershot = False
     for seed in range(64):
@@ -236,9 +236,9 @@ def test_second_stage_can_undershoot_native_lq_with_integer_phase_stable_size():
     assert undershot
 
 
-def test_1024_four_x_point_six_case_uses_153_before_returning_to_256():
+def test_1024_four_x_point_eight_case_uses_204_before_returning_to_256():
     target = int(1024 / 4)
-    assert int(target * 0.6) == 153
+    assert int(target * 0.8) == 204
 
 
 @pytest.mark.parametrize("gaussian", [False, True])
