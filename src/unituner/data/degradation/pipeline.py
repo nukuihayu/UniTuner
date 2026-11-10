@@ -179,7 +179,8 @@ def add_noise(
             dtype=np.float32,
         )
         variance = image.clip(0, 1) * gains * shot + read
-        noise = rng.normal(0, 1, image.shape) * np.sqrt(variance.clip(1e-10))
+        standard = rng.standard_normal(image.shape, dtype=np.float32)
+        noise = standard * np.sqrt(variance.clip(1e-10), dtype=np.float32)
         if gray:
             noise = np.repeat(noise.mean(2, keepdims=True), 3, axis=2)
         parameter = {"shot": shot, "read": read, "gains": gains.tolist()}

@@ -459,7 +459,7 @@ Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) f
 | --- | --- | --- |
 | `gaussian_probability / iso_probability` | `1/3 / 1/3` | Absolute Gaussian and ISO probabilities; the remainder selects Poisson |
 | `gaussian_sigma / poisson_scale` | `[1,15] / [0.05,2]` | OMGSR standard deviation (8-bit units) / Poisson amplitude / OMGSR 幅度 |
-| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.0002,0.004] / [0.00005,0.001] / [0.95,1.05]` | Signal-dependent camera ISO model |
+| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.0008,0.015] / [0.0001,0.006] / [0.92,1.15]` | Trainer-strength FP32 signal-dependent camera ISO model |
 | `gray_probability` | `0.4` | Gray probability for all three noise types |
 
 ## `SecondNoiseConfig`
@@ -467,7 +467,7 @@ Configure OMGSR-F-1024 synthetic degradation here. See [datasets](datasets.md) f
 | Field / 字段 | Default / 默认 | Meaning / 说明 |
 | --- | --- | --- |
 | `gaussian_sigma / poisson_scale` | `[1,12] / [0.05,1]` | Other fields inherited / 其余继承 |
-| `iso_shot_noise / iso_read_noise` | `[0.0002,0.003] / [0.00005,0.0008]` | Weaker second-stage ISO ranges |
+| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.001,0.02] / [0.0002,0.008] / [0.9,1.2]` | Trainer-strength second-stage ISO ranges |
 
 ## `CompressionConfig`
 

@@ -66,9 +66,9 @@ class NoiseConfig(DistributionConfig, frozen=True):
     iso_probability: Probability = 1 / 3
     gaussian_sigma: Range = (1.0, 15.0)
     poisson_scale: Range = (0.05, 2.0)
-    iso_shot_noise: Range = (0.0002, 0.004)
-    iso_read_noise: Range = (0.00005, 0.001)
-    iso_color_gain: Range = (0.95, 1.05)
+    iso_shot_noise: Range = (0.0008, 0.015)
+    iso_read_noise: Range = (0.0001, 0.006)
+    iso_color_gain: Range = (0.92, 1.15)
     gray_probability: Probability = 0.4
 
     @model_validator(mode="after")
@@ -113,8 +113,9 @@ class StageConfig(DistributionConfig, frozen=True):
 class SecondNoiseConfig(NoiseConfig, frozen=True):
     gaussian_sigma: Range = (1.0, 12.0)
     poisson_scale: Range = (0.05, 1.0)
-    iso_shot_noise: Range = (0.0002, 0.003)
-    iso_read_noise: Range = (0.00005, 0.0008)
+    iso_shot_noise: Range = (0.001, 0.02)
+    iso_read_noise: Range = (0.0002, 0.008)
+    iso_color_gain: Range = (0.9, 1.2)
 
 
 class SecondCompressionConfig(CompressionConfig, frozen=True):

@@ -195,7 +195,7 @@ The two resize ranges are [0.3,1.5] / [0.6,1.2], with up/down/keep probabilities
 
 Kernel geometry is fixed to OMGSR-F-1024: odd support is sampled from 11..41 and zero-padded to 41. Sigma, noise amplitude and compression quality do not scale with the execution grid. Tiny LQ grids use repeated reflection when Torch reflection padding cannot fit.
 
-Each stage selects Gaussian, Poisson or ISO with equal probability and uses 40% gray noise. Gaussian sigma is [1,15]/[1,12], Poisson amplitude [0.05,2]/[0.05,1], and ISO uses independent shot/read variance with [0.95,1.05] red/blue gains. Addition clips without immediate rounding; only the Poisson sampling signal is quantized before counting unique levels.
+Each stage selects Gaussian, Poisson or ISO with equal probability and uses 40% gray noise. Gaussian sigma is [1,15]/[1,12] and Poisson amplitude is [0.05,2]/[0.05,1]. First/second-stage ISO uses shot ranges [0.0008,0.015]/[0.001,0.02], read ranges [0.0001,0.006]/[0.0002,0.008], and red/blue gain ranges [0.92,1.15]/[0.9,1.2]. Addition clips without immediate rounding; only the Poisson sampling signal is quantized before counting unique levels.
 
 Mixed blur uses six probabilities [0.45,0.25,0.12,0.03,0.12,0.03], base support 11..41 and sigma [0.2,3]/[0.2,1.5]. Second blur runs 50%; conditional sinc replacement is 10% per stage, final sinc 80%. Stage cutoff is π/3..π for base support <25 and π/5..π otherwise; final cutoff π/3..π. No taper.
 

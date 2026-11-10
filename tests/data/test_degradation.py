@@ -63,8 +63,9 @@ def test_defaults_match_omgsr_flux_1024():
     assert cfg.first.noise.iso_probability == pytest.approx(1 / 3)
     assert cfg.first.noise.gaussian_sigma == (1.0, 15.0)
     assert cfg.first.noise.poisson_scale == (0.05, 2.0)
-    assert cfg.first.noise.iso_shot_noise == (0.0002, 0.004)
-    assert cfg.first.noise.iso_read_noise == (0.00005, 0.001)
+    assert cfg.first.noise.iso_shot_noise == (0.0008, 0.015)
+    assert cfg.first.noise.iso_read_noise == (0.0001, 0.006)
+    assert cfg.first.noise.iso_color_gain == (0.92, 1.15)
     assert cfg.first.compression.jpeg_probability == 0.5
     assert cfg.first.compression.jpeg_quality == (60.0, 95.0)
     assert cfg.first.compression.webp_quality == (60.0, 95.0)
@@ -73,8 +74,9 @@ def test_defaults_match_omgsr_flux_1024():
     assert cfg.second.resize_range == (0.6, 1.2)
     assert cfg.second.noise.gaussian_sigma == (1.0, 12.0)
     assert cfg.second.noise.poisson_scale == (0.05, 1.0)
-    assert cfg.second.noise.iso_shot_noise == (0.0002, 0.003)
-    assert cfg.second.noise.iso_read_noise == (0.00005, 0.0008)
+    assert cfg.second.noise.iso_shot_noise == (0.001, 0.02)
+    assert cfg.second.noise.iso_read_noise == (0.0002, 0.008)
+    assert cfg.second.noise.iso_color_gain == (0.9, 1.2)
     assert cfg.second.compression.jpeg_quality == (60.0, 100.0)
     assert cfg.second.compression.webp_quality == (60.0, 100.0)
     assert cfg.final_sinc_probability == 0.8
@@ -286,7 +288,8 @@ def test_iso_noise_matches_signal_dependent_camera_model(gray):
     read = rng.uniform(0.0005, 0.0005)
     gains = np.array([rng.uniform(0.95, 1.05), 1, rng.uniform(0.95, 1.05)], dtype=np.float32)
     variance = source * gains * shot + read
-    residual = rng.normal(0, 1, source.shape) * np.sqrt(variance.clip(1e-10))
+    standard = rng.standard_normal(source.shape, dtype=np.float32)
+    residual = standard * np.sqrt(variance.clip(1e-10), dtype=np.float32)
     if gray:
         residual = np.repeat(residual.mean(2, keepdims=True), 3, axis=2)
     np.testing.assert_array_equal(actual, np.clip(source + residual, 0, 1).astype(np.float32))
