@@ -58,7 +58,7 @@ tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 | Metric | Read it as |
 | --- | --- |
 | loss/main or loss/generator | Sample-weighted loss for a completed effective update |
-| loss/generator/lrr, l1, dv3d, fdl, gan, histogram | Restoration components on their own scales |
+| loss/generator/lrr, l1, dv3d, gan, histogram | Restoration components on their own scales |
 | loss/discriminator | Separate discriminator objective |
 | train/*/grad_norm, lr/* | Gradient norm and parameter-group learning rates |
 | train/update_samples, train/update_microbatches | Actual work in the accumulated update |

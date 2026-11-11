@@ -33,7 +33,6 @@ l1 = 0.5
 histogram = 0.0
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 """
     training.write_text(content)
     assert main_with_local_tokenizers(["cache", str(training)]) == 0
@@ -68,7 +67,7 @@ fdl = 0.0
                 continue
             assert events.Scalars(tag)[index].value == pytest.approx(value)
     expected_steps = [1, 2]
-    for name in ("l1", "lrr", "dv3d", "fdl", "gan", "histogram"):
+    for name in ("l1", "lrr", "dv3d", "gan", "histogram"):
         assert [event.step for event in events.Scalars(f"loss/generator/{name}")] == expected_steps
     for total, l1, lrr in zip(
         events.Scalars("loss/generator"),

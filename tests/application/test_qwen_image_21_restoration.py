@@ -119,7 +119,6 @@ l1 = 0.5
 lrr = 1.0
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 histogram = 0.1
 [execution]
 precision = "fp32"

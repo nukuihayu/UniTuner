@@ -49,7 +49,7 @@ precision = "bf16"
 
 修改文本精度或量化设置后重新生成缓存。具体模型限制见[文本编码](text-encoding.md)。
 
-修复训练的 DINO／VGG 特征网络默认使用 BF16；需要 FP32 时设置：
+修复训练的 DINO 特征网络默认使用 BF16；需要 FP32 时设置：
 
 ```toml
 [method.restoration]

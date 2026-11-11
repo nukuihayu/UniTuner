@@ -20,7 +20,6 @@ class RestorationLossWeights(BaseModel):
     dv3d: float = Field(default=3.0, ge=0)
     l1: float = Field(default=0.5, ge=0)
     gan: float = Field(default=0.5, ge=0)
-    fdl: float = Field(default=0.5, ge=0)
     histogram: float = Field(default=0.0, ge=0)
     phase: float = Field(default=0.0, ge=0)
     ms_ssim: float = Field(default=0.0, ge=0)
@@ -52,9 +51,6 @@ class RestorationConfig(BaseModel):
         default=None,
         description="Local DINO ConvNeXt checkpoint (.pt/.pth/.safetensors); required when losses.dv3d or losses.gan is positive",
     )
-    vgg_weights: str | None = Field(
-        default=None, description="Local VGG19 checkpoint (.pt/.pth/.safetensors); required when losses.fdl is positive"
-    )
     feature_precision: Literal["bf16", "fp32"] = "bf16"
     dino_widths: tuple[PositiveInt, ...] = Field(
         default=(192, 384, 768, 1536),
@@ -63,7 +59,6 @@ class RestorationConfig(BaseModel):
         description="Four DINO ConvNeXt stage widths; defaults match ConvNeXt Large",
     )
     dino_depths: tuple[PositiveInt, ...] = Field(default=(3, 3, 27, 3), min_length=4, max_length=4)
-    vgg_widths: tuple[PositiveInt, ...] = Field(default=(64, 128, 256, 512, 512), min_length=5, max_length=5)
 
     @model_validator(mode="after")
     def validate_calibration(self) -> Self:

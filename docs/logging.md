@@ -58,7 +58,7 @@ tensorboard --logdir runs/tensorboard --host 0.0.0.0 --port 6006
 | 指标 | 如何读 |
 | --- | --- |
 | loss/main 或 loss/generator | 完成一次有效更新后的按样本加权损失 |
-| loss/generator/lrr、l1、dv3d、fdl、gan、histogram | 修复各分项，按各自原始尺度显示 |
+| loss/generator/lrr、l1、dv3d、gan、histogram | 修复各分项，按各自原始尺度显示 |
 | loss/discriminator | 独立判别器目标 |
 | train/*/grad_norm、lr/* | 梯度范数和各参数组学习率 |
 | train/update_samples、train/update_microbatches | 梯度累积实际消耗量 |

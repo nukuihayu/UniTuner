@@ -74,7 +74,7 @@ def test_affine_invariance_and_correct_periodic_texture():
 
 
 def test_native_loss_weighting_and_disabled_small_images():
-    weights = RestorationLossWeights(lrr=0.0, l1=0.5, dv3d=0.0, gan=0.0, fdl=0.0, phase=4.0)
+    weights = RestorationLossWeights(lrr=0.0, l1=0.5, dv3d=0.0, gan=0.0, phase=4.0)
     options = RestorationConfig(phase_period=2, phase_cycles=2, phase_epsilon=0.01)
     generated = torch.randn(1, 3, 8, 8).requires_grad_()
     target = torch.randn_like(generated)

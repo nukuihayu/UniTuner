@@ -96,9 +96,6 @@ dv3d = 0.0
 # 生成器对抗损失系数；大于 0 启用判别器并需要 DINO 权重。
 # Generator adversarial coefficient; positive values enable a discriminator and require DINO weights.
 gan = 0.0
-# VGG 频率分布损失系数；大于 0 需 VGG 权重。
-# VGG frequency-distribution coefficient; positive values require VGG weights.
-fdl = 0.0
 # 颜色直方图损失系数；无需额外特征模型。
 # Color histogram loss coefficient; needs no additional feature model.
 histogram = 0.0

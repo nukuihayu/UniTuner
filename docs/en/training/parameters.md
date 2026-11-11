@@ -218,11 +218,9 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `posterior` | "mean", "sample" / null | `null` | Training VAE posterior mean/sample; omission uses the family's policy, inference/previews use means. |
 | `histogram_bins` | integer；≥ 2 | `32` | Color histogram bin count, at least 2; relevant when histogram loss is enabled. |
 | `dino_weights` | string / null | `null` | Local DINOv3 ConvNeXt weights, required when dv3d or gan is positive. |
-| `vgg_weights` | string / null | `null` | Local VGG19 weights, required when fdl is positive. |
 | `feature_precision` | "bf16", "fp32" | `"bf16"` | Perceptual-network precision bf16/fp32, independent of the main model compute dtype. |
 | `dino_widths` | [integer, …]；length ≥ 4, length ≤ 4 | `[192, 384, 768, 1536]` | Four DINO ConvNeXt stage widths; defaults match Large, change only for a matching alternate topology. |
 | `dino_depths` | [integer, …]；length ≥ 4, length ≤ 4 | `[3, 3, 27, 3]` | Four DINO stage depths; must match the selected checkpoint. |
-| `vgg_widths` | [integer, …]；length ≥ 5, length ≤ 5 | `[64, 128, 256, 512, 512]` | Five VGG stage widths; must match the selected checkpoint. |
 
 ## `losses`
 
@@ -232,7 +230,6 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `dv3d` | number；≥ 0 | `3.0` | DINOv3 feature-distance coefficient; positive values require DINO weights. |
 | `l1` | number；≥ 0 | `0.5` | Pixel L1 coefficient between output and HQ; 0 disables it. |
 | `gan` | number；≥ 0 | `0.5` | Generator adversarial coefficient; positive values enable a discriminator and require DINO weights. |
-| `fdl` | number；≥ 0 | `0.5` | VGG frequency-distribution coefficient; positive values require VGG weights. |
 | `histogram` | number；≥ 0 | `0.0` | Color histogram loss coefficient; needs no additional feature model. |
 
 ## `execution`

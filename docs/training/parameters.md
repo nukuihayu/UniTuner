@@ -218,11 +218,9 @@ batch_size = 16
 | `posterior` | "mean", "sample" / null | `null` | 训练 VAE 后验 mean/sample；省略遵循各家族策略，推理/预览使用均值。 |
 | `histogram_bins` | integer；≥ 2 | `32` | 颜色直方图损失的桶数，至少 2；仅 histogram 权重大于 0 时影响训练。 |
 | `dino_weights` | string / null | `null` | 本地 DINOv3 ConvNeXt 权重；dv3d 或 gan 大于 0 时必填。 |
-| `vgg_weights` | string / null | `null` | 本地 VGG19 权重；fdl 大于 0 时必填。 |
 | `feature_precision` | "bf16", "fp32" | `"bf16"` | 感知特征网络精度；支持 bf16/fp32，与主模型计算精度分开。 |
 | `dino_widths` | [integer, …]；length ≥ 4, length ≤ 4 | `[192, 384, 768, 1536]` | DINO ConvNeXt 四阶段通道数；默认匹配 Large，只在匹配其他结构时更改。 |
 | `dino_depths` | [integer, …]；length ≥ 4, length ≤ 4 | `[3, 3, 27, 3]` | DINO 四阶段深度；必须与 dino_weights 结构一致。 |
-| `vgg_widths` | [integer, …]；length ≥ 5, length ≤ 5 | `[64, 128, 256, 512, 512]` | VGG 五阶段通道数；必须与 vgg_weights 结构一致。 |
 
 ## `losses`
 
@@ -232,7 +230,6 @@ batch_size = 16
 | `dv3d` | number；≥ 0 | `3.0` | DINOv3 特征距离损失系数；大于 0 需 DINO 权重。 |
 | `l1` | number；≥ 0 | `0.5` | 输出与 HQ 的像素 L1 损失系数；0 关闭。 |
 | `gan` | number；≥ 0 | `0.5` | 生成器对抗损失系数；大于 0 启用判别器并需要 DINO 权重。 |
-| `fdl` | number；≥ 0 | `0.5` | VGG 频率分布损失系数；大于 0 需 VGG 权重。 |
 | `histogram` | number；≥ 0 | `0.0` | 颜色直方图损失系数；无需额外特征模型。 |
 
 ## `execution`

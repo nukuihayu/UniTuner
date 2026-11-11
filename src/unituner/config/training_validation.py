@@ -138,13 +138,11 @@ def validate_training_policy(config: "TrainingConfig") -> None:
             any((wavelet.lh, wavelet.hl, wavelet.hh))
             or (wavelet.ll > 0 and (threshold is None or threshold < wavelet.levels))
         )
-        if not any(
-            (losses.dv3d, losses.l1, losses.gan, losses.fdl, losses.histogram, losses.ms_ssim, wavelet_objective)
-        ):
+        if not any((losses.dv3d, losses.l1, losses.gan, losses.histogram, losses.ms_ssim, wavelet_objective)):
             raise ConfigRuleError(
                 "losses",
                 "At least one image objective is required",
-                "Enable dv3d, l1, gan, fdl, histogram, ms_ssim or an active method.wavelet band; lrr/phase alone are insufficient.",
+                "Enable dv3d, l1, gan, histogram, ms_ssim or an active method.wavelet band; lrr/phase alone are insufficient.",
             )
         if losses.ms_ssim and any(min(group.resolution) <= 160 for group in config.dataset.groups.values()):
             raise ConfigRuleError(
@@ -157,12 +155,6 @@ def validate_training_policy(config: "TrainingConfig") -> None:
                 "method.restoration.dino_weights",
                 "dino_weights is required for dv3d or gan",
                 "Set a local DINO .pt/.pth/.safetensors checkpoint, or set losses.dv3d=0 and losses.gan=0.",
-            )
-        if losses.fdl and not restoration.vgg_weights:
-            raise ConfigRuleError(
-                "method.restoration.vgg_weights",
-                "vgg_weights is required for fdl",
-                "Set a local VGG19 .pt/.pth/.safetensors checkpoint, or set losses.fdl=0.",
             )
         if not supports_restoration(config.model.family, config.model.variant):
             raise ConfigRuleError(

@@ -113,7 +113,7 @@ def test_z_image_restoration_pixel_update_matches_direct_native_step():
     )
     torch.testing.assert_close(restored, direct, atol=0, rtol=0)
     generated = vae.decode(vae.denormalize(restored))
-    weights = RestorationLossWeights(l1=0.5, lrr=5.0, dv3d=0.0, gan=0.0, fdl=0.0, histogram=0.1)
+    weights = RestorationLossWeights(l1=0.5, lrr=5.0, dv3d=0.0, gan=0.0, histogram=0.1)
     noisy_high = flow_target(clean, noise, sigma)
     result = generator_loss(generated, high, low_latents, noisy_high, weights, histogram_bins=8)
     expected = (
@@ -150,13 +150,13 @@ def test_generator_temporaries_are_released_before_discriminator_forward():
     method = object.__new__(RestorationMethod)
     method._first_step = False
     method.compute_precision = "fp32"
-    method.weights = RestorationLossWeights(lrr=3, dv3d=5, l1=0.5, gan=0.5, fdl=0, phase=4)
+    method.weights = RestorationLossWeights(lrr=3, dv3d=5, l1=0.5, gan=0.5, phase=4)
     method.encoder = SimpleNamespace(unadapted=torch.no_grad)
     method.state = nn.Module()
     method.state.register_buffer("sigma", torch.tensor(0.244, dtype=torch.float64))
     method.histogram_bins, method.phase_period, method.phase_cycles, method.phase_epsilon = 32, 16, 8, 0.001
     method.posterior = "mean"
-    method.wavelet = method.frequency = None
+    method.wavelet = None
     scale = nn.Parameter(torch.tensor(0.8))
     refs = {}
 
@@ -249,7 +249,6 @@ lrr = 5.0
 l1 = 0.5
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 ''')
     config = load_training_config(config_path)
     low = torch.rand(2, 3, 16, 16) * 2 - 1

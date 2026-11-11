@@ -6,9 +6,8 @@ from torch.nn import functional as F
 
 from unituner.artifacts.tensors import save_tensors
 from unituner.models.features.convnext import ChannelLayerNorm, DinoConvNeXt, l2_pool
-from unituner.models.features.loading import load_dino_convnext, load_dino_vit, load_vgg19_features
+from unituner.models.features.loading import load_dino_convnext, load_dino_vit
 from unituner.models.features.normalization import normalize_image
-from unituner.models.features.vgg import Vgg19Features
 from unituner.models.features.vit import DinoViT, DinoViTConfig
 from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
 from unituner.training.losses.perceptual import DinoPerceptualLoss
@@ -136,56 +135,6 @@ def test_convnext_official_pytorch_state_dict_and_misnamed_checkpoint(tmp_path, 
     torch.save({"model": model.state_dict()}, path)
     with pytest.raises(ValueError, match="tensor state dict"):
         load_dino_convnext(path, widths=widths, depths=depths, device=torch.device("cpu"))
-
-
-def test_vgg_stage_views_preserve_official_feature_indices(tmp_path):
-    model = Vgg19Features((2, 3, 4, 5, 6))
-    path = tmp_path / "vgg.safetensors"
-    save_tensors(model.state_dict(), path)
-    loaded = load_vgg19_features(path, device=torch.device("cpu"), widths=model.widths)
-    hidden = torch.randn(1, 3, 80, 80, requires_grad=True)
-    direct = hidden
-    cut_outputs = []
-    for index, layer in enumerate(model.features):
-        direct = layer(direct)
-        if index in (3, 8, 17, 26, 35):
-            cut_outputs.append(direct)
-    for stage, expected in zip(loaded.feature_stages(), cut_outputs, strict=True):
-        hidden = stage(hidden)
-        torch.testing.assert_close(hidden, expected, rtol=0, atol=0)
-    assert hidden.shape == (1, 6, 5, 5)
-
-
-@pytest.mark.parametrize("suffix", [".pt", ".pth", ".safetensors"])
-@pytest.mark.parametrize("layout", ["features", "full", "sequential"])
-def test_vgg_formats_and_official_classifier_handling(tmp_path, suffix, layout):
-    model = Vgg19Features((2, 3, 4, 5, 6))
-    state = dict(model.state_dict())
-    if layout == "full":
-        state.update({f"classifier.{i}.{s}": torch.ones(1) for i in (0, 3, 6) for s in ("weight", "bias")})
-    elif layout == "sequential":
-        state = {key.removeprefix("features."): value for key, value in state.items()}
-    path = tmp_path / ("vgg" + suffix)
-
-    def save(tensors):
-        if suffix == ".safetensors":
-            save_tensors(tensors, path)
-        else:
-            torch.save(tensors, path)
-
-    save(state)
-    rng = torch.get_rng_state().clone()
-    loaded = load_vgg19_features(path, device=torch.device("cpu"), widths=model.widths)
-    assert torch.equal(rng, torch.get_rng_state())
-    assert not loaded.training and all(not p.requires_grad for p in loaded.parameters())
-    for key, value in model.state_dict().items():
-        assert torch.equal(value, loaded.state_dict()[key])
-    pixels = torch.randn(1, 3, 32, 32, requires_grad=True)
-    loaded.features(pixels).sum().backward()
-    assert pixels.grad is not None and torch.isfinite(pixels.grad).all()
-    save({**state, "unexpected.weight": torch.ones(1)})
-    with pytest.raises(ValueError, match="keys differ"):
-        load_vgg19_features(path, device=torch.device("cpu"), widths=model.widths)
 
 
 @pytest.mark.parametrize("suffix", [".pt", ".pth", ".safetensors"])

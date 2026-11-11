@@ -22,7 +22,7 @@ from unituner.logging import clear_context, set_context
 from unituner.models.components.conditioning import Caption, batch_captions
 from unituner.models.components.image_encoders import load_image_vae
 from unituner.models.components.image_geometry import image_latent_geometry
-from unituner.models.features.loading import load_dino_convnext, load_vgg19_features
+from unituner.models.features.loading import load_dino_convnext
 from unituner.models.flux.conditioning import FluxTextFeatures
 from unituner.models.image import model_latent_channels
 from unituner.models.krea2.conditioning import Krea2TextFeatures, batch_text
@@ -39,7 +39,6 @@ from unituner.training.integrations.moss_image.binding import MossImageBinding
 from unituner.training.integrations.qwen_image.binding import QwenImageBinding
 from unituner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding
 from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
-from unituner.training.losses.frequency_distribution import FrequencyDistributionLoss
 from unituner.training.losses.perceptual import DinoPerceptualLoss
 from unituner.training.losses.restoration import generator_loss
 from unituner.training.losses.wavelet import WaveletLoss
@@ -133,7 +132,6 @@ class RestorationMethod:
             self.modules["encoder"] = self.encoder
         self.perceptual: DinoPerceptualLoss | None = None
         self.discriminator: MultilevelDiscriminator | None = None
-        self.frequency: FrequencyDistributionLoss | None = None
         if weights.dv3d or weights.gan:
             if options.dino_weights is None:
                 raise ValueError("DINO weights are required for Dv3D/GAN")
@@ -162,20 +160,6 @@ class RestorationMethod:
                 )
                 self.discriminator.validate_resolution(*next(iter(config.dataset.groups.values())).resolution)
                 self.modules["discriminator"] = self.discriminator.heads
-        if weights.fdl:
-            if options.vgg_weights is None:
-                raise ValueError("VGG weights are required for FDL")
-            if min(next(iter(config.dataset.groups.values())).resolution) < 80:
-                raise ValueError("FDL requires image dimensions at least 80")
-            status(f"[train] Loading VGG/FDL: {options.vgg_weights}")
-            vgg = load_vgg19_features(
-                Path(options.vgg_weights), widths=options.vgg_widths, device=device, dtype=feature_dtype
-            )
-            self.frequency = FrequencyDistributionLoss(
-                vgg.feature_stages(), vgg.widths, config.train.seed, bf16_compute=feature_bf16
-            ).to(device)
-            self.modules["frequency"] = self.frequency
-            status(f"[train] VGG/FDL ready ({options.feature_precision.upper()} feature storage and compute)")
 
     def _trace(self, label: str, device: torch.device) -> None:
         if self._first_step:
@@ -353,7 +337,7 @@ class RestorationMethod:
             restored = self.restore(low_latent, captions)
             self._trace("VAE decoder forward", low.device)
             generated = self.decode(restored).float()
-            self._trace("computing restoration losses (DINO/GAN/FDL as configured)", low.device)
+            self._trace("computing restoration losses (DINO/GAN as configured)", low.device)
             logits = None
             if self.discriminator is not None:
                 with frozen_discriminator(self.discriminator):
@@ -365,7 +349,6 @@ class RestorationMethod:
                 flow_target(clean, noise, self.sigma) if clean is not None else None,
                 self.weights,
                 perceptual=self.perceptual(generated, high) if self.perceptual is not None else None,
-                frequency_distribution=self.frequency(generated, high) if self.frequency is not None else None,
                 discriminator_logits=logits,
                 histogram_bins=self.histogram_bins,
                 phase_period=self.phase_period,

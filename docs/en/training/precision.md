@@ -49,7 +49,7 @@ precision = "bf16"
 
 Rebuild caches after changing text precision or quantization. See [text encoding](text-encoding.md) for model-specific restrictions.
 
-Restoration DINO/VGG feature networks default to BF16. Select FP32 with:
+Restoration DINO feature networks default to BF16. Select FP32 with:
 
 ```toml
 [method.restoration]

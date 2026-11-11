@@ -99,7 +99,7 @@ def _workspace(tmp_path, *, restoration=False, layers=1):
         Image.fromarray(np.zeros((32, 64, 3), dtype=np.uint8)).save(low / "one.png")
         data["dataset"]["groups"]["main"].update(kind="restoration", low_quality_source=str(low))
         data["method"] = {"kind": "restoration", "restoration": {"sigma": 0.5, "encoder_rank": 0}}
-        data["losses"] = {"lrr": 0, "dv3d": 0, "gan": 0, "fdl": 0, "l1": 1}
+        data["losses"] = {"lrr": 0, "dv3d": 0, "gan": 0, "l1": 1}
         data["model"]["vae"] = str(tmp_path / "vae.safetensors")
         save_tensors({"weight": torch.ones(1)}, tmp_path / "vae.safetensors")
     return data, entry

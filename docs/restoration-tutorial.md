@@ -2,7 +2,7 @@
 
 [English](en/restoration-tutorial.md) · [训练教程](training/README.md)
 
-本教程直接使用真实 LQ/HQ 图片，不构造退化。先用 LRR＋L1 验证流程，再按需要加入 DINOv3、GAN 和 VGG 损失。
+本教程直接使用真实 LQ/HQ 图片，不构造退化。先用 LRR＋L1 验证流程，再按需要加入 DINOv3 和 GAN 损失。
 
 <details>
 <summary>本页导航</summary>
@@ -74,7 +74,6 @@ lrr = 3.0
 l1 = 0.5
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 histogram = 0.0
 
 [execution]
@@ -157,10 +156,9 @@ runs/restoration/
 | losses.l1 | 像素一致性 | 无 |
 | losses.dv3d | DINOv3 特征距离 | method.restoration.dino_weights |
 | losses.gan | 对抗细节学习，增加判别器更新 | 同一 DINOv3 ConvNeXt 权重 |
-| losses.fdl | VGG 频率分布目标 | method.restoration.vgg_weights |
 | losses.histogram | 颜色分布 | 可调 histogram_bins，无外部权重 |
 
-DINO 这里使用 ConvNeXt，不是任意 DINO ViT。默认 dino_widths/depths 匹配 ConvNeXt Large；VGG 默认通道匹配 VGG19。权重结构要对应，不能仅改文件名。
+DINO 这里使用 ConvNeXt，不是任意 DINO ViT。默认 dino_widths/depths 匹配 ConvNeXt Large。权重结构要对应，不能仅改文件名。
 
 完整感知配方见 [restoration.toml](examples/restoration.toml)，油光肤色 Z-Image Turbo 配方见 [oil-skin-lora.toml](examples/oil-skin-lora.toml)。后者含真实路径，复制后按自己的目录修改。
 

@@ -76,7 +76,7 @@ def test_extreme_inputs_have_finite_loss_and_gradients(kind):
 def test_native_weighting_and_disabled_small_images():
     target = torch.rand(1, 3, 176, 176) * 2 - 1
     prediction = (target * 0.8).requires_grad_()
-    weights = RestorationLossWeights(lrr=0.0, l1=0.5, dv3d=0.0, gan=0.0, fdl=0.0, ms_ssim=0.2)
+    weights = RestorationLossWeights(lrr=0.0, l1=0.5, dv3d=0.0, gan=0.0, ms_ssim=0.2)
     loss = generator_loss(prediction, target, prediction, None, weights)
     expected = 0.5 * F.l1_loss(prediction, target) + 0.2 * ms_ssim_loss(prediction, target)
     torch.testing.assert_close(loss.total, expected)
@@ -95,7 +95,6 @@ def test_config_allows_ms_ssim_only_and_pins_resume_weight():
         "l1": 0.0,
         "dv3d": 0.0,
         "gan": 0.0,
-        "fdl": 0.0,
         "histogram": 0.0,
         "phase": 0.0,
         "ms_ssim": 0.2,

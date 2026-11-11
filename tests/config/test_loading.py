@@ -55,10 +55,9 @@ def test_examples(name):
     if name == "restoration":
         losses = config.losses
         assert losses is not None
-        assert (losses.lrr, losses.dv3d, losses.l1, losses.gan, losses.fdl, losses.histogram) == (
+        assert (losses.lrr, losses.dv3d, losses.l1, losses.gan, losses.histogram) == (
             5.0,
             3.0,
-            0.5,
             0.5,
             0.5,
             0.0,
@@ -121,7 +120,7 @@ def test_restoration_midtimestep_cli_overrides_toml_before_validation(monkeypatc
         {"model": {"family": "wan"}, "train": {"parameter_mode": "full"}},
         {"train": {"parameter_mode": "full"}, "execution": {"quantization": "fp8"}},
         {"method": {"kind": "restoration"}},
-        {"method": {"restoration": {"gan": 0.0, "dv3d": 0.0, "fdl": 0.0}}},
+        {"method": {"restoration": {"gan": 0.0, "dv3d": 0.0}}},
     ],
 )
 def test_invalid_input_rejected_before_io(override):
@@ -239,15 +238,15 @@ def test_preview_configuration_requires_matching_inputs():
 
 
 def test_restoration_wavelet_objective_needs_no_feature_models():
-    losses = dict.fromkeys(("lrr", "l1", "dv3d", "gan", "fdl", "histogram", "phase"), 0.0)
-    method = {"restoration": {"dino_weights": None, "vgg_weights": None}, "wavelet": {"wavelet": "haar"}}
+    losses = dict.fromkeys(("lrr", "l1", "dv3d", "gan", "histogram", "phase"), 0.0)
+    method = {"restoration": {"dino_weights": None}, "wavelet": {"wavelet": "haar"}}
     config = load_training_config(EXAMPLES / "restoration.toml", overrides={"losses": losses, "method": method})
     assert config.method.wavelet is not None and config.method.wavelet.wavelet == "haar"
 
 
 @pytest.mark.parametrize("bands", [{"ll": 0.0}, {"ll": 1.0, "ll_level_threshold": 3}])
 def test_restoration_rejects_ineffective_wavelet_only_objective(bands):
-    losses = dict.fromkeys(("lrr", "l1", "dv3d", "gan", "fdl", "histogram", "phase"), 0.0)
+    losses = dict.fromkeys(("lrr", "l1", "dv3d", "gan", "histogram", "phase"), 0.0)
     with pytest.raises(ConfigError, match="At least one image objective"):
         load_training_config(
             EXAMPLES / "restoration.toml",

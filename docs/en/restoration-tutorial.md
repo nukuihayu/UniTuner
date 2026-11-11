@@ -2,7 +2,7 @@
 
 [简体中文](../restoration-tutorial.md) · [Trainer tutorial](training/README.md)
 
-Use real LQ/HQ images without synthesizing degradation. Validate the LRR+L1 workflow first, then add DINOv3, GAN or VGG objectives as needed.
+Use real LQ/HQ images without synthesizing degradation. Validate the LRR+L1 workflow first, then add DINOv3 or GAN objectives as needed.
 
 <details>
 <summary>On this page</summary>
@@ -74,7 +74,6 @@ lrr = 3.0
 l1 = 0.5
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 histogram = 0.0
 
 [execution]
@@ -157,10 +156,9 @@ After validating the basic workflow, enable only objectives you need:
 | losses.l1 | Pixel agreement | None |
 | losses.dv3d | DINOv3 feature distance | method.restoration.dino_weights |
 | losses.gan | Adversarial details and discriminator updates | The same DINOv3 ConvNeXt weights |
-| losses.fdl | VGG frequency-distribution target | method.restoration.vgg_weights |
 | losses.histogram | Color distribution | Optional histogram_bins; no feature checkpoint |
 
-DINO here means ConvNeXt, not an arbitrary DINO ViT. Default widths/depths match ConvNeXt Large; VGG channel defaults match VGG19. Match actual topology, not filenames alone.
+DINO here means ConvNeXt, not an arbitrary DINO ViT. Default widths/depths match ConvNeXt Large. Match actual topology, not filenames alone.
 
 See [restoration.toml](../examples/restoration.toml) for a perceptual recipe and [oil-skin-lora.toml](../examples/oil-skin-lora.toml) for Z-Image Turbo skin restoration. Replace its environment-specific paths.
 

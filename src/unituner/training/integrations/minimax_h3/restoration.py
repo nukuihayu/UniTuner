@@ -10,13 +10,12 @@ from unituner.adapters.encoder import EncoderAdapters
 from unituner.config.training import TrainingConfig
 from unituner.data.datasets.restoration import RestorationDataset
 from unituner.inference.restoration.vae import encode_restoration_image, restoration_posterior
-from unituner.models.features.loading import load_dino_convnext, load_vgg19_features
+from unituner.models.features.loading import load_dino_convnext
 from unituner.models.minimax_h3.image_cache import MiniMaxH3ImageRecord
 from unituner.models.minimax_h3.image_vae import load_image_vae
 from unituner.training.contracts import StepResult
 from unituner.training.integrations.minimax_h3.image import MiniMaxH3ImageBinding
 from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
-from unituner.training.losses.frequency_distribution import FrequencyDistributionLoss
 from unituner.training.losses.perceptual import DinoPerceptualLoss
 from unituner.training.losses.restoration import generator_loss
 from unituner.training.losses.wavelet import WaveletLoss
@@ -66,7 +65,6 @@ class MiniMaxH3ImageRestoration:
         bf16 = options.feature_precision == "bf16"
         self.perceptual: DinoPerceptualLoss | None = None
         self.discriminator: MultilevelDiscriminator | None = None
-        self.frequency: FrequencyDistributionLoss | None = None
         if weights.dv3d or weights.gan:
             if options.dino_weights is None:
                 raise ValueError("H3-Image Dv3D/GAN requires DINO weights")
@@ -89,16 +87,6 @@ class MiniMaxH3ImageRestoration:
                     .train()
                 )
                 self.modules["discriminator"] = self.discriminator.heads
-        if weights.fdl:
-            if options.vgg_weights is None:
-                raise ValueError("H3-Image FDL requires VGG weights")
-            vgg = load_vgg19_features(
-                Path(options.vgg_weights), widths=options.vgg_widths, device=device, dtype=feature_dtype
-            )
-            self.frequency = FrequencyDistributionLoss(
-                vgg.feature_stages(), vgg.widths, config.train.seed, bf16_compute=bf16
-            ).to(device)
-            self.modules["frequency"] = self.frequency
 
     @property
     def sigma(self) -> float:
@@ -176,7 +164,6 @@ class MiniMaxH3ImageRestoration:
             flow_target(clean, noise, self.sigma) if clean is not None else None,
             self.weights,
             perceptual=self.perceptual(generated, high) if self.perceptual is not None else None,
-            frequency_distribution=self.frequency(generated, high) if self.frequency is not None else None,
             discriminator_logits=logits,
             histogram_bins=self.options.histogram_bins,
             phase_period=self.options.phase_period,

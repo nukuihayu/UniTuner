@@ -81,8 +81,8 @@ This is an explicit conversion specification, not a training TOML.
 
 | Task | Example | What you need |
 | --- | --- | --- |
-| Z-Image default losses | [restoration.toml](../../examples/restoration.toml) | DINOv3-ConvNeXt and VGG19 weights |
-| Z-Image Turbo skin restoration | [oil-skin-lora.toml](../../examples/oil-skin-lora.toml) | Paired real images, DINO/VGG/GAN objectives; replace local paths |
+| Z-Image default losses | [restoration.toml](../../examples/restoration.toml) | DINOv3-ConvNeXt weights |
+| Z-Image Turbo skin restoration | [oil-skin-lora.toml](../../examples/oil-skin-lora.toml) | Paired real images, DINO/GAN objectives; replace local paths |
 | Z-Image full | [restoration-full.toml](../../examples/restoration-full.toml) | Same losses, full denoiser, block recomputation |
 | Synthetic degradation | [restoration-synthetic.toml](../../examples/restoration-synthetic.toml) | No paired LQ; degradation belongs in dataset |
 | Mixed sources | [restoration-mixed.toml](../../examples/restoration-mixed.toml) | Real pairs and synthetic degradation; per-source caches/repeats |

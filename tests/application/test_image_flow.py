@@ -153,7 +153,7 @@ def test_mid_timestep_command_needs_no_cache_text_or_denoiser_and_preserves_rng(
         "[dataset.groups.main]",
         f'[dataset.groups.main]\nkind = "restoration"\nlow_quality_source = "{root.as_posix()}/images"',
     )
-    document += '\n[method]\nkind = "restoration"\n[method.restoration]\nposterior = "sample"\n[losses]\ndv3d = 0.0\ngan = 0.0\nfdl = 0.0\n'
+    document += '\n[method]\nkind = "restoration"\n[method.restoration]\nposterior = "sample"\n[losses]\ndv3d = 0.0\ngan = 0.0\n'
     training.write_text(document)
     assert not (root / "cache").exists()
 
@@ -417,7 +417,6 @@ l1 = 0.5
 histogram = 0.1
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 """
     if parameter_mode == "adapter":
         content += '\n[train.adapter]\nalgorithm = "lora"\nrank = 2\nalpha = 3.0\n'
@@ -566,7 +565,6 @@ l1 = 0.5
 histogram = 0.0
 dv3d = 0.1
 gan = 0.1
-fdl = 0.0
 '''
     training.write_text(content)
     assert main_with_local_tokenizers(["cache", str(training)]) == 0
@@ -696,7 +694,6 @@ l1 = 0.5
 histogram = 0.0
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 """
     if parameter_mode == "adapter":
         content += '\n[train.adapter]\nalgorithm = "lora"\nrank = 2\nalpha = 3.0\n'
@@ -780,7 +777,6 @@ encoder_rank = 2
 lrr = 1.0
 l1 = 0.5
 dv3d = 0.0
-fdl = 0.0
 gan = 0.0
 """
     training.write_text(content)

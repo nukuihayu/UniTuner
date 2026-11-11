@@ -80,7 +80,7 @@ def test_mid_timestep_update_preview_resume_and_restore(request, family, variant
         "kind": "restoration",
         "restoration": {"midtimestep": 321, "encoder_rank": 2, "posterior": "sample" if family == "flux" else "mean"},
     }
-    document["losses"] = {"lrr": 0.2, "dv3d": 0, "l1": 0.5, "gan": 0, "fdl": 0, "histogram": 0}
+    document["losses"] = {"lrr": 0.2, "dv3d": 0, "l1": 0.5, "gan": 0, "histogram": 0}
     document["train"].update(parameter_mode=parameter_mode, max_updates=3, learning_rate=0.001)
     if parameter_mode == "full":
         document["train"]["adapter"] = None

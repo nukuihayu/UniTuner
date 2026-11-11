@@ -36,11 +36,11 @@ For a complete paired-data run, begin with the [restoration tutorial](../restora
 | `histogram_bins` | `32` | Color histogram bins, at least 2 |
 | `phase_period`, `phase_cycles` | `16`, `8` | Period and complete cycles per window axis; both at least 2 |
 | `phase_epsilon` | `0.001` | Charbonnier smoothing scale in `[-1,1]` RGB units; `1e-12` to `1.0` |
-| `dino_weights`, `vgg_weights` | Unset | Local feature-network weights required by enabled losses |
+| `dino_weights` | Unset | Local feature-network weights required by enabled losses |
 | `dino_widths` | `[192, 384, 768, 1536]` | DINOv3 ConvNeXt-Large by default |
 | `dino_depths` | `[3, 3, 27, 3]` | DINO four-stage depths |
 
-Both `dino_weights` and `vgg_weights` accept `.pt`, `.pth`, and `.safetensors` without conversion or renaming. PyTorch files are read with `weights_only=True` and must contain flat tensor state dicts. DINO defaults match the official `dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth`; other sizes require matching explicit `dino_widths` and `dino_depths`. VGG19 accepts the official `vgg19-dcbb9e9d.pth` (excluding its known classifier) or feature-only weights. Unknown keys and missing feature weights still fail.
+`dino_weights` accepts `.pt`, `.pth`, and `.safetensors` without conversion or renaming. PyTorch files are read with `weights_only=True` and must contain flat tensor state dicts. DINO defaults match the official `dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth`; other sizes require matching explicit `dino_widths` and `dino_depths`.
 
 | `[losses]` field | Default weight | Supervision | Extra asset |
 | --- | --- | --- | --- |
@@ -48,12 +48,13 @@ Both `dino_weights` and `vgg_weights` accept `.pt`, `.pth`, and `.safetensors` w
 | `l1` | `0.5` | Pixel absolute error between restored and HQ images | None |
 | `dv3d` | `3.0` | DINOv3-ConvNeXt feature distance | DINO weights |
 | `gan` | `0.5` | Adversarial image supervision with discriminator updates | DINO weights |
-| `fdl` | `0.5` | Feature frequency distribution | VGG19 weights |
 | `histogram` | `0.0` | Normalized Lab color CDF matching | None |
 | `ms_ssim` | `0.0` | Five-scale RGB structural similarity: `1 - MS-SSIM` | None |
 | `phase` | `0.0` | Target-texture-protected periodic residual constraint; disabled by default | None |
 
-These are configuration defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO/VGG paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `fdl`, `histogram`, or `ms_ssim`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
+These are configuration defaults, not a universal recommended recipe. Explicitly zero unused terms: omitting DINO paths while leaving their default losses enabled is invalid. At least one image-output term (`l1`, `dv3d`, `gan`, `histogram`, or `ms_ssim`) must be nonzero, or `[method.wavelet]` must enable an effective band. Neither LRR nor phase alone can supervise the complete decoded result.
+
+FDL has been removed. Delete `fdl` from `[losses]` and `vgg_weights`/`vgg_widths` from `[method.restoration]` in old configurations. These fields are no longer accepted, including `fdl = 0.0`.
 
 Dataset checks can take time on large collections. Watch the terminal progress and allow enough host RAM for the image-pair index and model weights.
 
@@ -73,7 +74,6 @@ lrr = 0.0
 l1 = 0.0
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 histogram = 0.0
 phase = 0.0
 
@@ -139,7 +139,7 @@ uv run unituner train docs/examples/flux3-restoration.toml --device cuda
 uv run unituner train docs/examples/flux3-restoration.toml --device cuda --resume runs/flux3-restoration/resume/model.state-00000050.safetensors
 ```
 
-For full parameters, set `train.parameter_mode = "full"` and remove `[train.adapter]`. As in ordinary flow matching, set `[execution] precision = "bf16"` for BF16 AMP in the VAE, DINO, VGG and discriminator convolutions and linear layers. Trainable master parameters and optimizer states follow the shared flow-matching precision policy; FFT and loss statistics retain FP32. Full mode requires floating base weights; adapters can use a [quantized frozen base](quantized-base.md). Full mode uses resident weights and supports block recomputation/CUDA compilation. Frozen-block H2D supports adapters only. LayerSync, REPA, and TREAD are rejected in restoration.
+For full parameters, set `train.parameter_mode = "full"` and remove `[train.adapter]`. As in ordinary flow matching, set `[execution] precision = "bf16"` for BF16 AMP in the VAE, DINO and discriminator convolutions and linear layers. Trainable master parameters and optimizer states follow the shared flow-matching precision policy; loss statistics retain FP32. Full mode requires floating base weights; adapters can use a [quantized frozen base](quantized-base.md). Full mode uses resident weights and supports block recomputation/CUDA compilation. Frozen-block H2D supports adapters only. LayerSync, REPA, and TREAD are rejected in restoration.
 
 ## Mid-timestep settings
 

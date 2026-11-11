@@ -129,9 +129,8 @@ def train_minimax_h3_image(config: TrainingConfig, *, device: torch.device, resu
     if restoration:
         options = config.method.restoration
         artifacts["vae"] = weight_artifact_sha256(Path(config.model.vae))
-        for label, path in (("dino", options.dino_weights), ("vgg", options.vgg_weights)):
-            if path is not None:
-                artifacts[label] = weight_artifact_sha256(Path(path))
+        if options.dino_weights is not None:
+            artifacts["dino"] = weight_artifact_sha256(Path(options.dino_weights))
     dataset_digest = (
         dataset.digest
         if dataset is not None

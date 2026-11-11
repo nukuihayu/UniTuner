@@ -172,7 +172,6 @@ def train(
         for name, path in (
             ("vae", config.model.vae),
             ("dino", config.method.restoration.dino_weights),
-            ("vgg", config.method.restoration.vgg_weights),
         ):
             if path is not None:
                 paths[name] = weight_artifact_sha256(Path(path), release_cache=True)

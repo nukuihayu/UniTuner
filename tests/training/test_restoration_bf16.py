@@ -9,7 +9,6 @@ from tests.training.test_qwen_image import build as build_qwen
 from unituner.config.loading import load_training_config
 from unituner.models.components.conditioning import Caption
 from unituner.models.features.convnext import DinoConvNeXt
-from unituner.models.features.vgg import Vgg19Features
 from unituner.models.flux.conditioning import FluxTextFeatures
 from unituner.models.flux.config.vae import FluxVAEConfig
 from unituner.models.flux.loading import save_flux_vae
@@ -30,7 +29,6 @@ from unituner.models.z_image.vae import ZImageVAE
 from unituner.training.contracts import RunState
 from unituner.training.engine import update_phase
 from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
-from unituner.training.losses.frequency_distribution import FrequencyDistributionLoss
 from unituner.training.losses.perceptual import DinoPerceptualLoss
 from unituner.training.methods.discriminator import MultilevelDiscriminator
 from unituner.training.methods.restoration import RestorationMethod
@@ -125,7 +123,6 @@ lrr = {1.0 if encoder_rank else 0.0}
 l1 = 0.5
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 [method.wavelet]
 wavelet = "haar"
 weight = 0.5
@@ -200,18 +197,16 @@ def test_bf16_feature_losses_and_discriminator_preserve_gradients(recompute):
     backbone = DinoConvNeXt((4, 8, 12, 16), (1, 1, 1, 1))
     backbone.recompute = recompute
     perception = DinoPerceptualLoss(backbone, bf16_compute=True)
-    vgg = Vgg19Features((2, 2, 2, 2, 2))
-    frequency = FrequencyDistributionLoss(vgg.feature_stages(), vgg.widths, 3, bf16_compute=True)
     discriminator = MultilevelDiscriminator(backbone, 512, diffaug=False, bf16_compute=True)
     observed = []
     handles = []
-    for component in (backbone, frequency, discriminator.heads):
+    for component in (backbone, discriminator.heads):
         layer = next(m for m in component.modules() if isinstance(m, nn.Conv2d))
         handles.append(layer.register_forward_hook(lambda m, args, out: observed.append(out.dtype)))
     generated = torch.randn(1, 3, 512, 512, requires_grad=True)
     target = torch.randn_like(generated).requires_grad_()
     with frozen_discriminator(discriminator):
-        loss = perception(generated, target) + frequency(generated[:, :, :80, :80], target[:, :, :80, :80])
+        loss = perception(generated, target)
         loss = loss + gan_loss(discriminator(generated), True)
     assert torch.isfinite(loss) and loss.dtype == torch.float32
     loss.backward()

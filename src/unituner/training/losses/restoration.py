@@ -29,7 +29,6 @@ def generator_loss(
     weights: RestorationLossWeights,
     *,
     perceptual: Tensor | None = None,
-    frequency_distribution: Tensor | None = None,
     discriminator_logits: tuple[Tensor, ...] | None = None,
     histogram_bins: int = 32,
     phase_period: int = 16,
@@ -40,7 +39,7 @@ def generator_loss(
 
     RGB generated/target tensors share nonempty BCHW layout/device in [-1,1].
     Target and the HQ normalized latent are detached internally. Optional Dv3D
-    and FDL are already computed scalar losses, retaining their image gradients;
+    is an already computed scalar loss, retaining its image gradients;
     the method owns frozen feature models. GAN logits must come from a forward
     with discriminator parameters frozen, preserving image gradients and mutable
     spectral-normalization buffers. Missing enabled terms fail explicitly.
@@ -55,9 +54,8 @@ def generator_loss(
         or not target.is_floating_point()
     ):
         raise ValueError("Restoration requires matching nonempty floating RGB BCHW images/device")
-    for name, weight, term in (("Dv3D", weights.dv3d, perceptual), ("FDL", weights.fdl, frequency_distribution)):
-        if weight and (term is None or term.ndim != 0 or term.device != generated.device):
-            raise ValueError(f"{name} requires its scalar feature loss on the image device")
+    if weights.dv3d and (perceptual is None or perceptual.ndim != 0 or perceptual.device != generated.device):
+        raise ValueError("Dv3D requires its scalar feature loss on the image device")
     if weights.gan and discriminator_logits is None:
         raise ValueError("GAN requires generator-phase discriminator logits")
     if weights.lrr and (
@@ -72,7 +70,6 @@ def generator_loss(
             if weights.lrr and noisy_high is not None
             else zero,
             "dv3d": perceptual.float() if weights.dv3d and perceptual is not None else zero,
-            "fdl": frequency_distribution.float() if weights.fdl and frequency_distribution is not None else zero,
             "gan": gan_loss(discriminator_logits, True) if weights.gan and discriminator_logits is not None else zero,
             "histogram": histogram_loss(generated, target, histogram_bins) if weights.histogram else zero,
         }
@@ -80,7 +77,6 @@ def generator_loss(
             "l1": weights.l1,
             "lrr": weights.lrr,
             "dv3d": weights.dv3d,
-            "fdl": weights.fdl,
             "gan": weights.gan,
             "histogram": weights.histogram,
         }

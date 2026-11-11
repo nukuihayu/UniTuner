@@ -8,7 +8,6 @@ from pydantic import TypeAdapter
 from unituner.artifacts.checkpoint_reading import checkpoint_tensors, is_pytorch_checkpoint
 from unituner.artifacts.tensors import TensorReader
 from unituner.models.features.convnext import DinoConvNeXt
-from unituner.models.features.vgg import Vgg19Features
 from unituner.models.features.vit import DinoViT, DinoViTConfig
 
 
@@ -43,42 +42,6 @@ def load_dino_convnext(
     for suffix in ("weight", "bias"):
         if not torch.equal(tensors[f"norm.{suffix}"], tensors[f"norms.3.{suffix}"]):
             raise ValueError("DINO ConvNeXt tied final normalization values disagree")
-    model.load_state_dict(
-        {name: value.to(device=device, dtype=dtype) for name, value in tensors.items()},
-        strict=True,
-        assign=True,
-    )
-    return model.eval().requires_grad_(False)
-
-
-def load_vgg19_features(
-    path: Path,
-    *,
-    device: torch.device,
-    widths: tuple[int, ...] = (64, 128, 256, 512, 512),
-    dtype: torch.dtype = torch.float32,
-) -> Vgg19Features:
-    """Load official or feature-only VGG19 PyTorch/safetensors weights.
-
-    Require every convolution weight and bias. Discard only the known official
-    classifier inventory; reject unknown keys. PyTorch uses weights_only=True.
-    Return owned frozen FP32 eval storage without downloads. Explicit
-    widths permit controlled small-topology comparisons; defaults are official.
-    """
-    with torch.device("meta"):
-        model = Vgg19Features(widths)
-    expected = model.state_dict()
-    tensors = dict(checkpoint_tensors(path, label="Feature", memory_map=device.type != "cpu"))
-    classifier = {f"classifier.{index}.{suffix}" for index in (0, 3, 6) for suffix in ("weight", "bias")}
-    if tensors.keys() - expected.keys() == classifier:
-        tensors = {name: value for name, value in tensors.items() if name not in classifier}
-    if tensors and all(name.split(".", 1)[0].isdigit() for name in tensors):
-        tensors = {"features." + name: value for name, value in tensors.items()}
-    if tensors.keys() != expected.keys():
-        raise ValueError("VGG19 feature artifact keys differ from explicit topology")
-    for name, value in tensors.items():
-        if value.shape != expected[name].shape or not value.is_floating_point() or not torch.isfinite(value).all():
-            raise ValueError(f"VGG19 feature artifact tensor contract differs for {name}")
     model.load_state_dict(
         {name: value.to(device=device, dtype=dtype) for name, value in tensors.items()},
         strict=True,

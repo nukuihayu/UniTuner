@@ -76,8 +76,8 @@ H3 外部拆分缓存使用 [minimax-h3-cache-import.json](minimax-h3-cache-impo
 
 | 任务 | 示例 | 需要准备 |
 | --- | --- | --- |
-| Z-Image 默认损失配方 | [restoration.toml](restoration.toml) | DINOv3-ConvNeXt＋VGG19 权重 |
-| Z-Image Turbo 油光肤色 | [oil-skin-lora.toml](oil-skin-lora.toml) | 真实配对图片，DINO/VGG/GAN 损失；需替换本地路径 |
+| Z-Image 默认损失配方 | [restoration.toml](restoration.toml) | DINOv3-ConvNeXt 权重 |
+| Z-Image Turbo 油光肤色 | [oil-skin-lora.toml](oil-skin-lora.toml) | 真实配对图片，DINO/GAN 损失；需替换本地路径 |
 | Z-Image full | [restoration-full.toml](restoration-full.toml) | 相同损失配方，denoiser 全参数，block 重算 |
 | 合成退化 | [restoration-synthetic.toml](restoration-synthetic.toml) | 不提供成对 LQ；退化属于 dataset |
 | 混合来源 | [restoration-mixed.toml](restoration-mixed.toml) | 真实配对与合成退化，每源独立缓存和 repeats |

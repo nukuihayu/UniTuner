@@ -38,11 +38,11 @@ Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间�
 | `histogram_bins` | `32` | 颜色直方图分箱数，至少为 2 |
 | `phase_period`、`phase_cycles` | `16`、`8` | 相位约束周期与每个窗口每轴的完整周期数，均至少为 2 |
 | `phase_epsilon` | `0.001` | 相位约束 Charbonnier 平滑尺度，按 `[-1,1]` RGB 计；范围 `1e-12` 到 `1.0` |
-| `dino_weights`、`vgg_weights` | 未设置 | 对应损失所需的本地特征网络权重 |
+| `dino_weights` | 未设置 | 对应损失所需的本地特征网络权重 |
 | `dino_widths` | `[192, 384, 768, 1536]` | 默认匹配 DINOv3 ConvNeXt-Large |
 | `dino_depths` | `[3, 3, 27, 3]` | DINO 四阶段深度 |
 
-`dino_weights` 和 `vgg_weights` 均支持 `.pt`、`.pth`、`.safetensors`，无需转换或改名。PyTorch 权重通过 `weights_only=True` 读取，必须是平铺的 tensor state dict。`dino_weights` 默认匹配官方 `dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth`；其他尺寸需显式填写对应的 `dino_widths` 和 `dino_depths`。VGG19 可直接使用官方 `vgg19-dcbb9e9d.pth`（自动排除已知分类头），也支持仅特征层的权重；未知键和缺失的特征权重仍会报错。
+`dino_weights` 支持 `.pt`、`.pth`、`.safetensors`，无需转换或改名。PyTorch 权重通过 `weights_only=True` 读取，必须是平铺的 tensor state dict。`dino_weights` 默认匹配官方 `dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth`；其他尺寸需显式填写对应的 `dino_widths` 和 `dino_depths`。
 
 | `[losses]` 字段 | 默认权重 | 监督内容 | 额外资产 |
 | --- | --- | --- | --- |
@@ -50,12 +50,13 @@ Mid-timestep 图像修复把低清图编码的 latent 直接送入固定时间�
 | `l1` | `0.5` | 恢复图与 HQ 的像素绝对误差 | 无 |
 | `dv3d` | `3.0` | DINOv3-ConvNeXt 特征距离 | DINO 权重 |
 | `gan` | `0.5` | 对抗图像监督，需判别器更新 | DINO 权重 |
-| `fdl` | `0.5` | 特征频率分布 | VGG19 权重 |
 | `histogram` | `0.0` | 归一化 Lab 颜色 CDF 匹配 | 无 |
 | `ms_ssim` | `0.0` | 五尺度 RGB 结构相似度：`1 - MS-SSIM` | 无 |
 | `phase` | `0.0` | 保护目标纹理的局部周期残差约束，默认关闭 | 无 |
 
-这些是配置默认值，不是适用于所有任务的推荐配方。未使用的损失要显式设为 0；仅省略 DINO／VGG 路径，却保留相应默认损失，会导致配置报错。至少启用一种图像输出损失（l1、dv3d、gan、fdl、histogram、ms_ssim，或启用有效频带的 `[method.wavelet]`），LRR 与 phase 都不能单独监督完整解码结果。
+这些是配置默认值，不是适用于所有任务的推荐配方。未使用的损失要显式设为 0；仅省略 DINO 路径，却保留相应默认损失，会导致配置报错。至少启用一种图像输出损失（l1、dv3d、gan、histogram、ms_ssim，或启用有效频带的 `[method.wavelet]`），LRR 与 phase 都不能单独监督完整解码结果。
+
+FDL 已移除。旧配置需删除 `[losses]` 中的 `fdl`，以及 `[method.restoration]` 中的 `vgg_weights`、`vgg_widths`；这些字段不再接受，包括 `fdl = 0.0`。
 
 大数据集启动时需要检查图片和缓存，请留意终端进度，并为图片配对索引和模型权重预留主机内存。
 
@@ -75,7 +76,6 @@ lrr = 0.0
 l1 = 0.0
 dv3d = 0.0
 gan = 0.0
-fdl = 0.0
 histogram = 0.0
 phase = 0.0
 
@@ -139,7 +139,7 @@ unituner train docs/examples/flux3-restoration.toml --device cuda
 unituner train docs/examples/flux3-restoration.toml --device cuda --resume runs/flux3-restoration/resume/model.state-00000050.safetensors
 ```
 
-改为 full 时，设置 `[train] parameter_mode = "full"` 并删除整个 `[train.adapter]`；流匹配训练也使用同样的切换方式。可训练参数保持 FP32；Full 要求浮点基模。适配器可用[量化冻结基模](quantized-base.md)，修复与普通流匹配一样支持 `[execution] precision = "bf16"`，VAE、DINO、VGG 和判别器的卷积与线性层均使用 BF16 AMP；可训练主参数和优化器状态沿用普通流匹配的精度策略，FFT 与损失统计保留 FP32。Full 使用 resident，可组合 block 重算和 CUDA compile；冻结块 H2D 只适用于 adapter。TREAD、REPA、LayerSync 当前只接入流匹配，修复配置会拒绝这些组合。
+改为 full 时，设置 `[train] parameter_mode = "full"` 并删除整个 `[train.adapter]`；流匹配训练也使用同样的切换方式。可训练参数保持 FP32；Full 要求浮点基模。适配器可用[量化冻结基模](quantized-base.md)，修复与普通流匹配一样支持 `[execution] precision = "bf16"`，VAE、DINO 和判别器的卷积与线性层均使用 BF16 AMP；可训练主参数和优化器状态沿用普通流匹配的精度策略，损失统计保留 FP32。Full 使用 resident，可组合 block 重算和 CUDA compile；冻结块 H2D 只适用于 adapter。TREAD、REPA、LayerSync 当前只接入流匹配，修复配置会拒绝这些组合。
 
 ## 中间时间配置
 
