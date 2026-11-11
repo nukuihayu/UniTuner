@@ -163,7 +163,7 @@ tensorboard = "runs/tensorboard"
 uv run --no-dev unituner train train.toml --device cuda --resume runs/portrait-lora/resume/portrait-lora.state-00001000.safetensors
 ```
 
-续训到 max_updates 总数。保留相同底模与数据；影响数值的配置会进行身份校验。save_precision 仅控制正式权重导出，不降低续训文件精度。磁盘紧张时可研究 checkpoint_storage=frozen-reference，它恢复时要求完全相同的冻结底模。
+续训到 max_updates 总数。保留相同底模与数据；影响数值的配置会进行身份校验。save_precision 仅控制正式权重导出，不降低续训文件精度。默认 checkpoint_storage=frozen-reference，省略重复的冻结底模权重；恢复时要求完全相同的冻结底模。设置 checkpoint_storage=complete 可将冻结底模权重一并保存。
 
 ## 多数据集训练
 

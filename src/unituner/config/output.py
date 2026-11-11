@@ -26,7 +26,7 @@ class OutputConfig(BaseModel):
         default="fp32",
         description="Floating precision of published model/adapter/encoder artifacts; resume state retains training dtypes",
     )
-    checkpoint_storage: Literal["complete", "frozen-reference"] = "complete"
+    checkpoint_storage: Literal["complete", "frozen-reference"] = "frozen-reference"
     adapter_format: Literal["comfyui", "diffusers"] = Field(
         default="comfyui", description="Portable adapter format; diffusers exports vanilla LoRA as official PEFT A/B"
     )

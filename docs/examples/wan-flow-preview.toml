@@ -141,7 +141,7 @@ save_precision = "fp32"
 # max_weight_checkpoints = 0
 # complete 包含完整续训张量；frozen-reference 省略重复冻结参数，恢复需完全相同底模。
 # complete includes full training tensors; frozen-reference omits duplicate frozen parameters and requires the identical base.
-# checkpoint_storage = "complete"
+# checkpoint_storage = "frozen-reference"
 # 后台/重定向摘要间隔，默认 60 秒；终端原位刷新，完整指标仍逐步写入文件。
 # Noninteractive summary interval, default 60 seconds; terminals refresh in place and files retain every update.
 # log_every_seconds = 60.0

@@ -265,7 +265,7 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `tensorboard` | string / null | `null` | Event root directory; the trainer automatically creates a run subdirectory from the training name. |
 | `save_precision` | "fp32", "fp16", "bf16" | `"fp32"` | Export dtype fp32/bf16/fp16 for inference weights; resume retains training dtypes. |
 | `adapter_format` | "comfyui", "diffusers" | `"comfyui"` | ComfyUI-compatible adapters by default; diffusers exports official PEFT A/B tensors for vanilla LoRA only. |
-| `checkpoint_storage` | "complete", "frozen-reference" | `"complete"` | complete includes full training tensors; frozen-reference omits duplicate frozen parameters and requires the identical base. |
+| `checkpoint_storage` | "complete", "frozen-reference" | `"frozen-reference"` | complete includes full training tensors; frozen-reference omits duplicate frozen parameters and requires the identical base. |
 
 Set `output.adapter_format = "diffusers"` in TOML or pass `--set output.adapter_format=diffusers`. Publication converts factors directly: it never merges LoRA into the base, combines independent layers or performs SVD. Keep consumer-supported split projections independent, including Qwen Image 2.1 `gate_layer/proj`. Where the official architecture splits a native fused projection, slice its output factor and reuse its input factor.
 

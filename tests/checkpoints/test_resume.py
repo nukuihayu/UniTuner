@@ -1,6 +1,7 @@
 """Compare actual stochastic continuation against saved-state restoration."""
 
 import random
+from copy import deepcopy
 from dataclasses import asdict
 
 import numpy as np
@@ -19,6 +20,68 @@ from unituner.training.losses.flow_matching import flow_matching_loss
 from unituner.training.session import TrainingSession
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
+
+
+@pytest.mark.parametrize("frozen", [False, True])
+@pytest.mark.parametrize("named_optimizer", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float64])
+def test_compact_resume_reproduces_updates_and_allocated_adam_state(tmp_path, frozen, named_optimizer, dtype):
+    """Compare exact continuation with populated Adam state and all host RNGs."""
+    random.seed(91)
+    np.random.seed(91)
+    torch.manual_seed(91)
+    model = nn.Sequential(nn.Linear(4, 4, dtype=dtype), nn.Dropout(0.25)).requires_grad_(not frozen)
+    adapter = nn.Linear(4, 4, dtype=dtype)
+    modules = {"model": model, "adapter": adapter}
+    # A new session must load exactly the same frozen base, not a random one.
+    fresh_modules = deepcopy(modules)
+
+    def make_optimizer(items):
+        parameters = [p for module in items.values() for p in module.parameters() if p.requires_grad]
+        if named_optimizer:
+            return {
+                "first": torch.optim.AdamW(parameters[:1], lr=0.003),
+                "second": torch.optim.AdamW(parameters[1:], lr=0.002),
+            }
+        return torch.optim.AdamW(parameters, lr=0.003)
+
+    def advance_direct(items, optimizers):
+        inputs = torch.from_numpy(np.random.standard_normal((3, 4))).to(dtype) * random.random()
+        target = torch.randn(3, 4, dtype=dtype)
+        prediction = items["adapter"](items["model"](inputs))
+        (prediction.float() - target.float()).square().mean().backward()
+        roles = optimizers.values() if isinstance(optimizers, dict) else [optimizers]
+        for optimizer in roles:
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
+    optimizer = make_optimizer(modules)
+    fresh_optimizer = make_optimizer(fresh_modules)
+    advance_direct(modules, optimizer)
+    path = tmp_path / "compact.safetensors"
+    cursor = CheckpointCursor(updates=1, microbatches=1, samples=3)
+    save_checkpoint(path, modules, optimizer, cursor, IDENTITY, reference_frozen_parameters=True)
+    advance_direct(modules, optimizer)
+    advance_direct(modules, optimizer)
+    expected_rng = (random.random(), np.random.random(), torch.rand(2))
+    assert restore_checkpoint(path, fresh_modules, fresh_optimizer, IDENTITY) == cursor
+    advance_direct(fresh_modules, fresh_optimizer)
+    advance_direct(fresh_modules, fresh_optimizer)
+    actual_rng = (random.random(), np.random.random(), torch.rand(2))
+    assert expected_rng[:2] == actual_rng[:2]
+    torch.testing.assert_close(expected_rng[2], actual_rng[2], atol=0, rtol=0)
+    for name, module in modules.items():
+        for key, value in module.state_dict().items():
+            torch.testing.assert_close(value, fresh_modules[name].state_dict()[key], atol=0, rtol=0)
+    expected_roles = optimizer if isinstance(optimizer, dict) else {"main": optimizer}
+    actual_roles = fresh_optimizer if isinstance(fresh_optimizer, dict) else {"main": fresh_optimizer}
+    for name, item in expected_roles.items():
+        expected, actual = item.state_dict(), actual_roles[name].state_dict()
+        assert expected["param_groups"] == actual["param_groups"]
+        assert expected["state"].keys() == actual["state"].keys()
+        for index, values in expected["state"].items():
+            for key, value in values.items():
+                torch.testing.assert_close(value, actual["state"][index][key], atol=0, rtol=0)
 
 
 def build(session, adapter):

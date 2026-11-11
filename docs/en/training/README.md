@@ -163,7 +163,7 @@ Weights and independent resume state save at the interval and final update. Defa
 uv run --no-dev unituner train train.toml --device cuda --resume runs/portrait-lora/resume/portrait-lora.state-00001000.safetensors
 ```
 
-Resume continues to total max_updates. Preserve the base and data; numerical settings undergo identity checks. save_precision affects inference exports only. checkpoint_storage=frozen-reference can reduce duplicated frozen data but requires the identical frozen base on restore.
+Resume continues to total max_updates. Preserve the base and data; numerical settings undergo identity checks. save_precision affects inference exports only. The default checkpoint_storage=frozen-reference omits duplicate frozen weights and requires the identical frozen base on restore. Set checkpoint_storage=complete to embed frozen weights instead.
 
 ## Multiple datasets
 

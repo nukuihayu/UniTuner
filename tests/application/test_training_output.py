@@ -184,6 +184,8 @@ def test_retention_defaults_and_validation():
 
     assert OutputConfig().max_resume_checkpoints == 1
     assert OutputConfig().max_weight_checkpoints == 0
+    assert OutputConfig().checkpoint_storage == "frozen-reference"
+    assert OutputConfig(checkpoint_storage="complete").checkpoint_storage == "complete"
     for key in ("max_resume_checkpoints", "max_weight_checkpoints"):
         with pytest.raises(ValidationError):
             OutputConfig.model_validate({key: -1})
