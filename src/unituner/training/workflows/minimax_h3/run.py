@@ -194,6 +194,7 @@ def train_minimax_h3(config: TrainingConfig, *, device: torch.device, resume: Pa
                 request = sample_minimax_h3_request(record, format=format, config=binding.config)
                 consumed += 1
                 yield binding.step(request)
+                del record, request
 
         def write_preview(update: int) -> None:
             """Borrow current weights after the shared update/checkpoint boundary."""

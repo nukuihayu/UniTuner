@@ -37,6 +37,7 @@ from unituner.training.parameters import ParameterGroup, ParameterInstallation
 from unituner.training.publishing import publish_adapter
 from unituner.training.session import TrainingSession
 from unituner.training.timesteps import sample_sigmas, training_sigma_grid
+from unituner.training.workflows.common.batches import batch_latents
 
 
 def _choose_high_noise(*, grid_size: int | None, high_size: int | None, boundary: float) -> bool:
@@ -316,7 +317,7 @@ def train_wan(
                 name, entries = plan.batch(consumed)
                 cache = Path(config.dataset.groups[name].cache_directory)
                 records = [read_wan_record(cache, entry, manifest=manifests[name], device=device) for entry in entries]
-                latents = torch.stack([record.latents for record in records])
+                latents = batch_latents([record.latents for record in records])
                 if alignment is not None and high_settings is None:
                     alignment.set_targets(tuple(entries), latents)
                 noise = torch.randn_like(latents)
@@ -337,6 +338,7 @@ def train_wan(
                 consumed += 1
                 if high_binding is None:
                     yield binding.cached_step(records, noise, sigma, timesteps, latents=latents)
+                    del records, latents, noise, sigma, timesteps
                     continue
                 expert = high_binding if high else binding
                 objective = high_alignment if high else alignment
@@ -356,6 +358,7 @@ def train_wan(
                         **{f"expert/{label}/{key}": value for key, value in result.metrics.items()},
                     },
                 )
+                del records, latents, noise, sigma, timesteps, result
 
         def preview(update: int) -> None:
             """Bind Wan-specific resources to the shared update loop's preview boundary."""

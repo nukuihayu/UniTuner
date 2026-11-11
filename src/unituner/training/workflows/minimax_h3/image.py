@@ -246,6 +246,7 @@ def train_minimax_h3_image(config: TrainingConfig, *, device: torch.device, resu
                     )
                     consumed += 1
                     yield from method.steps(low.unsqueeze(0).to(device), high.unsqueeze(0).to(device), record)
+                    del record, low, high
                 else:
                     clean = record.latents.unsqueeze(0)
                     if alignment is not None:
@@ -266,6 +267,7 @@ def train_minimax_h3_image(config: TrainingConfig, *, device: torch.device, resu
                     )
                     consumed += 1
                     yield binding.step(request)
+                    del record, clean, noise, request
 
         def write_weights(update: int) -> None:
             metadata = publication_metadata(config, identity, update)

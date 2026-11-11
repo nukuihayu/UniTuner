@@ -10,6 +10,7 @@ from unituner.adapters.config import AdapterConfig
 from unituner.checkpoints.restore import restore_checkpoint
 from unituner.checkpoints.saving import save_checkpoint
 from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.data.cache.storage import ImageCacheRecord
 from unituner.execution.compiler import CompilerInstallation
 from unituner.execution.recompute import RecomputeInstallation
 from unituner.models.qwen_image.conditioning import pack_latents, unpack_latents
@@ -20,8 +21,58 @@ from unituner.training.engine import update_phase
 from unituner.training.integrations.qwen_image.binding import QwenImageBinding, QwenImageFlowRequest
 from unituner.training.parameters import ParameterInstallation
 from unituner.training.session import TrainingSession
+from unituner.training.workflows.common.batches import batch_latents
+from unituner.training.workflows.common.images import _sample_cached_noise
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
+
+
+def test_single_cached_latent_batch_shares_storage_and_multi_sample_matches_stack():
+    first, second = torch.randn(4, 1, 8, 8), torch.randn(4, 1, 8, 8)
+    single = batch_latents([first])
+    assert single.data_ptr() == first.data_ptr() and single.is_contiguous()
+    assert single.stride() == torch.stack([first]).stride()
+    assert torch.equal(batch_latents([first, second]), torch.stack([first, second]))
+    with pytest.raises(ValueError, match="nonempty"):
+        batch_latents([])
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "device",
+    ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable"))],
+)
+def test_cached_qwen_noise_avoids_stacked_latents_without_changing_rng(device, dtype):
+    records = [
+        ImageCacheRecord(torch.zeros((4, 1, 256, 256), device=device, dtype=dtype), torch.empty(1)) for _ in range(2)
+    ]
+    if device == "cuda":
+        warmup = _sample_cached_noise(records)
+        del warmup
+    torch.manual_seed(673)
+    expected = torch.randn_like(torch.stack([record.latents for record in records]))
+    expected_cpu_rng = torch.get_rng_state()
+    expected_cuda_rng = torch.cuda.get_rng_state() if device == "cuda" else None
+    torch.manual_seed(673)
+    if device == "cuda":
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        before = torch.cuda.memory_allocated()
+        baseline = torch.randn_like(torch.stack([record.latents for record in records]))
+        baseline_peak = torch.cuda.max_memory_allocated() - before
+        del baseline
+        torch.manual_seed(673)
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        before = torch.cuda.memory_allocated()
+    actual = _sample_cached_noise(records)
+    assert torch.equal(actual, expected)
+    assert torch.equal(torch.get_rng_state(), expected_cpu_rng)
+    if device == "cuda":
+        assert torch.equal(torch.cuda.get_rng_state(), expected_cuda_rng)
+        assert torch.cuda.max_memory_allocated() - before < baseline_peak
+    with pytest.raises(ValueError, match="uniform"):
+        _sample_cached_noise([records[0], ImageCacheRecord(records[1].latents[..., :-1], torch.empty(1))])
 
 
 @pytest.fixture(autouse=True)

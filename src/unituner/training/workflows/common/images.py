@@ -1,7 +1,7 @@
 """Assemble native image flow/restoration training with explicit storage and compute precision from explicit native cached data."""
 
 import json
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import closing
 from pathlib import Path
 from time import monotonic
@@ -17,7 +17,7 @@ from unituner.checkpoints.restore import restore_checkpoint
 from unituner.checkpoints.schema import build_resume_identity
 from unituner.config.training import TrainingConfig
 from unituner.data.cache.representation import RepaTargets, representation_dataset_sha256
-from unituner.data.cache.storage import read_latent_record
+from unituner.data.cache.storage import ImageCacheRecord, read_latent_record
 from unituner.data.datasets.batching import DatasetBatches, EpochBatches
 from unituner.data.datasets.cached_images import index_cached_images
 from unituner.data.datasets.restoration import RestorationDataset
@@ -35,7 +35,7 @@ from unituner.models.catalog import IMAGE_FAMILIES, image_family_spec
 from unituner.models.components.conditioning import batch_captions
 from unituner.models.flux.transformer import FluxTransformer
 from unituner.models.image import ImageModel, load_image_model, validate_model_selection
-from unituner.models.qwen_image_2_1.data.cache.storage import read_qwen_image_21_record
+from unituner.models.qwen_image_2_1.data.cache.storage import QwenImage21CacheRecord, read_qwen_image_21_record
 from unituner.precision import FLOAT_DTYPES
 from unituner.progress import Progress, status
 from unituner.training.contracts import ImageFlowRequest, RunState, StepResult
@@ -56,6 +56,7 @@ from unituner.training.output import publish_latest_weights, weights_path
 from unituner.training.parameters import ParameterGroup, ParameterInstallation
 from unituner.training.session import TrainingSession
 from unituner.training.timesteps import sample_sigmas, training_sigma_grid
+from unituner.training.workflows.common.batches import batch_latents
 
 type PreviewWriter = Callable[
     [
@@ -66,6 +67,21 @@ type PreviewWriter = Callable[
     ],
     None,
 ]
+
+
+def _sample_cached_noise(records: Sequence[ImageCacheRecord | QwenImage21CacheRecord]) -> torch.Tensor:
+    """Match randn_like(stacked latents) without allocating an unused stacked batch."""
+    if not records:
+        raise ValueError("Cached noise requires a nonempty batch")
+    first = records[0].latents
+    if any(
+        record.latents.shape != first.shape
+        or record.latents.dtype != first.dtype
+        or record.latents.device != first.device
+        for record in records[1:]
+    ):
+        raise ValueError("Cached noise requires uniform latent geometry, dtype and device")
+    return torch.randn((len(records), *first.shape), device=first.device, dtype=first.dtype)
 
 
 @runtime_scope
@@ -351,25 +367,32 @@ def train(
                     records21 = [
                         read_qwen_image_21_record(item.directory, item.entry, device=device) for item in selected
                     ]
-                    latents21 = torch.stack([record.latents for record in records21])
+                    latents21 = batch_latents([record.latents for record in records21]) if alignment is not None else None
                     if alignment is not None:
+                        assert latents21 is not None
                         alignment.set_targets(
                             tuple(item.entry for item in selected),
                             latents21,
                         )
-                    consumed += latents21.shape[0]
-                    noise21 = torch.randn_like(latents21)
-                    sigma21 = sample_sigmas(latents21.shape[0], device=device, grid=sigma_grid)
+                    consumed += len(records21)
+                    noise21 = _sample_cached_noise(records21) if latents21 is None else torch.randn_like(latents21)
+                    sigma21 = sample_sigmas(len(records21), device=device, grid=sigma_grid)
                     del latents21
                     yield binding.cached_step(
                         records21,
                         noise21,
                         sigma21,
                     )
+                    del records21, noise21, sigma21
                     continue
                 records = [read_latent_record(item.directory, item.entry, device=device) for item in selected]
-                latents = torch.stack([record.latents for record in records])
+                latents = (
+                    None
+                    if alignment is None and isinstance(binding, QwenImageBinding)
+                    else batch_latents([record.latents for record in records])
+                )
                 if alignment is not None:
+                    assert latents is not None
                     alignment.set_targets(
                         tuple(item.entry for item in selected),
                         latents,
@@ -377,9 +400,9 @@ def train(
                         and config.method.qwen_image is not None
                         and config.method.qwen_image.remove_base,
                     )
-                consumed += latents.shape[0]
-                noise = torch.randn_like(latents)
-                sigma = sample_sigmas(latents.shape[0], device=device, grid=sigma_grid)
+                consumed += len(records)
+                noise = _sample_cached_noise(records) if latents is None else torch.randn_like(latents)
+                sigma = sample_sigmas(len(records), device=device, grid=sigma_grid)
                 if isinstance(binding, QwenImageBinding):
                     del latents
                     yield binding.cached_step(
@@ -388,7 +411,9 @@ def train(
                         sigma,
                         remove_base=config.method.qwen_image is not None and config.method.qwen_image.remove_base,
                     )
+                    del records, noise, sigma
                     continue
+                assert latents is not None
                 if isinstance(binding, FluxBinding):
                     yield binding.cached_step(
                         records,
@@ -397,6 +422,7 @@ def train(
                         guidance=3.5 if config.method.guidance is None else config.method.guidance,
                         latents=latents,
                     )
+                    del records, latents, noise, sigma
                     continue
                 if isinstance(binding, Flux2Binding):
                     yield binding.step(
@@ -409,6 +435,7 @@ def train(
                             guidance=1.0 if config.method.guidance is None else config.method.guidance,
                         )
                     )
+                    del records, latents, noise, sigma
                     continue
                 if isinstance(binding, Flux3Binding):
                     yield binding.step(
@@ -420,11 +447,13 @@ def train(
                             tuple(record.references for record in records),
                         )
                     )
+                    del records, latents, noise, sigma
                     continue
                 if isinstance(binding, Krea2Binding):
                     yield binding.step(
                         Krea2FlowRequest(latents, noise, sigma, tuple(record.caption for record in records))
                     )
+                    del records, latents, noise, sigma
                     continue
                 caption = batch_captions([record.caption for record in records])
                 yield binding.step(
@@ -440,6 +469,7 @@ def train(
                         ),
                     )
                 )
+                del records, latents, noise, sigma, caption
 
         def monitored_steps() -> Generator[StepResult]:
             """Advance accumulation progress only after the microbatch's final backward."""
