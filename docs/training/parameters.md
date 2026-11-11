@@ -42,14 +42,17 @@ uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_
 
 | 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
 | --- | --- | --- | --- |
-| `family` | "z-image", "moss-image", "flux", "flux2", "bluepixel", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3" | `必填` | 模型家族；先按实际权重选择，再填写对应 variant/version。 |
+| `family` | "z-image", "moss-image", "flux", "flux2", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3", "minimax-h3-image" | `必填` | 模型家族；先按实际权重选择，再填写对应 variant/version。 |
 | `variant` | string | `必填` | 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。 |
 | `version` | "dev", "klein-4b", "klein-9b", "2.1", "2.2" / null | `null` | 仅 FLUX.2 与 Wan 填写；分别选择 dev/klein-4b/klein-9b 或 2.1/2.2。 |
 | `vae` | string / null | `null` | 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。 |
 | `text_encoder` | string / null | `null` | 本地文本编码器文件或目录；分词器来源单独配置。 |
 | `assets` | string / null | `null` | 辅助资产根目录；FLUX 的 CLIP 位于 text_encoder/，Wan2.1 I2V 的图像编码器位于 image_encoder/model.safetensors。 |
 | `text` | object | `子表默认值` | 文本编码精度、量化和分词器来源子表；编码器权重路径仍在 model.text_encoder。 |
-| `minimax_h3` | object / null | `null` | H3 专属子表；模型表填编码资产，数据表填音频处理，方法表填时间与条件策略。 |
+| `minimax_h3` | object / null | `null` | H3 音视频和 H3-Image 的编码资产；数据／方法子表仅用于 H3 音视频。 |
+| `pdd_config` | string / null | `null` | H3-Image 训练和推理必填的 PDD sigma 时间表路径。 |
+| `pdd_heads` | string / null | `null` | 官方 H3-Image 六步融合输出头；使用原始 transformer 权重时需要。 |
+| `image_topology` | object / null | `null` | H3-Image 非标准去噪器结构覆盖；标准模型省略。 |
 | `text_source_format` | "auto", "transformers", "qwen" / null | `null` | 省略时按权重键名自动识别；可显式限定 transformers/qwen。 |
 | `weights` | string | `必填` | 本地权重文件、分片索引或支持的模型目录；替换为实际路径。 |
 
@@ -178,6 +181,9 @@ batch_size = 16
 | `betas` | [number, number]；length ≥ 2, length ≤ 2 | `[0.9, 0.999]` | AdamW 一阶/二阶矩衰减系数，两个数均在 [0,1)。 |
 | `eps` | number；> 0 | `1e-08` | AdamW 分母稳定项，必须大于 0；通常保留 1e-8。 |
 | `backend` | "auto", "fused", "foreach", "single" | `"auto"` | auto 自动选择优化器实现；fused/foreach/single 显式指定后端。 |
+| `implementation` | "torch", "adv_optm" | `"torch"` | Advanced Optimizers AdamW 随基础依赖安装；默认仍使用 PyTorch AdamW。 |
+| `state_precision` | "fp32", "bf16_sr", "int8_sr" | `"fp32"` | Advanced Optimizers 的动量状态存储精度；压缩状态以数值精度换取显存。需要 `implementation = "adv_optm"`。 |
+| `factored_2nd` | boolean | `false` | 将大参数的二阶矩分解存储；需要 `implementation = "adv_optm"`，会改变优化器计算。 |
 
 ## `method`
 
@@ -239,6 +245,8 @@ batch_size = 16
 | `quantization` | "none", "fp8", "convrot-int8", "float8_e4m3fn", "float8_e5m2", "mxfp8", "nvfp4", "int8_tensorwise", "int8_rowwise", "int8_convrot", "convrot_w4a4", "convrot_w4a8", "asym_w4a8_int8", "w6a8_int8" | `"none"` | 冻结基模/文本权重的存储量化布局；none 关闭，底模量化仅用于 adapter。 |
 | `quantization_rotation_size` | integer；≥ 4 | `256` | 支持旋转布局的旋转块大小；使用该布局要求的合法尺寸。 |
 | `quantization_group_size` | integer；> 0 | `16` | 分组量化大小；必须满足该格式及权重形状的整除要求。 |
+| `convrot_kernel` | "eager", "auto", "triton" | `"eager"` | 仅对冻结的 ConvRot INT8 基模层生效。eager 保持浮点矩阵乘法；auto 在 CUDA 且安装 Triton 时使用融合 INT8 GEMM，否则回退；triton 强制融合计算，缺少 CUDA/Triton 时报错。需配合 `quantization = "int8_convrot"` 或已打包的 ConvRot INT8 权重。 |
+| `convrot_backward` | "float", "int8" | `"float"` | 输入梯度默认用临时浮点权重矩阵乘法；int8 将梯度再量化并用融合 GEMM，要求 CUDA/Triton 且 `convrot_kernel` 非 eager，可能增加训练数值误差，小矩阵不一定更快。冻结权重不计算梯度。 |
 
 ## `output`
 
@@ -285,6 +293,7 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 | `caption_language` | "en", "zh" / null | `null` | Qwen layered 的图层描述语言 en/zh。 |
 | `width` | integer；≥ 16 | `1024` | 输出宽度，像素；一般 16 对齐，Qwen2.1/H3 使用 32 对齐。 |
 | `height` | integer；≥ 16 | `1024` | 输出高度，像素；与宽度一起决定采样显存需求。 |
+| `h3_size_policy` | "comfyui", "official" | `"comfyui"` | 仅 H3-Image；未填写宽高时按 2048² 或约 16 MP 的面积生成。 |
 | `seed` | integer | `42` | 采样噪声种子；比较训练版本时保持不变。 |
 | `attention_backend` | "torch", "kitchen-int8" | `"torch"` | torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。 |
 | `steps` | integer / null | `null` | 采样迭代数；省略使用变体默认，Turbo 与非蒸馏模型不要套用同一数值。 |
@@ -362,7 +371,7 @@ Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`�
 
 | 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
 | --- | --- | --- | --- |
-| `audio_vae` | string | `必填` | H3 本地音频 VAE 权重。 |
+| `audio_vae` | string / null | `null` | H3 音视频的音频 VAE；H3-Image 不使用。 |
 | `text_config` | string | `必填` | H3 文本编码器结构配置文件，需与权重匹配。 |
 | `text_processor` | string / null | `null` | H3 本地 processor 目录；未填时可用该家族默认来源。 |
 | `text_device` | "cpu", "cuda" / null | `null` | H3 文本编码设备；仅在需要单独放置编码器时设置。 |

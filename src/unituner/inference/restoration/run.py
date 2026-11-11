@@ -1,20 +1,19 @@
 """Stage image encoding, native one-step prediction and decoding for image restoration."""
 
 import json
-import math
 from contextlib import ExitStack
 from pathlib import Path
 
 import torch
 
 from unituner.adapters.encoder import load_encoder_adapters
-from unituner.artifacts.tensors import TensorReader, resolve_shards
 from unituner.config.restoration_inference import RestorationInferenceConfig
 from unituner.data.media.image import save_image
 from unituner.data.media.restoration import read_restoration_image
 from unituner.execution.attention import inference_attention
 from unituner.execution.runtime import runtime_scope
 from unituner.inference.adapters import image_adapter
+from unituner.inference.restoration.sigma import restoration_sigma as _restoration_sigma
 from unituner.inference.restoration.text import encode_caption
 from unituner.inference.restoration.vae import (
     decode_restoration_latents,
@@ -44,35 +43,6 @@ from unituner.models.qwen_image_2_1.restoration import restore_latents as restor
 from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
 from unituner.models.z_image.restoration import restore_latents
 from unituner.precision import FLOAT_DTYPES
-
-
-def _restoration_sigma(config: RestorationInferenceConfig) -> float:
-    """Resolve recorded training sigma, rejecting conflicting artifacts or explicit overrides."""
-    paths = [config.model.weights]
-    if config.adapter is not None:
-        paths.append(config.adapter.weights)
-    if config.encoder_weights is not None:
-        paths.append(config.encoder_weights)
-    recorded = []
-    for path in paths:
-        for shard in resolve_shards(Path(path)):
-            with TensorReader(shard) as reader:
-                value = reader.metadata().get("unituner.restoration.sigma")
-            if value is not None:
-                try:
-                    sigma = float(value)
-                except ValueError as error:
-                    raise ValueError("Restoration artifact has invalid sigma metadata") from error
-                if not math.isfinite(sigma) or not 0 < sigma < 1:
-                    raise ValueError("Restoration artifact sigma must be finite and strictly inside (0,1)")
-                recorded.append(sigma)
-    if recorded and any(value != recorded[0] for value in recorded):
-        raise ValueError("Restoration model/adapter/encoder artifacts record conflicting sigma values")
-    if config.sigma is not None:
-        if recorded and config.sigma != recorded[0]:
-            raise ValueError("Explicit restoration sigma differs from the trained artifact")
-        return config.sigma
-    return recorded[0] if recorded else 0.244
 
 
 @torch.no_grad()

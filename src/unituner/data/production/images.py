@@ -143,7 +143,7 @@ def produce_images(
                 repa=repa,
                 encoder_sha256=encoder_digest,
                 variant=config.model.variant
-                if config.model.family in (ModelFamily.FLUX, ModelFamily.FLUX2, ModelFamily.FLUX3, ModelFamily.BLUEPIXEL)
+                if config.model.family in (ModelFamily.FLUX, ModelFamily.FLUX2, ModelFamily.FLUX3)
                 or (config.model.family == ModelFamily.MOSS_IMAGE and config.model.variant == "edit")
                 else None,
                 data=source,

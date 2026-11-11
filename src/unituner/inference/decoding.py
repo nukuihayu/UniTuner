@@ -3,7 +3,6 @@
 import torch
 from torch import Tensor
 
-from unituner.models.bluepixel.vae import BluePixelVAE
 from unituner.models.flux.vae import FluxVAE
 from unituner.models.flux2.vae import Flux2VAE
 from unituner.models.qwen_image.vae import QwenImageVAE
@@ -13,7 +12,7 @@ from unituner.models.z_image.vae import ZImageVAE
 
 @torch.no_grad()
 def decode_latents(
-    vae: ZImageVAE | Flux2VAE | FluxVAE | QwenImageVAE | QwenImage21VAE | BluePixelVAE, latents: Tensor
+    vae: ZImageVAE | Flux2VAE | FluxVAE | QwenImageVAE | QwenImage21VAE, latents: Tensor
 ) -> Tensor:
     """Decode native model latents without changing VAE residency or mode.
 
@@ -36,12 +35,12 @@ def decode_latents(
     if isinstance(vae, QwenImageVAE):
         pixels = vae.decode_layers(values)
         return pixels.transpose(1, 2).reshape(-1, vae.config.input_channels, *pixels.shape[-2:]).float().cpu()
-    return vae.decode(values if isinstance(vae, Flux2VAE | FluxVAE | BluePixelVAE) else vae.denormalize(values)).float().cpu()
+    return vae.decode(values if isinstance(vae, Flux2VAE | FluxVAE) else vae.denormalize(values)).float().cpu()
 
 
 @torch.no_grad()
 def decode_on_device(
-    vae: ZImageVAE | Flux2VAE | FluxVAE | QwenImageVAE | QwenImage21VAE | BluePixelVAE,
+    vae: ZImageVAE | Flux2VAE | FluxVAE | QwenImageVAE | QwenImage21VAE,
     latents: Tensor,
     *,
     device: torch.device,

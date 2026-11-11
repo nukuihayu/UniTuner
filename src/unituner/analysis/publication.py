@@ -1,23 +1,11 @@
 """Save final scientific figures/tables and display them in notebooks or supported terminals."""
 
-import asyncio
-import base64
 import csv
-import os
-import re
-import subprocess
-import sys
-from concurrent.futures import ThreadPoolExecutor
-from io import BytesIO
 from pathlib import Path
 
-import kaleido
-import plotly.graph_objects as go
-from choreographer.browsers.chromium import Chromium
-from pypdf import PdfWriter
+import plotly.io as pio
 
 from unituner.artifacts.atomic import atomic_output
-from unituner.progress import status
 
 
 def notebook():
@@ -29,43 +17,6 @@ def notebook():
         return shell is not None and getattr(shell, "kernel", None) is not None
     except ImportError:
         return False
-
-
-def display_image(path, mode, *, first):
-    """Display saved final images without HTML or a mandatory interactive backend."""
-    if mode == "never":
-        return
-    if notebook():
-        from IPython.display import Image, display
-
-        display(Image(filename=str(path)))
-        return
-    if not sys.stdout.isatty() and mode != "always":
-        return
-    if os.environ.get("TERM_PROGRAM") == "iTerm.app":
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        print(f"\033]1337;File=inline=1;width=auto:{encoded}\a")
-    elif os.environ.get("KITTY_WINDOW_ID"):
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        for start in range(0, len(encoded), 4096):
-            more = int(start + 4096 < len(encoded))
-            options = f"a=T,f=100,m={more}" if start == 0 else f"m={more}"
-            print(f"\033_G{options};{encoded[start : start + 4096]}\033\\", end="", flush=True)
-        print()
-    elif first:
-        try:
-            if os.name == "nt":
-                os.startfile(str(path.resolve()))
-            elif os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
-                subprocess.Popen(
-                    ["xdg-open", str(path.resolve())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(path.resolve())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            else:
-                status("[analyze] Headless terminal: figures saved; use notebook display or open PNG/PDF locally")
-        except OSError as error:
-            status(f"[analyze] Could not open image viewer: {error}; saved figures remain available", level="WARN")
 
 
 def number(value):
@@ -182,68 +133,32 @@ def terminal_table(report):
     print(f"Numerical errors: {errors}. See summary.md for observations, coverage and next checks.\n")
 
 
-def browser_path():
-    """Reuse an installed browser or install Kaleido's cached Chrome once."""
-    explicit = os.environ.get("BROWSER_PATH")
-    if explicit:
-        return explicit
-    installed = Chromium.find_browser(skip_local=False)
-    if installed:
-        return installed
-    status("[analyze] Chrome not found; downloading Chrome to Kaleido's user cache (first export only)")
-    # Isolate the downloader so a stalled network can be stopped without changing
-    # process-wide socket defaults or leaving a live download thread behind.
-    result = subprocess.run(
-        [sys.executable, "-c", "import kaleido; print(kaleido.get_chrome_sync())"],
-        capture_output=True,
-        text=True,
-        timeout=180,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
-    if result.returncode:
-        raise RuntimeError(f"Chrome download failed: {result.stderr.strip()[-2000:]}")
-    path = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
-    if not path or not Path(path).is_file():
-        raise RuntimeError("Chrome downloader did not return an installed browser")
-    return path
-
-
-async def export_figures(report, directory, browser, *, interactive):
-    """Own one browser and propagate startup/render errors through the awaiting caller."""
+def export_figures(report, directory, *, interactive):
+    """Save self-contained Plotly HTML and retain notebook figures for inline display."""
     from unituner.analysis.figures import generate
 
     captions = ["# Figure captions", ""]
     displayed = []
-    pdf = PdfWriter()
-    try:
-        async with kaleido.Kaleido(n=1, path=browser) as renderer:
-            for name, fig in generate(report):
-                name = re.sub(r"[^\w.-]", "_", name)
-                export = go.Figure(fig)
-                if export.layout.updatemenus:
-                    export.layout.updatemenus = ()
-                    export.update_layout(margin_b=170)
-                captions.extend([f"## {name}", "", (fig.layout.meta or {}).get("caption", name), ""])
-                png = await renderer.calc_fig(export, opts={"format": "png", "scale": 1.5})
-                page = await renderer.calc_fig(export, opts={"format": "pdf"})
-                path = directory / f"{name}.png"
-                with atomic_output(path) as image:
-                    image.write_bytes(png)
-                pdf.append(BytesIO(page))
-                status(f"[analyze] Figure saved: {path}")
-                displayed.append((path, fig if interactive else None))
-        with atomic_output(directory / "figure-captions.md") as temporary:
-            temporary.write_text("\n".join(captions), encoding="utf-8")
-        with atomic_output(directory / "figures.pdf") as temporary:
-            with temporary.open("wb") as stream:
-                pdf.write(stream)
-    finally:
-        pdf.close()
+    pages = []
+    for name, fig in generate(report):
+        caption = (fig.layout.meta or {}).get("caption", name)
+        captions.extend([f"## {name}", "", caption, ""])
+        pages.append(pio.to_html(fig, full_html=False, include_plotlyjs=not pages))
+        if interactive:
+            displayed.append(fig)
+    with atomic_output(directory / "figures.html") as temporary:
+        temporary.write_text(
+            '<!doctype html><html><head><meta charset="utf-8"><title>Weight analysis</title></head>'
+            '<body style="margin:0;font-family:sans-serif">' + "\n".join(pages) + "</body></html>",
+            encoding="utf-8",
+        )
+    with atomic_output(directory / "figure-captions.md") as temporary:
+        temporary.write_text("\n".join(captions), encoding="utf-8")
     return displayed
 
 
 def publish(report: dict, directory: Path, *, show="auto") -> Path:
-    """Save only final deliverables: PNG, a multipage PDF, scientific CSV tables and Markdown."""
+    """Save scientific CSV tables, Markdown and offline interactive Plotly HTML."""
     from unituner.analysis.figures import label_map
 
     if show not in {"auto", "always", "never"}:
@@ -381,29 +296,9 @@ def publish(report: dict, directory: Path, *, show="auto") -> Path:
         temporary.write_text(summary(report), encoding="utf-8")
     interactive = show != "never" and notebook()
     try:
-        browser = browser_path()
-
-        def render():
-            return asyncio.run(export_figures(report, directory, browser, interactive=interactive))
-
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            figures = render()
-        else:
-            # Notebook kernels own an event loop; keep ours isolated and joined.
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                figures = executor.submit(render).result()
+        figures = export_figures(report, directory, interactive=interactive)
     except Exception as error:
-        raise RuntimeError(
-            "Plotly static export failed. Missing Chrome is installed automatically; "
-            'if downloading is unavailable, install it with `python -c "import kaleido; kaleido.get_chrome_sync()"` '
-            "or set BROWSER_PATH to an installed Chrome/Chromium. Linux may also need Chrome system libraries. "
-            f"Numeric tables and summary.md are preserved in {directory}. Renderer error: {error}"
-        ) from error
-    for index, (path, fig) in enumerate(figures):
-        if fig is not None:
-            fig.show(renderer="plotly_mimetype")
-        else:
-            display_image(path, show, first=index == 0)
+        raise RuntimeError(f"Plotly export failed; numeric tables and summary.md remain in {directory}: {error}") from error
+    for fig in figures:
+        fig.show(renderer="plotly_mimetype")
     return directory / "summary.md"

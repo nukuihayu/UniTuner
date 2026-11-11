@@ -1,12 +1,13 @@
 """Declare one-step image restoration inputs without importing compute backends."""
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from unituner.config.generation import GenerationAdapterConfig
 from unituner.config.model import ModelConfig
 from unituner.config.runtime import RuntimeConfig
+from unituner.models.catalog import ModelFamily
 
 
 class RestorationInferenceConfig(BaseModel):
@@ -27,3 +28,12 @@ class RestorationInferenceConfig(BaseModel):
     sigma: float | None = Field(default=None, gt=0, lt=1)
     adapter: GenerationAdapterConfig | None = None
     encoder_weights: str | None = Field(default=None, min_length=1)
+    reference_images: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_references(self) -> Self:
+        if self.reference_images and self.model.family != ModelFamily.MINIMAX_H3_IMAGE:
+            raise ValueError("Restoration reference_images currently require MiniMax-H3-Image")
+        if len(self.reference_images) > 16 or any(not path for path in self.reference_images):
+            raise ValueError("H3-Image restoration supports up to 16 nonempty references")
+        return self

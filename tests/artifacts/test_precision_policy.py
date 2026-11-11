@@ -21,6 +21,7 @@ from unituner.artifacts.tensors import TensorReader, save_tensors
         ("krea2", "blocks.0.attn.qkv.weight"),
         ("wan", "blocks.0.self_attn.q.weight"),
         ("minimax-h3", "double_blocks.0.video.adaln_proj.linear.weight"),
+        ("minimax-h3-image", "blocks.0.attn.qkv_proj.weight"),
     ],
 )
 def test_all_model_policies_keep_conditioning_and_allow_core_projections(family, key):
@@ -119,6 +120,45 @@ def test_z_image_refiners_and_qwen_modulation_remain_dense():
     for name in ("context_refiner.0.attention.to_q.weight", "noise_refiner.0.feed_forward.w1.weight"):
         assert protection_reason("z-image", name)
     assert protection_reason("qwen-image", "transformer_blocks.0.img_mod.1.weight")
+
+
+def test_h3_image_quantization_reuses_h3_protected_boundaries(tmp_path):
+    from torch import nn
+
+    from unituner.models.components.quantized import QuantizedLinear
+    from unituner.models.components.weight_quantization import quantize_model
+
+    model = nn.Module()
+    model.blocks = nn.ModuleList([nn.Module()])
+    model.blocks[0].attn = nn.Module()
+    model.blocks[0].attn.qkv_proj = nn.Linear(8, 8, bias=False)
+    model.token_refiner = nn.Module()
+    model.token_refiner.blocks = nn.ModuleList([nn.Module()])
+    model.token_refiner.blocks[0].attn = nn.Module()
+    model.token_refiner.blocks[0].attn.qkv_proj = nn.Linear(8, 8, bias=False)
+    model.final_layer = nn.Module()
+    model.final_layer.video_out = nn.Linear(8, 8, bias=False)
+    model.video_patch_proj = nn.Linear(8, 8, bias=False)
+    original = {name: value.clone() for name, value in model.state_dict().items()}
+
+    assert POLICIES["minimax-h3-image"] is POLICIES["minimax-h3"]
+    source, output = tmp_path / "h3-image.safetensors", tmp_path / "h3-image-int8.safetensors"
+    save_tensors(original, source)
+    report = convert_weights(
+        source, output, precision="int8_convrot", family="minimax-h3-image", rotation_size=4, backend="eager"
+    )
+    assert report["converted"] == 1
+    with TensorReader(output) as reader:
+        assert "blocks.0.attn.qkv_proj.comfy_quant" in reader.keys()
+        for name in original:
+            if not name.startswith("blocks.0."):
+                torch.testing.assert_close(reader.read(name), original[name], atol=0, rtol=0)
+    assert quantize_model(model, "int8_convrot", family="minimax-h3-image", rotation_size=4) == 1
+    assert isinstance(model.blocks[0].attn.qkv_proj, QuantizedLinear)
+    assert isinstance(model.token_refiner.blocks[0].attn.qkv_proj, nn.Linear)
+    assert not isinstance(model.token_refiner.blocks[0].attn.qkv_proj, QuantizedLinear)
+    assert not isinstance(model.final_layer.video_out, QuantizedLinear)
+    assert not isinstance(model.video_patch_proj, QuantizedLinear)
 
 
 # Keys come from convert_to_quant 5d2f539, independently of UniTuner's glob

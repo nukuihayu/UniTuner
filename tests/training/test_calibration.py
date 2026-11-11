@@ -34,7 +34,7 @@ def test_toml_calibration_preprocessing_limit_and_rng(tmp_path, capsys, sampling
         source.mkdir()
         Image.fromarray(np.random.default_rng(12).integers(0, 256, (67, 81, 3), dtype=np.uint8)).save(source / "a.png")
         inputs = (
-            "degradation = { enabled = true, scales = [2] }"
+            "degradation = { enabled = true, scale = 2.0 }"
             if synthetic
             else f'low_quality_source = "{source.as_posix()}"'
         )
@@ -92,7 +92,7 @@ kind = "restoration"
                             "cache_directory": "absent-cache",
                             "resolution": [32, 32],
                             "low_quality_source": None if synthetic else str(source),
-                            "degradation": {"enabled": True, "scales": [2]} if synthetic else None,
+                            "degradation": {"enabled": True, "scale": 2.0} if synthetic else None,
                         }
                     }
                 },

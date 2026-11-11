@@ -117,7 +117,6 @@ Keep a primary image loss such as L1 or a perceptual loss. Compare held-out imag
 | Z-Image | Current native variants | `sample` by default; optional `mean` |
 | FLUX | Dev | `sample` by default; optional `mean` |
 | FLUX.2 | Native Dev / Klein 4B / Klein 9B base/distilled combinations | `mean` |
-| BluePixel | Turbo | `mean` |
 | FLUX3 | Base, distilled | `mean` |
 | MOSS Image | Base, SFT | `mean` |
 | Qwen Image | Original | `sample` by default; optional `mean` |

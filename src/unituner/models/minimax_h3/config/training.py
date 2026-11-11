@@ -17,7 +17,7 @@ class MiniMaxH3EncoderConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-    audio_vae: str = Field(min_length=1)
+    audio_vae: str | None = Field(default=None, min_length=1)
     text_config: str = Field(min_length=1)
     text_processor: str | None = Field(default=None, min_length=1)
     text_device: Literal["cpu", "cuda"] | None = None

@@ -78,7 +78,7 @@ W/A 描述部署时的权重与激活精度。文件转换保存权重和布局�
 
 ## 按模型保护敏感层
 
-默认 `--family auto` 优先读取原生拓扑元数据。没有元数据时，根据家族特有的键识别；键结构不明确时显式指定 `--family`。家族名称与训练一致：`z-image`、`flux`、`flux2`、`bluepixel`、`flux3`、`moss-image`、`qwen-image`、`qwen-image-2-1`、`krea2`、`wan`、`minimax-h3`。
+默认 `--family auto` 优先读取原生拓扑元数据。没有元数据时，根据家族特有的键识别；键结构不明确时显式指定 `--family`。家族名称与训练一致：`z-image`、`flux`、`flux2`、`flux3`、`moss-image`、`qwen-image`、`qwen-image-2-1`、`krea2`、`wan`、`minimax-h3`。
 
 ```bash
 uv run unituner weights convert models/qwen21.safetensors models/qwen21-int8.safetensors \

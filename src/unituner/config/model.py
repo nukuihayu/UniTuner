@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from unituner.config.text import TextEncodingConfig
 from unituner.models.catalog import ModelFamily
+from unituner.models.minimax_h3.config.model import MiniMaxH3Config
 from unituner.models.minimax_h3.config.training import MiniMaxH3EncoderConfig
 
 
@@ -22,6 +23,9 @@ class EncoderModelConfig(BaseModel):
     assets: str | None = Field(default=None, min_length=1)
     text: TextEncodingConfig = Field(default_factory=TextEncodingConfig)
     minimax_h3: MiniMaxH3EncoderConfig | None = None
+    pdd_config: str | None = None
+    pdd_heads: str | None = None
+    image_topology: MiniMaxH3Config | None = None
     text_source_format: Literal["auto", "transformers", "qwen"] | None = None
 
     def asset_path(self, component: Literal["clip_text", "tokenizer", "image_encoder"]) -> Path:
@@ -45,8 +49,14 @@ class EncoderModelConfig(BaseModel):
     @model_validator(mode="after")
     def validate_version(self) -> Self:
         """Require FLUX.2 size/version independently of checkpoint distillation."""
-        if self.minimax_h3 is not None and self.family != ModelFamily.MINIMAX_H3:
+        if self.minimax_h3 is not None and self.family not in (ModelFamily.MINIMAX_H3, ModelFamily.MINIMAX_H3_IMAGE):
             raise ValueError("model.minimax_h3 requires MiniMaxH3")
+        if (
+            self.pdd_config is not None or self.pdd_heads is not None or self.image_topology is not None
+        ) and self.family != ModelFamily.MINIMAX_H3_IMAGE:
+            raise ValueError("model.pdd_config/pdd_heads require MiniMaxH3-Image")
+        if self.family == ModelFamily.MINIMAX_H3_IMAGE and self.variant != "base":
+            raise ValueError("MiniMaxH3-Image requires model.variant=base")
         if self.family == ModelFamily.MINIMAX_H3 and self.variant not in ("t2va", "fl2va", "ref2va"):
             raise ValueError("MiniMaxH3 requires model.variant=t2va/fl2va/ref2va")
         if self.text_source_format is not None and self.family not in {
@@ -54,6 +64,7 @@ class EncoderModelConfig(BaseModel):
             ModelFamily.QWEN_IMAGE_2_1,
             ModelFamily.KREA2,
             ModelFamily.MINIMAX_H3,
+            ModelFamily.MINIMAX_H3_IMAGE,
         }:
             raise ValueError("model.text_source_format requires Qwen Image, Krea2 or MiniMaxH3")
         if self.family == ModelFamily.MOSS_IMAGE and self.variant not in ("base", "sft", "edit"):
@@ -63,8 +74,6 @@ class EncoderModelConfig(BaseModel):
             raise ValueError("Krea2 requires model.variant=raw/turbo")
         if self.family == ModelFamily.QWEN_IMAGE_2_1 and self.variant != "base":
             raise ValueError("Qwen Image2.1 requires model.variant=base")
-        if self.family == ModelFamily.BLUEPIXEL and self.variant != "turbo":
-            raise ValueError("BluePixel-Turbo requires model.variant=turbo")
         if self.family == ModelFamily.FLUX2:
             if self.version not in ("dev", "klein-4b", "klein-9b") or self.variant not in ("base", "distilled"):
                 raise ValueError("FLUX.2 requires model.version and base/distilled variant")
@@ -82,6 +91,12 @@ class ModelConfig(EncoderModelConfig):
     """Require denoiser artifacts only for training."""
 
     weights: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_image_schedule(self) -> Self:
+        if self.family == ModelFamily.MINIMAX_H3_IMAGE and self.pdd_config is None:
+            raise ValueError("MiniMax-H3-Image requires model.pdd_config for generation or training")
+        return self
 
     def asset_path(self, component: Literal["clip_text", "tokenizer", "image_encoder"]) -> Path:
         """Use the explicit bundle or the denoiser parent for training assets."""

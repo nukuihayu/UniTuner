@@ -119,7 +119,6 @@ phase_epsilon = 0.001
 | Z-Image | 当前原生变体 | 默认 sample，可选 mean |
 | FLUX | Dev | 默认 sample，可选 mean |
 | FLUX.2 | Dev、Klein 4B/9B 的原生 base/distilled 组合 | mean |
-| BluePixel | Turbo | mean |
 | FLUX3 | base、distilled | mean |
 | MOSS Image | Base、SFT | mean |
 | Qwen Image | original | 默认 sample，可选 mean |

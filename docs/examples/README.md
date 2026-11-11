@@ -53,7 +53,6 @@
 | FLUX Fill | [flux-fill-flow.toml](flux-fill-flow.toml) | 一个参考目录＋mask；改 Kontext 时更换权重／variant 并删除 mask_source |
 | FLUX.2 | [flux2-flow.toml](flux2-flow.toml) | Klein4B base 无参考基线 |
 | FLUX.2 有序参考 | [flux2-reference-flow.toml](flux2-reference-flow.toml) | 参考图与目标图使用相同 bucket |
-| BluePixel-Turbo | [bluepixel-flow.toml](bluepixel-flow.toml) | 单张参考图与匹配的 DCAE-F64 资产 |
 | FLUX3 | [flux3-flow.toml](flux3-flow.toml) | 参考图规则见模型指南 |
 | MOSS | [moss-flow.toml](moss-flow.toml) | 包含原生跳层预览参数，层号须匹配实际模型 |
 | MOSS Edit | [moss-edit-flow.toml](moss-edit-flow.toml) | 原图与编辑指令 |
@@ -67,6 +66,8 @@
 | H3 缓存 | [minimax-h3-cache.toml](minimax-h3-cache.toml) | 原生 AV JSONL，需完整音视频编码器 |
 | H3 训练 | [minimax-h3-train.toml](minimax-h3-train.toml)、[minimax-h3-train-preview.toml](minimax-h3-train-preview.toml) | 已有缓存训练／带 AV 预览 |
 
+MiniMax-H3-Image 是独立的图像家族，缓存、LoRA／全参数训练、编辑生成及一步修复配置见[H3-Image 指南](../minimax-h3-image.md)，不能套用上表的 H3 音视频 TOML。
+
 H3 外部拆分缓存使用 [minimax-h3-cache-import.json](minimax-h3-cache-import.json)：
 `unituner caches import SPECIFICATION DESTINATION`，这是显式转换入口，不是 TOML 训练配置。
 
@@ -74,7 +75,6 @@ H3 外部拆分缓存使用 [minimax-h3-cache-import.json](minimax-h3-cache-impo
 
 | 任务 | 示例 | 需要准备 |
 | --- | --- | --- |
-| BluePixel-Turbo | [bluepixel-restoration-train.toml](bluepixel-restoration-train.toml) | 配对图片、DCAE-F64，LRR＋L1 配方 |
 | Z-Image 默认损失配方 | [restoration.toml](restoration.toml) | DINOv3-ConvNeXt＋VGG19 权重 |
 | Z-Image Turbo 油光肤色 | [oil-skin-lora.toml](oil-skin-lora.toml) | 真实配对图片，DINO/VGG/GAN 损失；需替换本地路径 |
 | Z-Image full | [restoration-full.toml](restoration-full.toml) | 相同损失配方，denoiser 全参数，block 重算 |
@@ -104,9 +104,9 @@ unituner train docs/examples/restoration-calibration.toml --device cuda
 
 | 命令 | 示例 |
 | --- | --- |
-| `unituner generate CONFIG --device cuda` | [BluePixel](bluepixel-generate.toml)、[Z-Image](generate.toml)、[FLUX](flux-generate.toml)、[FLUX.2](flux2-generate.toml)、[FLUX3](flux3-generate.toml)、[MOSS](moss-generate.toml)、[MOSS Edit](moss-edit-generate.toml)、[Qwen](qwen-image-generate.toml)、[Qwen图层](qwen-image-layered-generate.toml)、[Krea2](krea2-generate.toml) |
+| `unituner generate CONFIG --device cuda` | [Z-Image](generate.toml)、[FLUX](flux-generate.toml)、[FLUX.2](flux2-generate.toml)、[FLUX3](flux3-generate.toml)、[MOSS](moss-generate.toml)、[MOSS Edit](moss-edit-generate.toml)、[Qwen](qwen-image-generate.toml)、[Qwen图层](qwen-image-layered-generate.toml)、[Krea2](krea2-generate.toml) |
 | `unituner generate-video CONFIG --device cuda` | [Wan](wan-generate-video.toml)、[H3](minimax-h3-generate.toml) |
-| `unituner restore CONFIG --device cuda` | [BluePixel](bluepixel-restore.toml)、[Z-Image](restore.toml)、[Qwen](qwen-image-restore.toml)、[Krea2](krea2-restore.toml) |
+| `unituner restore CONFIG --device cuda` | [Z-Image](restore.toml)、[Qwen](qwen-image-restore.toml)、[Krea2](krea2-restore.toml) |
 
 推理 adapter 的路径与 algorithm／rank／alpha 必须匹配训练产物；full 模型直接替换 model.weights。
 修复推理的 encoder_weights 指向训练导出的 encoder adapter，并读取训练产物记录的 sigma。

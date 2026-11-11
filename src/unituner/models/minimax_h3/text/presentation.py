@@ -93,6 +93,7 @@ def build_presentation(
     *,
     anchors: Mapping[str, MiniMaxH3TextVisual] | None = None,
     references: Sequence[MiniMaxH3TextReference] = (),
+    picture_label: str = "<Picture {index}>: ",
 ) -> MiniMaxH3Presentation:
     """Build native T2VA/FL2VA/Ref2VA labels in packed order without RNG or copies.
 
@@ -146,7 +147,7 @@ def build_presentation(
                 raise ValueError("MiniMaxH3 visual reference requires pixels")
             counters[reference.kind] += 1
             if reference.kind == "image":
-                label = f"<Picture {counters['image']}>: {IMAGE_PLACEHOLDER}"
+                label = picture_label.format(index=counters["image"]) + IMAGE_PLACEHOLDER
                 parts.append(label)
                 processor_parts.append(label)
                 images.append(visual.frames[0])
@@ -164,6 +165,16 @@ def build_presentation(
     parts.append(caption)
     processor_parts.append(caption)
     return MiniMaxH3Presentation("".join(parts), "".join(processor_parts), tuple(images), tuple(videos))
+
+
+def build_image_presentation(caption: str, images: Sequence[MiniMaxH3TextVisual] = ()) -> MiniMaxH3Presentation:
+    """Use the H3-Image picture labels for both inference and cached training text."""
+    return build_presentation(
+        caption,
+        "ref2va" if images else "t2va",
+        references=tuple(MiniMaxH3TextReference("image", image) for image in images),
+        picture_label="Picture {index}: ",
+    )
 
 
 def build_token_tags(input_ids: Tensor) -> Tensor:

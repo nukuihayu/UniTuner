@@ -28,7 +28,7 @@ def produce_minimax_h3(
     """Load frozen native H3 encoders and atomically publish JSONL target caches."""
     model = config.model
     encoders_config = model.minimax_h3
-    if encoders_config is None or model.vae is None or model.text_encoder is None:
+    if encoders_config is None or encoders_config.audio_vae is None or model.vae is None or model.text_encoder is None:
         raise ValueError("MiniMaxH3 cache requires model.vae, model.text_encoder and model.minimax_h3 artifacts")
     video_path, text_path = Path(model.vae), Path(model.text_encoder)
     selected = torch.device(device)

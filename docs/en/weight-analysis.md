@@ -33,7 +33,7 @@ uv run unituner analyze runs/my-run --base /models/base.safetensors \
 | File | Use |
 | --- | --- |
 | `summary.md` | Analysis summary |
-| `figures.pdf` and PNG charts | View, share or retain comparisons |
+| `figures.html` | Self-contained interactive Plotly charts for offline viewing; no browser during export |
 | `layers.csv` | Per-layer weight statistics |
 | `diagnostics.csv`, `allocation.csv` | Update magnitudes, nonfinite values and distribution |
 | `labels.csv` | Short chart labels mapped to full layer names |
@@ -85,13 +85,7 @@ Direct Python-cell calls show interactive charts with zoom and layer-name hover.
 
 ## If chart export fails
 
-PNG/PDF export requires Chrome or Chromium. The first run can download a browser automatically. Offline, set `BROWSER_PATH` to an existing browser. You can also install one in advance:
-
-```bash
-uv run plotly_get_chrome -y
-```
-
-Linux also needs the browser's system libraries. Check the error log if export fails; any generated CSV tables and `summary.md` remain usable.
+Plotly charts are saved in self-contained `figures.html` without starting a browser or downloading Chrome. PNG/PDF files are no longer generated. If chart serialization fails, CSV tables and `summary.md` remain usable.
 
 ---
 

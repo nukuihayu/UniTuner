@@ -13,11 +13,11 @@ from unituner.artifacts.hashing import canonical_sha256
 from unituner.config.training import TrainingConfig
 from unituner.data.datasets.restoration import AlignedImagePair, RestorationDataset, index_restoration_pairs
 from unituner.execution.precision import resolve_training_precision
-from unituner.models.catalog import ModelFamily
+from unituner.models.catalog import TRAINING_PROVIDERS, ModelFamily
+from unituner.models.providers import load_provider
 from unituner.progress import status
 from unituner.training.output import prepare_training_output
 from unituner.training.workflows.common.images import PreviewWriter, train
-from unituner.training.workflows.minimax_h3.run import train_minimax_h3
 from unituner.training.workflows.wan.run import train_wan
 
 
@@ -27,8 +27,8 @@ def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
     status(
         f"[train] Starting {config.model.family}/{config.method.kind} on {device}; precision={config.execution.precision}"
     )
-    if config.model.family == ModelFamily.MINIMAX_H3:
-        train_minimax_h3(config, device=torch.device(device), resume=resume)
+    if config.model.family in (ModelFamily.MINIMAX_H3, ModelFamily.MINIMAX_H3_IMAGE):
+        load_provider(TRAINING_PROVIDERS[config.model.family])(config, device=torch.device(device), resume=resume)
         return 0
     if config.model.family == ModelFamily.WAN:
         video_preview = None

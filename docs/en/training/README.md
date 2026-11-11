@@ -2,7 +2,7 @@
 
 [简体中文](../../training/README.md) · [First run](../getting-started.md) · [Parameter guide](parameters.md)
 
-Follow this page for image training. For Wan and MiniMax-H3 data preparation, caching and previews, see the [video training tutorial](video.md).
+Follow this page for image training. MiniMax-H3-Image has a [model-specific setup guide](../minimax-h3-image.md); Wan and MiniMax-H3 audio-video data preparation, caching and previews are covered in the [video training tutorial](video.md).
 
 <details>
 <summary>On this page</summary>
@@ -49,7 +49,7 @@ uv run --no-dev unituner cache train.toml --device cuda
 uv run --no-dev unituner train train.toml --device cuda
 ```
 
-cache validates only encoding inputs; it does not require optimizer, adapter or training-loss settings. Copy image-cache, wan-cache or minimax-h3-cache for standalone caching. Cached image flow training without previews need not load the VAE/text encoder. Restoration still reads source images and runs the VAE during training.
+cache validates only encoding inputs; it does not require optimizer, adapter or training-loss settings. Copy image-cache, wan-cache or minimax-h3-cache for standalone caching; H3-Image uses the same training TOML for caching. Cached image flow training without previews need not load the VAE/text encoder. Restoration still reads source images and runs the VAE during training.
 
 ## Restoration and intermediate time
 

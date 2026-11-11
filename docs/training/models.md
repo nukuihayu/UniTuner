@@ -30,7 +30,7 @@
 | `qwen-image` | 不设置 | `original`／`edit`／`edit-2509`／`edit-2511`／`layered` | 文本、编辑参考图或前景图层 | 仅 original | [原版](../examples/qwen-image-flow.toml)、[编辑](../examples/qwen-image-edit-flow.toml)、[图层](../examples/qwen-image-layered-flow.toml) |
 | `qwen-image-2-1` | 不设置 | `base` | 文本和可选参考图 | 是 | [Qwen2.1](../examples/qwen-image-2-1-flow.toml) |
 | `krea2` | 不设置 | `raw`／`turbo` | 图片和文本 | 是 | [Krea2](../examples/krea2-flow.toml) |
-| `bluepixel` | 不设置 | `turbo` | 一张参考图和编辑指令；尺寸为 64 的倍数 | 是 | [BluePixel](../examples/bluepixel-flow.toml) |
+| `minimax-h3-image` | 不设置 | `base` | 图片、文本和最多 16 个有序参考目录 | 是 | [H3-Image](../minimax-h3-image.md) |
 | `wan` | `2.1`／`2.2` | `t2v`／`i2v` | 图片或视频；i2v 需要条件帧 | 否 | [Wan](../examples/wan-flow.toml) |
 | `minimax-h3` | 不设置 | `t2va`／`fl2va`／`ref2va` | 图片或音视频记录 | 否 | [H3](../examples/minimax-h3-train.toml) |
 
@@ -46,9 +46,9 @@
 | FLUX.2、FLUX3、MOSS | 配套的 FLUX.2 32 通道 VAE |
 | Qwen Image、Krea2 | 对应模型的 16 通道 VAE；Qwen layered 使用支持 RGBA 的版本 |
 | Qwen Image 2.1 | 配套的 64 通道 RGBA VAE |
-| BluePixel-Turbo | 模型快照中的 `vae/` 目录，包含 DCAE-F64 配置和权重 |
 | Wan | 对应的 16 通道 VAE；可使用受支持的 `.pth`、`.pt` 或 safetensors 文件 |
 | MiniMaxH3 | 配套的视频 VAE 和音频 VAE，按 H3 示例分别填写 |
+| MiniMax-H3-Image | 配套图像 VAE；PDD 时间表和输出头是独立模型文件 |
 
 标准模型通常可直接使用其配套文件。加载报错时先检查是否拿错模型版本或组件；需要转换文件时参见[权重转换](../weight-conversion.md)。
 
@@ -61,7 +61,7 @@
 | `model.text_encoder` | 配套文本编码器文件或目录 |
 | `model.assets` | 辅助文件根目录；训练配置中省略时使用主模型路径的父目录 |
 
-FLUX 的 `model.text_encoder` 指向 T5，CLIP 放在 `model.assets/text_encoder/`；Wan 2.1 I2V 的图像编码器放在 `image_encoder/model.safetensors`。BluePixel 的 `assets` 指向包含 `tokenizer/` 的模型快照根目录。
+FLUX 的 `model.text_encoder` 指向 T5，CLIP 放在 `model.assets/text_encoder/`；Wan 2.1 I2V 的图像编码器放在 `image_encoder/model.safetensors`。
 
 模型权重需要自行下载。分词器和处理器可以使用默认来源，也可指定本地目录、版本和离线模式，见[文本编码](text-encoding.md)。文本编码器格式通常可自动识别，只有需要明确限定时才设置 `model.text_source_format`。
 
@@ -84,11 +84,11 @@ reference_sources = ["/data/references"]
 | FLUX Kontext／Fill | 恰好一个参考目录；Fill 可另设 `mask_source` |
 | FLUX.2 | 可选一个或多个有序参考目录 |
 | FLUX3 | 最多 10 个参考目录 |
-| BluePixel | 流匹配训练恰好一个参考目录；修复训练使用 LQ/HQ 配对 |
 | MOSS edit | 至少一个参考目录 |
 | Qwen edit | 最初的 edit 需要参考图；2509／2511 可不提供 |
 | Qwen original／layered | 不使用编辑参考目录；layered 使用 `layer_sources` |
 | Qwen2.1 | 可选有序参考目录，可独立设置参考图面积预算 |
+| MiniMax-H3-Image | 最多 16 个有序参考目录，采用原生图像／视觉条件编码 |
 
 目标和参考图按各自长宽比缩放、中心裁剪。原始尺寸相同且已对齐的图片保持配对关系；不同构图不会自动配准。修改图片、参考来源或裁剪设置后，重新运行 `cache`。
 
@@ -152,7 +152,6 @@ H3 要求 batch 为 1、分辨率为 32 的倍数，视频为 24 FPS，目标帧
 | FLUX Dev / Kontext / Fill | 25 | 3.5 / 2.5 / 30 |
 | FLUX.2 Dev / Klein base | 50 | 4 |
 | FLUX.2 Klein distilled | 4 | 1 |
-| BluePixel-Turbo | 4 | 3 |
 | FLUX3 base / distilled | 50 / 16 | 4 / 不使用 CFG |
 | MOSS Image | 50 | 3 |
 | Krea2 raw / turbo | 28 / 8 | 5.5 / 1 |

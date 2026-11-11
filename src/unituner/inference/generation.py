@@ -6,7 +6,7 @@ import torch
 
 from unituner.config.generation import GenerationConfig
 from unituner.execution.runtime import runtime_scope
-from unituner.models.catalog import image_family_spec
+from unituner.models.catalog import image_generation_provider
 from unituner.models.providers import load_provider
 
 
@@ -24,5 +24,5 @@ def run(config: GenerationConfig, *, device: str) -> int:
     selected = torch.device(device)
     if selected.type not in {"cpu", "cuda"}:
         raise ValueError("Generation entry supports CPU and CUDA devices")
-    generate = cast(ImageGeneration, load_provider(image_family_spec(config.model.family).generation))
+    generate = cast(ImageGeneration, load_provider(image_generation_provider(config.model.family)))
     return generate(config, device=selected)

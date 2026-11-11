@@ -22,6 +22,12 @@ def validate_training_policy(config: "TrainingConfig") -> None:
             "Use method.restoration sigma/calibration for fixed-timestep restoration.",
         )
     if config.output.adapter_format == "diffusers" and config.train.adapter is not None:
+        if config.model.family == ModelFamily.MINIMAX_H3_IMAGE:
+            raise ConfigRuleError(
+                "output.adapter_format",
+                "H3-Image has no verified official Diffusers LoRA projection mapping",
+                "Use adapter_format='comfyui' for H3-Image adapters.",
+            )
         if config.train.adapter.algorithm != "lora":
             raise ConfigRuleError(
                 "output.adapter_format",
@@ -46,6 +52,13 @@ def validate_training_policy(config: "TrainingConfig") -> None:
             "method.minimax_h3 requires MiniMaxH3",
             "Remove this section or set model.family to minimax-h3.",
         )
+    if config.model.family == ModelFamily.MINIMAX_H3_IMAGE:
+        if config.model.pdd_config is None:
+            raise ConfigRuleError(
+                "model.pdd_config",
+                "H3-Image training requires its PDD schedule",
+                "Set model.pdd_config to pdd_config.json.",
+            )
     if config.method.qwen_image is not None and (
         config.model.family != ModelFamily.QWEN_IMAGE or config.model.variant != "layered"
     ):
@@ -183,6 +196,19 @@ def validate_training_dataset(config: "TrainingConfig", dataset: DatasetConfig) 
                     "MiniMaxH3 target_frames must follow17*n+5 and max_frames must be at least5",
                     "Use frame counts 5, 22, 39, ... and video.max_frames >= 5.",
                 )
+    if config.model.family == ModelFamily.MINIMAX_H3_IMAGE:
+        if dataset.kind not in ("image", "restoration") or dataset.batch_size != 1:
+            raise ConfigRuleError(
+                "kind",
+                "H3-Image requires image/restoration data with batch_size=1",
+                "Set kind=image or restoration and batch_size=1.",
+            )
+        if any(size < 32 or size % 32 for size in dataset.resolution):
+            raise ConfigRuleError(
+                "resolution",
+                "H3-Image requires 32-aligned pixels",
+                "Set each resolution dimension to a multiple of 32.",
+            )
     if dataset.wan is not None and (config.model.family != ModelFamily.WAN or dataset.kind not in ("image", "video")):
         raise ConfigRuleError(
             "wan",

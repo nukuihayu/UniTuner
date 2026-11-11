@@ -17,9 +17,9 @@ class ModelFamily(StrEnum):
     QWEN_IMAGE = "qwen-image"
     QWEN_IMAGE_2_1 = "qwen-image-2-1"
     KREA2 = "krea2"
-    BLUEPIXEL = "bluepixel"
     WAN = "wan"
     MINIMAX_H3 = "minimax-h3"
+    MINIMAX_H3_IMAGE = "minimax-h3-image"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -27,8 +27,7 @@ class ImageFamilySpec:
     """Compose public identity, reusable components and explicit lazy application entries.
 
     Backbone selects parameter layouts and execution policy. VAE and text select
-    independent encoders. Fixed native selections describe derivatives such as
-    BluePixel without changing the public TOML family/variant or cache identity.
+    independent encoders and their native selections.
     """
 
     family: ModelFamily
@@ -200,32 +199,54 @@ IMAGE_SPECS = MappingProxyType(
                 adapter_base="krea2",
                 adapter_module="networks.lora_krea2",
             ),
-            ImageFamilySpec(
-                family=ModelFamily.BLUEPIXEL,
-                backbone=ModelFamily.FLUX2,
-                vae=ModelFamily.BLUEPIXEL,
-                text=ModelFamily.FLUX2,
-                loader="unituner.models.bluepixel.loading:load_bluepixel",
-                saver="unituner.models.bluepixel.loading:save_bluepixel",
-                binding="unituner.training.integrations.flux2.binding:Flux2Binding",
-                projections="unituner.models.flux2.projections:adapter_projections",
-                generation="unituner.models.bluepixel.inference.run:run",
-                preview=_SHARED_PREVIEW,
-                adapter_base="bluepixel_turbo",
-                adapter_module="networks.lora_flux2",
-                loader_variant=False,
-                native_variant="base",
-                native_version="klein-9b",
-                cache_alignment=64,
-                restoration_training_alignment=64,
-                inference_precision="bf16",
-                tokenizer_in_assets=True,
-            ),
         )
     }
 )
 
 IMAGE_FAMILIES = frozenset(IMAGE_SPECS)
+
+# Models with a distinct image tensor protocol still use the shared command
+# boundary; only their numerical providers live outside the generic image path.
+IMAGE_APPLICATIONS = MappingProxyType(
+    {
+        ModelFamily.MINIMAX_H3_IMAGE: MappingProxyType(
+            {
+                "generate": "unituner.models.minimax_h3.image_application:generate",
+                "restore": "unituner.models.minimax_h3.image_application:restore",
+                "cache": "unituner.data.production.minimax_h3_image:produce_minimax_h3_image",
+                "train": "unituner.training.workflows.minimax_h3.image:train_minimax_h3_image",
+            }
+        )
+    }
+)
+
+CACHE_PROVIDERS = MappingProxyType(
+    {
+        **dict.fromkeys(IMAGE_FAMILIES, "unituner.data.production.images:produce_images"),
+        ModelFamily.MINIMAX_H3_IMAGE: IMAGE_APPLICATIONS[ModelFamily.MINIMAX_H3_IMAGE]["cache"],
+        ModelFamily.MINIMAX_H3: "unituner.data.production.minimax_h3:produce_minimax_h3",
+        ModelFamily.WAN: "unituner.data.production.wan:produce_wan",
+    }
+)
+
+TRAINING_PROVIDERS = MappingProxyType(
+    {
+        **dict.fromkeys(IMAGE_FAMILIES, "unituner.training.workflows.common.images:train"),
+        ModelFamily.MINIMAX_H3_IMAGE: IMAGE_APPLICATIONS[ModelFamily.MINIMAX_H3_IMAGE]["train"],
+        ModelFamily.MINIMAX_H3: "unituner.training.workflows.minimax_h3.run:train_minimax_h3",
+        ModelFamily.WAN: "unituner.training.workflows.wan.run:train_wan",
+    }
+)
+
+
+def image_generation_provider(family: ModelFamily) -> str:
+    """Select the model-owned generator without importing numerical backends."""
+    return IMAGE_APPLICATIONS[family]["generate"] if family in IMAGE_APPLICATIONS else image_family_spec(family).generation
+
+
+def image_restoration_provider(family: ModelFamily) -> str:
+    """Use the shared restorer unless the model owns a different latent protocol."""
+    return IMAGE_APPLICATIONS[family]["restore"] if family in IMAGE_APPLICATIONS else "unituner.inference.restoration.run:run"
 
 
 def image_family_spec(family: ModelFamily | str) -> ImageFamilySpec:
@@ -239,7 +260,7 @@ def image_family_spec(family: ModelFamily | str) -> ImageFamilySpec:
 def cache_alignment(family: ModelFamily | str) -> int:
     """Declare pixel alignment once for image and video cache configuration."""
     selected = ModelFamily(family)
-    if selected == ModelFamily.MINIMAX_H3:
+    if selected in (ModelFamily.MINIMAX_H3, ModelFamily.MINIMAX_H3_IMAGE):
         return 32
     if selected == ModelFamily.WAN:
         return 16
@@ -253,6 +274,8 @@ def backbone_family(family: str) -> str:
 
 def supports_restoration(family: ModelFamily, variant: str | None = None) -> bool:
     """Check native image restoration support, optionally for a selected variant."""
+    if family == ModelFamily.MINIMAX_H3_IMAGE:
+        return variant is None or variant == "base"
     if family not in IMAGE_FAMILIES:
         return False
     variants = image_family_spec(family).restoration_variants

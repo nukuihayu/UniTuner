@@ -34,7 +34,12 @@ def checkpoint_tensors(
             mapped = memory_map and stream.read(4) == b"PK\x03\x04"
         # Legacy pickle serialization cannot be mapped. Select by content so
         # renamed official DINO/VGG checkpoints keep working.
-        state = torch.load(path, map_location="cpu", weights_only=True, mmap=mapped)
+        if path.suffix.lower() == ".safetensors":
+            # torch.load dispatches this extension to safetensors even when the bytes are a PyTorch archive.
+            with path.open("rb") as stream:
+                state = torch.load(stream, map_location="cpu", weights_only=True, mmap=False)
+        else:
+            state = torch.load(path, map_location="cpu", weights_only=True, mmap=mapped)
         if not isinstance(state, dict) or any(
             not isinstance(name, str) or not isinstance(value, Tensor) for name, value in state.items()
         ):

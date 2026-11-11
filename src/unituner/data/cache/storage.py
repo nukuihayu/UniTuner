@@ -69,7 +69,7 @@ class LatentManifest(BaseModel):
 
     model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
     schema_version: Literal[1] = 1
-    family: Literal["z-image", "moss-image", "flux", "flux2", "bluepixel", "flux3", "qwen-image", "qwen-image-2-1", "krea2"] = (
+    family: Literal["z-image", "moss-image", "flux", "flux2", "flux3", "qwen-image", "qwen-image-2-1", "krea2"] = (
         "z-image"
     )
     variant: (
@@ -87,7 +87,6 @@ class LatentManifest(BaseModel):
             "flux": ("dev", "kontext", "fill"),
             "flux3": ("base", "distilled"),
             "flux2": ("base", "distilled"),
-            "bluepixel": ("turbo",),
             "qwen-image": ("original", "edit", "edit-2509", "edit-2511", "layered"),
         }
         if self.family in variants:
@@ -125,9 +124,6 @@ def _record_keys(layout: str) -> set[str]:
     flux2 = re.fullmatch(r"flux2/(dev|klein-4b|klein-9b)/(base|distilled)/CHW\+LD\+R(0|[1-9][0-9]*)", layout)
     if flux2 is not None:
         return {"latents", "caption", *(f"reference.{index}" for index in range(int(flux2[3])))}
-    bluepixel = re.fullmatch(r"bluepixel/turbo/DCAE-F64/CHW\+LD\+R([01])", layout)
-    if bluepixel is not None:
-        return {"latents", "caption", *(f"reference.{index}" for index in range(int(bluepixel[1])))}
     moss = re.fullmatch(r"moss-image/edit/CHW\+LD\+R([1-9][0-9]*)", layout)
     if moss is not None:
         return {"latents", "caption", *(f"reference.{index}" for index in range(int(moss[1])))}
@@ -275,9 +271,6 @@ def validate_latent_entry(
         if manifest.family == "flux2":
             count = sum(key.startswith("reference.") for key in reader.keys())
             layout = f"flux2/{manifest.version}/{manifest.variant}/CHW+LD+R{count}"
-        if manifest.family == "bluepixel":
-            count = sum(key.startswith("reference.") for key in reader.keys())
-            layout = f"bluepixel/turbo/DCAE-F64/CHW+LD+R{count}"
         if manifest.family == "flux3":
             count = sum(key.startswith("reference.") for key in reader.keys())
             layout = f"flux3/{manifest.variant}/CHW+LD+R{count}"

@@ -9,6 +9,7 @@ from unituner.artifacts.tensors import TensorReader
 from unituner.checkpoints.restore import restore_checkpoint
 from unituner.checkpoints.schema import build_resume_identity
 from unituner.config.loading import load_training_config
+from unituner.config.optimizer import AdamWConfig
 from unituner.training import checkpointing
 from unituner.training.contracts import RunState, StepResult
 from unituner.training.engine import update_phases
@@ -17,6 +18,36 @@ from unituner.training.output import resume_path
 from unituner.training.parameters import ParameterGroup
 
 EXAMPLE = Path(__file__).parents[2] / "docs/examples/full.toml"
+
+
+@pytest.mark.parametrize("precision", ["fp32", "bf16_sr", "int8_sr"])
+def test_advanced_optimizer_snapshot_replays_next_update(tmp_path, precision):
+    pytest.importorskip("adv_optm")
+    from unituner.checkpoints.saving import save_checkpoint
+    from unituner.checkpoints.schema import CheckpointCursor
+
+    settings = AdamWConfig(implementation="adv_optm", state_precision=precision, factored_2nd=True)
+    config = load_training_config(EXAMPLE, overrides={"train": {"optimizer": settings.model_dump()}})
+    identity = build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)
+    model = torch.nn.Linear(8, 8, bias=False)
+    optimizer = create_adamw((ParameterGroup("model", tuple(model.parameters())),), lr=0.002, config=settings)
+    for step in range(2):
+        model.weight.grad = torch.sin(model.weight.detach() + step)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+    path = tmp_path / "advanced.state.safetensors"
+    save_checkpoint(path, {"model": model}, optimizer, CheckpointCursor(updates=2, microbatches=2, samples=2), identity)
+
+    restored = torch.nn.Linear(8, 8, bias=False)
+    restored_optimizer = create_adamw((ParameterGroup("model", tuple(restored.parameters())),), lr=0.002, config=settings)
+    cursor = restore_checkpoint(path, {"model": restored}, restored_optimizer, identity)
+    assert cursor.updates == 2
+    torch.testing.assert_close(model.weight, restored.weight, atol=0, rtol=0)
+    model.weight.grad = torch.sin(model.weight.detach() + 2)
+    restored.weight.grad = model.weight.grad.clone()
+    optimizer.step()
+    restored_optimizer.step()
+    torch.testing.assert_close(model.weight, restored.weight, atol=0, rtol=0)
 
 
 @pytest.mark.parametrize("failure", [None, "weights", "snapshot"])

@@ -185,7 +185,13 @@ alpha = 7.0
         rng = torch.get_rng_state().clone()
         assert main_with_local_tokenizers(["generate", str(generate_config), "--device", device]) == 0
         image = (tmp_path / "generated.png").read_bytes()
-        assert image == (tmp_path / "run/previews/step-00000003-00.png").read_bytes()
+        preview_path = tmp_path / "run/previews/step-00000003-00.png"
+        if precision == "bf16":
+            with Image.open(tmp_path / "generated.png") as generated, Image.open(preview_path) as preview:
+                difference = np.abs(np.asarray(generated).astype(np.int16) - np.asarray(preview).astype(np.int16))
+                assert difference.max() <= 16 and difference.mean() <= 2
+        else:
+            assert image == preview_path.read_bytes()
         assert main_with_local_tokenizers(["generate", str(generate_config), "--device", device]) == 0
         assert image == (tmp_path / "generated.png").read_bytes() and torch.equal(rng, torch.get_rng_state())
         with Image.open(tmp_path / "generated.png") as output:

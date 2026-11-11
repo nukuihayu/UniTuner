@@ -30,7 +30,7 @@ When changing models, check family, variant, version, VAE and text encoder toget
 | `qwen-image` | Omit | `original` / `edit` / `edit-2509` / `edit-2511` / `layered` | Text, edit references or foreground layers | Original only | [Original](../../examples/qwen-image-flow.toml), [edit](../../examples/qwen-image-edit-flow.toml), [layered](../../examples/qwen-image-layered-flow.toml) |
 | `qwen-image-2-1` | Omit | `base` | Text and optional references | Yes | [Qwen2.1](../../examples/qwen-image-2-1-flow.toml) |
 | `krea2` | Omit | `raw` / `turbo` | Images and text | Yes | [Krea2](../../examples/krea2-flow.toml) |
-| `bluepixel` | Omit | `turbo` | One reference and an instruction; dimensions divisible by 64 | Yes | [BluePixel](../../examples/bluepixel-flow.toml) |
+| `minimax-h3-image` | Omit | `base` | Images, text and up to 16 ordered references | Yes | [H3-Image](../minimax-h3-image.md) |
 | `wan` | `2.1` / `2.2` | `t2v` / `i2v` | Images/video; I2V needs condition frames | No | [Wan](../../examples/wan-flow.toml) |
 | `minimax-h3` | Omit | `t2va` / `fl2va` / `ref2va` | Images or audio-video records | No | [H3](../../examples/minimax-h3-train.toml) |
 
@@ -46,9 +46,9 @@ Set `model.vae` to the matching file or directory:
 | FLUX.2, FLUX3, MOSS | The matching FLUX.2 32-channel VAE |
 | Qwen Image, Krea2 | The matching 16-channel VAE; Qwen layered needs RGBA support |
 | Qwen Image 2.1 | Its 64-channel RGBA VAE |
-| BluePixel-Turbo | The snapshot's `vae/` directory containing DCAE-F64 configuration and weights |
 | Wan | The matching 16-channel VAE in a supported `.pth`, `.pt` or safetensors file |
 | MiniMaxH3 | Its video and audio VAEs, configured separately as shown in the H3 example |
+| MiniMax-H3-Image | Its image VAE; the PDD schedule and heads are separate model assets |
 
 Standard models normally load their matching files directly. On a loading error, check the model version and component first. See [weight conversion](../weight-conversion.md) when a file needs conversion.
 
@@ -61,7 +61,7 @@ Standard models normally load their matching files directly. On a loading error,
 | `model.text_encoder` | Matching text encoder file or directory |
 | `model.assets` | Auxiliary-file root; training defaults to the parent of the main weight path |
 
-FLUX's `model.text_encoder` is T5; put CLIP under `model.assets/text_encoder/`. Wan 2.1 I2V uses `image_encoder/model.safetensors`. For BluePixel, point `assets` to the snapshot root containing `tokenizer/`.
+FLUX's `model.text_encoder` is T5; put CLIP under `model.assets/text_encoder/`. Wan 2.1 I2V uses `image_encoder/model.safetensors`.
 
 Download model weights separately. Tokenizers and processors can use default sources or explicit local paths, revisions and offline settings; see [text encoding](text-encoding.md). Text encoder formats are normally detected automatically. Set `model.text_source_format` only to select a specific supported format.
 
@@ -84,11 +84,11 @@ reference_sources = ["/data/references"]
 | FLUX Kontext/Fill | Exactly one reference directory; Fill can also use `mask_source` |
 | FLUX.2 | Optional ordered reference directories |
 | FLUX3 | Up to 10 reference directories |
-| BluePixel | Exactly one for flow matching; restoration uses LQ/HQ pairs |
 | MOSS edit | At least one reference directory |
 | Qwen edit | Original edit needs references; 2509/2511 can omit them |
 | Qwen original/layered | No edit references; layered uses `layer_sources` |
 | Qwen2.1 | Optional ordered references with a separate area budget |
+| MiniMax-H3-Image | Up to 16 ordered references with native image/vision encoding |
 
 Targets and references resize and center-crop using their own aspect ratios. Already aligned images with equal source dimensions keep their pairing; different compositions are not registered automatically. Rerun `cache` after changing images, references or crop settings.
 
@@ -152,7 +152,6 @@ Omit `steps` and `guidance` to use the selected variant's defaults:
 | FLUX Dev / Kontext / Fill | 25 | 3.5 / 2.5 / 30 |
 | FLUX.2 Dev / Klein base | 50 | 4 |
 | FLUX.2 Klein distilled | 4 | 1 |
-| BluePixel-Turbo | 4 | 3 |
 | FLUX3 base / distilled | 50 / 16 | 4 / no CFG |
 | MOSS Image | 50 | 3 |
 | Krea2 raw / turbo | 28 / 8 | 5.5 / 1 |

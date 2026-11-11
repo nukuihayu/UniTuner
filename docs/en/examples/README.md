@@ -53,7 +53,6 @@ Training examples include training settings; cache-only examples need only encod
 | FLUX Fill | [flux-fill-flow.toml](../../examples/flux-fill-flow.toml) | One reference directory plus mask; for Kontext change weights/variant and remove `mask_source` |
 | FLUX.2 | [flux2-flow.toml](../../examples/flux2-flow.toml) | Klein 4B base without references |
 | FLUX.2 references | [flux2-reference-flow.toml](../../examples/flux2-reference-flow.toml) | Ordered references use their own aspect buckets; equal-sized pairs stay aligned |
-| BluePixel-Turbo | [bluepixel-flow.toml](../../examples/bluepixel-flow.toml) | One reference image and matching DCAE-F64 assets |
 | FLUX3 | [flux3-flow.toml](../../examples/flux3-flow.toml) | See model guide for references |
 | MOSS | [moss-flow.toml](../../examples/moss-flow.toml) | Native skip-layer preview parameters must match topology |
 | MOSS Edit | [moss-edit-flow.toml](../../examples/moss-edit-flow.toml) | Source image and editing instruction |
@@ -67,6 +66,8 @@ Training examples include training settings; cache-only examples need only encod
 | H3 caching | [minimax-h3-cache.toml](../../examples/minimax-h3-cache.toml) | Native AV JSONL; full AV VAE assets |
 | H3 training | [minimax-h3-train.toml](../../examples/minimax-h3-train.toml), [with previews](../../examples/minimax-h3-train-preview.toml) | Existing caches, optional AV previews |
 
+MiniMax-H3-Image is a separate image family. See the [H3-Image guide](../minimax-h3-image.md) for caching, LoRA/full training, editing, and one-step restoration; the audio-video H3 TOML files above do not apply.
+
 For external split H3 caches, use [minimax-h3-cache-import.json](../../examples/minimax-h3-cache-import.json):
 
 ```bash
@@ -79,7 +80,6 @@ This is an explicit conversion specification, not a training TOML.
 
 | Task | Example | What you need |
 | --- | --- | --- |
-| BluePixel-Turbo | [bluepixel-restoration-train.toml](../../examples/bluepixel-restoration-train.toml) | Paired images, DCAE-F64, LRR + L1 |
 | Z-Image default losses | [restoration.toml](../../examples/restoration.toml) | DINOv3-ConvNeXt and VGG19 weights |
 | Z-Image Turbo skin restoration | [oil-skin-lora.toml](../../examples/oil-skin-lora.toml) | Paired real images, DINO/VGG/GAN objectives; replace local paths |
 | Z-Image full | [restoration-full.toml](../../examples/restoration-full.toml) | Same losses, full denoiser, block recomputation |
@@ -107,9 +107,9 @@ Validate inference settings with `unituner validate CONFIG --for generate`, `--f
 
 | Command | Examples |
 | --- | --- |
-| `unituner generate CONFIG --device cuda` | [BluePixel](../../examples/bluepixel-generate.toml), [Z-Image](../../examples/generate.toml), [FLUX](../../examples/flux-generate.toml), [FLUX.2](../../examples/flux2-generate.toml), [FLUX3](../../examples/flux3-generate.toml), [MOSS](../../examples/moss-generate.toml), [MOSS Edit](../../examples/moss-edit-generate.toml), [Qwen](../../examples/qwen-image-generate.toml), [Qwen layered](../../examples/qwen-image-layered-generate.toml), [Krea2](../../examples/krea2-generate.toml) |
+| `unituner generate CONFIG --device cuda` | [Z-Image](../../examples/generate.toml), [FLUX](../../examples/flux-generate.toml), [FLUX.2](../../examples/flux2-generate.toml), [FLUX3](../../examples/flux3-generate.toml), [MOSS](../../examples/moss-generate.toml), [MOSS Edit](../../examples/moss-edit-generate.toml), [Qwen](../../examples/qwen-image-generate.toml), [Qwen layered](../../examples/qwen-image-layered-generate.toml), [Krea2](../../examples/krea2-generate.toml) |
 | `unituner generate-video CONFIG --device cuda` | [Wan](../../examples/wan-generate-video.toml), [H3](../../examples/minimax-h3-generate.toml) |
-| `unituner restore CONFIG --device cuda` | [BluePixel](../../examples/bluepixel-restore.toml), [Z-Image](../../examples/restore.toml), [Qwen](../../examples/qwen-image-restore.toml), [Krea2](../../examples/krea2-restore.toml) |
+| `unituner restore CONFIG --device cuda` | [Z-Image](../../examples/restore.toml), [Qwen](../../examples/qwen-image-restore.toml), [Krea2](../../examples/krea2-restore.toml) |
 
 Adapter paths and algorithm/rank/alpha must match training publications. For full models, replace `model.weights`. Restoration `encoder_weights` points to the exported encoder adapter and uses the sigma recorded by the training publications.
 

@@ -49,7 +49,6 @@ Commands assume the repository root as the working directory. Installing depende
 | Dependencies | Purpose |
 | --- | --- |
 | transformers, torchvision, sentencepiece, ftfy | Text encoding, tokenizers, and processors |
-| diffusers | BluePixel's DCAE autoencoder |
 | av, opencv-python-headless, pillow | Image, video, and audio I/O |
 | comfy-kitchen | Quantization, weight conversion, and corresponding inference operators |
 

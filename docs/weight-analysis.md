@@ -33,7 +33,7 @@ uv run unituner analyze runs/my-run --base /models/base.safetensors \
 | 文件 | 用途 |
 | --- | --- |
 | `summary.md` | 分析摘要和主要结果 |
-| `figures.pdf`、PNG 图表 | 直接查看、分享或保留对照 |
+| `figures.html` | 离线打开可交互的 Plotly 图表；无需浏览器参与导出 |
 | `layers.csv` | 逐层权重统计 |
 | `diagnostics.csv`、`allocation.csv` | 更新大小、异常值和分布 |
 | `labels.csv` | 图中简写与完整层名的对应关系 |
@@ -85,13 +85,7 @@ report = analyze_run("runs/my-run", show="auto")
 
 ## 图表导出失败
 
-PNG／PDF 导出需要 Chrome 或 Chromium。首次运行可自动下载浏览器；离线环境使用 `BROWSER_PATH` 指向已有浏览器。也可以提前安装：
-
-```bash
-uv run plotly_get_chrome -y
-```
-
-Linux 还需要浏览器的系统运行库。导出失败时先查看错误日志；已生成的 CSV 和 `summary.md` 可继续使用。
+Plotly 图表保存为自包含的 `figures.html`，不启动浏览器、不下载 Chrome，也不生成 PNG/PDF。图表序列化失败时，已生成的 CSV 和 `summary.md` 仍可使用。
 
 ---
 

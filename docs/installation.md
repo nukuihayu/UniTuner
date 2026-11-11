@@ -49,7 +49,6 @@ uv run --no-dev unituner --help
 | 依赖 | 用途 |
 | --- | --- |
 | transformers、torchvision、sentencepiece、ftfy | 文本编码、分词器及处理器 |
-| diffusers | BluePixel 的 DCAE 自动编码器 |
 | av、opencv-python-headless、pillow | 图像、视频和音频读写 |
 | comfy-kitchen | 量化、权重转换及对应推理算子 |
 

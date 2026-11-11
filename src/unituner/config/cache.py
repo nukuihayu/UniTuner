@@ -56,7 +56,7 @@ class CacheConfig(BaseModel):
                 "Cache production for Flux/Wan requires model.assets",
                 "Supply the family-specific model assets needed by the encoder.",
             )
-        if model.family == ModelFamily.MINIMAX_H3 and model.minimax_h3 is None:
+        if model.family in (ModelFamily.MINIMAX_H3, ModelFamily.MINIMAX_H3_IMAGE) and model.minimax_h3 is None:
             raise ConfigRuleError(
                 "model.minimax_h3",
                 "MiniMaxH3 caching requires model.minimax_h3 encoder artifacts",

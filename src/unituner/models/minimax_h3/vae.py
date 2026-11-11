@@ -821,6 +821,7 @@ class VideoRotaryEmbedding(nn.Module):
 
     def __init__(self, dim: int, rotary_base: float = 100.0, n_dim: int = 3) -> None:
         super().__init__()
+        self.n_dim = n_dim
         if dim % (2 * n_dim):
             raise ValueError(f"Rotary dimension {dim} must be divisible by {2 * n_dim}")
         inv_freq = 1.0 / rotary_base ** torch.arange(0, 1, 2 * n_dim / dim, dtype=torch.float32)
@@ -951,6 +952,7 @@ class VideoDecoder(nn.Module):
         dim_head: int = 64,
         rope_theta: float = 100.0,
         rope_dim_ratio: float = 0.75,
+        rope_dims: int = 3,
         bias: bool = True,
         eps: float = 1e-5,
         num_register_tokens: int = 4,
@@ -961,7 +963,7 @@ class VideoDecoder(nn.Module):
         self.patch_size_t = patch_size_t
         self.out_channels = out_channels
         self.num_register_tokens = num_register_tokens
-        self.pos_embed = VideoRotaryEmbedding(int(dim_head * rope_dim_ratio), rope_theta, n_dim=3)
+        self.pos_embed = VideoRotaryEmbedding(int(dim_head * rope_dim_ratio), rope_theta, n_dim=rope_dims)
         self.x_embedder = nn.Linear(in_channels, dim)
         self.register_tokens = nn.Parameter(torch.empty(1, num_register_tokens, dim))
         self.register_buffer("mask_token", torch.empty(1, 1, dim))
@@ -985,9 +987,9 @@ class VideoDecoder(nn.Module):
             dim=1,
         )
 
-        position_ids = create_video_token_ids((frames, height, width), hidden_states.device)
+        position_ids = create_video_token_ids((frames, height, width)[-self.pos_embed.n_dim :], hidden_states.device)
         position_ids = position_ids.expand(batch_size, -1, -1)
-        suffix_ids = position_ids.new_zeros((batch_size, self.num_register_tokens + 1, 3))
+        suffix_ids = position_ids.new_zeros((batch_size, self.num_register_tokens + 1, self.pos_embed.n_dim))
         rotary_emb = self.pos_embed(torch.cat((position_ids, suffix_ids), dim=1))
         for block in self.transformer_blocks:
             hidden_states = block(hidden_states, rotary_emb)
@@ -1149,7 +1151,7 @@ class MiniMaxH3VideoVAE(nn.Module):
         if self.decoder is not None:
             config = self.config.decoder
             self.decoder.pos_embed = VideoRotaryEmbedding(
-                int(config.head_dim * config.rope_dim_ratio), config.rope_theta
+                int(config.head_dim * config.rope_dim_ratio), config.rope_theta, n_dim=config.rope_dims
             ).to(device)
 
     def _validate_values(self, values: Tensor, *, pixels: bool) -> None:

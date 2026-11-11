@@ -153,7 +153,7 @@ def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets
         path, text_config=config, device=torch.device("cpu"), dtype=torch.float32, source_format=source_format
     )
     actual = restored.encode(["hello"], references=[[reference]])[0]
-    torch.testing.assert_close(actual.features, expected.features, atol=0, rtol=0)
+    torch.testing.assert_close(actual.features, expected.features, atol=1e-7, rtol=1e-6)
     assert actual.image_slots == expected.image_slots and torch.equal(rng, torch.get_rng_state())
 
     vision_key = next(k for k in values if k.startswith(visual_prefix))

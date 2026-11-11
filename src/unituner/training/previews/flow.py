@@ -10,10 +10,6 @@ from unituner.config.training import TrainingConfig
 from unituner.data.media.image import save_image
 from unituner.inference.decoding import decode_on_device
 from unituner.inference.sampling import generate_latents
-from unituner.models.bluepixel.inference.conditioning import read_reference
-from unituner.models.bluepixel.inference.sampling import sample_latents as sample_bluepixel
-from unituner.models.bluepixel.transformer import BluePixelTransformer
-from unituner.models.bluepixel.vae import BluePixelVAE
 from unituner.models.components.conditioning import Caption
 from unituner.models.components.image_encoders import load_image_text, load_image_vae
 from unituner.models.components.image_geometry import image_latent_geometry
@@ -31,7 +27,6 @@ from unituner.models.moss_image.inference.conditioning import encode_references
 from unituner.models.moss_image.transformer import MossImageTransformer
 from unituner.models.z_image.transformer import ZImageTransformer
 from unituner.models.z_image.vae import ZImageVAE
-from unituner.precision import sampling_dtype
 from unituner.training.previews.publication import CaptionCache, publish_images
 
 if TYPE_CHECKING:
@@ -61,7 +56,7 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
             flux_text = cast("FluxTextEncoder", text)
             return tuple((flux_text.encode([sample.prompt]), None) for sample in config.preview.samples)
         encoder = cast("PromptTextEncoder", text)
-        default_negative = " " if isinstance(model, Flux2Transformer) and not isinstance(model, BluePixelTransformer) else ""
+        default_negative = " " if isinstance(model, Flux2Transformer) else ""
         requires_negative = isinstance(model, MossImageTransformer) or (
             isinstance(model, Flux2Transformer | Flux3Transformer) and model.config.variant == "base"
         )
@@ -75,13 +70,13 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
             for sample in config.preview.samples
         )
 
-    def load_vae(self) -> tuple[FluxVAE | Flux2VAE | ZImageVAE | BluePixelVAE, int]:
+    def load_vae(self) -> tuple[FluxVAE | Flux2VAE | ZImageVAE, int]:
         """Load the frozen CPU decoder and validate native latent channels."""
         config, model = self.config, self.model
         if config.model.vae is None:
             raise ValueError("Image previews require VAE weights")
         vae = cast(
-            FluxVAE | Flux2VAE | ZImageVAE | BluePixelVAE,
+            FluxVAE | Flux2VAE | ZImageVAE,
             load_image_vae(Path(config.model.vae), family=config.model.family, device=torch.device("cpu")),
         )
         geometry = image_latent_geometry(vae)
@@ -102,26 +97,6 @@ class ImagePreviews(CaptionCache[PreviewCaptions]):
             entry: tuple[SamplingConfig, tuple[Caption | FluxTextFeatures, Caption | None]],
         ) -> tuple[torch.Tensor, ...]:
             sample, (positive, negative) = entry
-            if isinstance(model, BluePixelTransformer):
-                if not isinstance(positive, Caption) or not isinstance(negative, Caption):
-                    raise ValueError("BluePixel preview requires positive and empty-prompt captions")
-                reference_pixels = read_reference(
-                    Path(sample.reference_images[0]), width=sample.width, height=sample.height
-                )
-                reference = cast(BluePixelVAE, vae).encode(reference_pixels)[0]
-                generator = torch.Generator(device="cpu").manual_seed(sample.seed)
-                noise = torch.randn(reference.shape, generator=generator).to(torch.bfloat16)
-                dtype = sampling_dtype(model)
-                latents = sample_bluepixel(
-                    model,
-                    noise.to(device=device, dtype=dtype),
-                    reference.unsqueeze(0).to(device=device, dtype=dtype),
-                    positive.features[0].to(device=device, dtype=dtype),
-                    negative.features[0].to(device=device, dtype=dtype),
-                    steps=sample.steps or 4,
-                    guidance=3.0 if sample.guidance is None else sample.guidance,
-                )
-                return (decode_on_device(vae, latents, device=device)[0],)
             condition, references = None, ()
             if isinstance(model, FluxTransformer):
                 condition = build_flux_condition(cast(FluxVAE, vae), sample, variant=model.config.variant)

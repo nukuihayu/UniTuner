@@ -16,16 +16,17 @@ class MiniMaxH3VideoDecoderConfig(BaseModel):
     head_dim: int = Field(default=64, gt=0)
     rope_theta: float = Field(default=100.0, gt=0)
     rope_dim_ratio: float = Field(default=0.75, gt=0, le=1)
+    rope_dims: int = Field(default=3, ge=2, le=3)
     bias: bool = True
     eps: float = Field(default=1e-5, gt=0)
     num_register_tokens: int = Field(default=4, ge=0)
 
     @model_validator(mode="after")
     def validate_rotary_dimension(self) -> Self:
-        """Require a nonempty even three-axis rotary prefix within each head."""
+        """Require a nonempty rotary prefix divisible across the decoder axes."""
         rotary_dim = int(self.head_dim * self.rope_dim_ratio)
-        if rotary_dim < 6 or rotary_dim % 6:
-            raise ValueError("H3 video decoder rotary dimension must be positive and divisible by 6")
+        if rotary_dim < 2 * self.rope_dims or rotary_dim % (2 * self.rope_dims):
+            raise ValueError("H3 decoder rotary dimension must be divisible by twice its axis count")
         return self
 
 

@@ -27,27 +27,45 @@ def prepare_base_weights(
     model: torch.nn.Module, config: ExecutionConfig, *, family: str | None = None, device: torch.device | None = None
 ) -> None:
     """Prepare frozen base storage before attaching adapters and execution owners."""
-    if config.quantization == "none":
-        return
-    from unituner.models.components.weight_quantization import quantize_model
+    if config.quantization != "none":
+        from unituner.models.components.weight_quantization import quantize_model
 
-    precision = canonical_quantization(config.quantization)
-    if family is None:
-        raise ValueError("Training quantization requires an explicit model family")
-    quantize_model(
-        model,
-        precision,
-        family=family,
-        rotation_size=config.quantization_rotation_size,
-        group_size=config.quantization_group_size,
-        device=device,
-    )
+        precision = canonical_quantization(config.quantization)
+        if family is None:
+            raise ValueError("Training quantization requires an explicit model family")
+        quantize_model(
+            model,
+            precision,
+            family=family,
+            rotation_size=config.quantization_rotation_size,
+            group_size=config.quantization_group_size,
+            device=device,
+        )
+    if config.convrot_kernel != "eager" or config.convrot_backward != "float":
+        from unituner.models.components.quantized import QuantizedLinear
+
+        selected = [
+            module
+            for module in model.modules()
+            if isinstance(module, QuantizedLinear) and module.quantization_format == "int8_convrot"
+        ]
+        if not selected:
+            raise ValueError("Fused ConvRot execution requires ConvRot INT8 base weights")
+        for module in selected:
+            module.configure_convrot(config.convrot_kernel, config.convrot_backward)
 
 
 def validate_training_execution(config: ExecutionConfig, *, device: torch.device, adapter: bool) -> None:
     """Reject unavailable execution policies before artifact IO without silently disabling them."""
     if config.quantization != "none" and not adapter:
         raise ValueError("Quantized bases require adapter training")
+    if config.convrot_kernel == "triton" or config.convrot_backward == "int8":
+        if device.type != "cuda":
+            raise ValueError("Fused ConvRot INT8 execution requires CUDA")
+        from importlib.util import find_spec
+
+        if find_spec("triton") is None:
+            raise ValueError("Fused ConvRot INT8 execution requires Triton")
     if config.precision == "auto":
         raise ValueError("Automatic training precision must be resolved from the model artifact before execution")
     if config.precision == "fp16" and device.type != "cuda":

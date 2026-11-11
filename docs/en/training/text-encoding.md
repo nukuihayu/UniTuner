@@ -34,7 +34,6 @@ Tokenizers/processors use the Hub repositories listed below. Downloads are restr
 | FLUX.2 Dev | `mistralai/Mistral-Small-3.1-24B-Instruct-2503` |
 | FLUX.2 Klein 4B / 9B | `Qwen/Qwen3-4B` / `Qwen/Qwen3-8B` respectively |
 | Qwen Image | `Qwen/Qwen-Image` / `tokenizer`; processor: `Qwen/Qwen-Image-Edit` / `processor` |
-| BluePixel | Local `tokenizer` under `model.assets` |
 | Krea2 | `Qwen/Qwen3-VL-4B-Instruct` |
 | Wan | `Wan-AI/Wan2.1-T2V-14B` / `google/umt5-xxl` |
 | MiniMaxH3 | `MiniMaxAI/MiniMax-H3` / `processor` |
@@ -98,7 +97,7 @@ File conversion also supports `--precision bf16`, `fp16`, and `fp32`. Returning 
 
 | Model family | Text conversion preset |
 | --- | --- |
-| Z-Image, FLUX.2 Klein, BluePixel | `qwen3` |
+| Z-Image, FLUX.2 Klein | `qwen3` |
 | MOSS Image | `qwen3-5` |
 | FLUX | `t5` for the primary text directory and `clip` for the auxiliary directory; convert separately |
 | FLUX.2 Dev | `mistral` |

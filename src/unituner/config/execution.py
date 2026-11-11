@@ -42,6 +42,8 @@ class ExecutionConfig(BaseModel):
     quantization: WeightQuantization = "none"
     quantization_rotation_size: int = Field(default=DEFAULT_ROTATION_SIZE, ge=4)
     quantization_group_size: int = Field(default=DEFAULT_GROUP_SIZE, gt=0)
+    convrot_kernel: Literal["eager", "auto", "triton"] = "eager"
+    convrot_backward: Literal["float", "int8"] = "float"
 
     @property
     def offloads_frozen_weights(self) -> bool:
@@ -95,6 +97,12 @@ class ExecutionConfig(BaseModel):
     @model_validator(mode="after")
     def validate_block_swap(self) -> Self:
         """Require a block residency policy for explicitly requested pinned masters."""
+        if self.convrot_backward == "int8" and self.convrot_kernel == "eager":
+            raise ConfigRuleError(
+                "convrot_backward",
+                "INT8 backward requires a fused ConvRot kernel",
+                "Set execution.convrot_kernel='triton' or 'auto', or choose convrot_backward='float'.",
+            )
         if self.use_pinned_memory_for_block_swap and self.residency == "resident":
             raise ConfigRuleError(
                 "use_pinned_memory_for_block_swap",

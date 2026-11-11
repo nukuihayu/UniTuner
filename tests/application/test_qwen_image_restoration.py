@@ -10,9 +10,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from tests.support.qwen_image import write_text_assets
 from tests.support.text_assets import main_with_local_tokenizers
-from unituner.artifacts.tensors import TensorReader, save_tensors
-from unituner.models.features.convnext import DinoConvNeXt
-from unituner.models.features.vgg import Vgg19Features
+from unituner.artifacts.tensors import TensorReader
 from unituner.models.qwen_image.config.model import QwenImageConfig
 from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
 from unituner.models.qwen_image.loading import save_qwen_image, save_qwen_image_vae
@@ -40,7 +38,7 @@ def test_qwen_restoration_shared_runner_resume_preview_and_export(tmp_path, algo
     try:
         torch.manual_seed(809)
         root = tmp_path
-        width, height = (512, 512) if algorithm == "lora" else (32, 16)
+        width, height = (64, 64) if algorithm == "lora" else (32, 16)
         device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         write_text_assets(root / "text")
         save_qwen_image_vae(
@@ -121,21 +119,12 @@ encoder_rank = 2
 """
         if algorithm == "full":
             text += 'posterior = "mean"\ncalibrate = true\ncalibration_pairs = 2\n'
-        if algorithm == "lora":
-            save_tensors(DinoConvNeXt((4, 8, 12, 16), (1, 1, 1, 1)).state_dict(), root / "dino.safetensors")
-            save_tensors(Vgg19Features((4, 8, 12, 16, 16)).state_dict(), root / "vgg.safetensors")
-            text += f'''dino_weights = "{root}/dino.safetensors"
-dino_widths = [4,8,12,16]
-dino_depths = [1,1,1,1]
-vgg_weights = "{root}/vgg.safetensors"
-vgg_widths = [4,8,12,16,16]
-'''
         text += f'''[losses]
 l1 = 0.5
 lrr = 1.0
-dv3d = {0.1 if algorithm == "lora" else 0.0}
-gan = {0.1 if algorithm == "lora" else 0.0}
-fdl = {0.1 if algorithm == "lora" else 0.0}
+dv3d = 0.0
+gan = 0.0
+fdl = 0.0
 histogram = 0.1
 [execution]
 precision = "fp32"

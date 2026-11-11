@@ -37,6 +37,7 @@ def load_text_encoder(
     dtype: torch.dtype = torch.float32,
     source_format: Literal["auto", "native", "qwen", "transformers"] = "auto",
     text_config: TextEncodingConfig = DEFAULT_TEXT_CONFIG,
+    processor_family: Literal["minimax-h3", "minimax-h3-image"] = "minimax-h3",
 ) -> MiniMaxH3TextEncoder:
     """Load exact local safetensors into a frozen50-layer pre-norm Qwen3-VL owner.
 
@@ -78,7 +79,7 @@ def load_text_encoder(
         text_config = text_config.model_copy(
             update={"tokenizer": TokenizerSourceConfig(source=str(processor_directory), offline=True)}
         )
-    processor = load_text_processor(tokenizer_directory(text_config, "minimax-h3"))
+    processor = load_text_processor(tokenizer_directory(text_config, processor_family))
     automatic = source_format == "auto"
     if automatic:
         source_format = qwen_vl_source_format(weights)

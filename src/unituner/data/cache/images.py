@@ -22,7 +22,6 @@ from unituner.data.cache.storage import (
 )
 from unituner.data.media.buckets import ImageBuckets
 from unituner.data.media.image import discover_images, index_conditions, read_image
-from unituner.models.bluepixel.vae import BluePixelVAE
 from unituner.models.components.conditioning import Caption
 from unituner.models.components.text_loading import text_execution, validate_cache_text
 from unituner.models.flux.conditioning import pack_fill_mask
@@ -39,8 +38,8 @@ from unituner.models.z_image.vae import ZImageVAE
 from unituner.progress import progress
 
 
-def _klein_mean(vae: Flux2VAE | BluePixelVAE, pixels: Tensor) -> Tensor:
-    """Encode either packed FLUX.2 or native un-packed DCAE latents."""
+def _klein_mean(vae: Flux2VAE, pixels: Tensor) -> Tensor:
+    """Encode packed FLUX.2 latents."""
     return vae.encode(pixels)[0]
 
 
@@ -95,7 +94,7 @@ def _cache_z_image_batch(
 def cache_images(
     source: Path,
     destination: Path,
-    vae: ZImageVAE | Flux2VAE | FluxVAE | BluePixelVAE,
+    vae: ZImageVAE | Flux2VAE | FluxVAE,
     text: ZImageTextEncoder | MossImageTextEncoder | FluxTextEncoder | Flux2TextEncoder | Flux3TextEncoder,
     *,
     resolution: tuple[int, int],
@@ -126,15 +125,11 @@ def cache_images(
         isinstance(text, FluxTextEncoder),
         isinstance(text, Flux3TextEncoder),
     )
-    bluepixel = isinstance(vae, BluePixelVAE)
-    flux2 = isinstance(text, Flux2TextEncoder) and not bluepixel
-    klein = flux2 or bluepixel
-    if bluepixel and (not isinstance(text, Flux2TextEncoder) or text.version != "klein-9b"):
-        raise ValueError("BluePixel cache requires Klein-9B Qwen3 text features")
+    flux2 = isinstance(text, Flux2TextEncoder)
     if isinstance(vae, Flux2VAE) != (moss or flux2 or flux3) or isinstance(vae, FluxVAE) != flux:
         raise ValueError("Cache vae/text families must match")
     family = (
-        "bluepixel" if bluepixel else "flux2" if flux2 else "flux3" if flux3
+        "flux2" if flux2 else "flux3" if flux3
         else "flux" if flux else "moss-image" if moss else "z-image"
     )
     if type(batch_size) is not int or batch_size < 1:
@@ -152,8 +147,6 @@ def cache_images(
             raise ValueError("FLUX.2 cache version/variant differs from text or published topology")
     elif version is not None:
         raise ValueError("FLUX.2 reference/version cache policy requires FLUX.2 text")
-    if bluepixel and variant != "turbo":
-        raise ValueError("BluePixel cache requires the turbo variant")
     if flux3:
         if variant not in ("base", "distilled"):
             raise ValueError("FLUX3 cache requires explicit base/distilled variant")
@@ -164,7 +157,7 @@ def cache_images(
             raise ValueError("Flux Kontext/Fill requires a reference source")
         if variant == "fill" and isinstance(vae, FluxVAE) and vae.config.spatial_factor != 8:
             raise ValueError("Flux Fill requires the native vae spatial factor eight")
-    elif variant is not None and not (klein or flux3 or (moss and variant == "edit")):
+    elif variant is not None and not (flux2 or flux3 or (moss and variant == "edit")):
         raise ValueError("Variant cache policy is supported only for Flux")
     data = DatasetInputConfig() if data is None else data
     data.validate_for(family, variant or "base", kind=kind)
@@ -173,7 +166,7 @@ def cache_images(
     files = discover_images(source, caption_extension=None if buckets is None else buckets.required_caption_extension)
     reference_indices = (
         tuple(index_conditions(files, Path(directory)) for directory in data.reference_sources)
-        if klein or flux3 or moss_edit
+        if flux2 or flux3 or moss_edit
         else ()
     )
     conditions = index_conditions(files, Path(data.reference_sources[0])) if flux and data.reference_sources else {}
@@ -185,11 +178,9 @@ def cache_images(
             "epsilon": vae.config.normalization_eps,
         }
         if isinstance(vae, Flux2VAE)
-        else {"dcae": "f64c128", "latent_scale": vae.scaling_factor, "packing": "none"}
-        if bluepixel
         else {"latent_scale": vae.config.scaling_factor, "latent_shift": vae.config.shift_factor}
     )
-    alignment = 64 if bluepixel else 16
+    alignment = 16
     if min(resolution) < alignment or any(value % alignment for value in resolution):
         raise ValueError(f"Image cache resolution must be at least {alignment} and divisible by {alignment}")
     parameter = next(vae.parameters())
@@ -229,7 +220,7 @@ def cache_images(
             "text": "Mistral3/system/layers10-20-30/left512"
             if flux2 and version == "dev"
             else "Qwen3/thinking-disabled/layers9-18-27/retained512"
-            if klein
+            if flux2
             else "Qwen3-VL/processor-template/eight-layers/retained-padding"
             if flux3
             else "T5/final/unmasked/512+CLIP/ftfy/pooled/77"
@@ -240,7 +231,7 @@ def cache_images(
             "max_length": 4096
             if isinstance(text, Flux3TextEncoder)
             else 512
-            if klein
+            if flux2
             else text.max_length,
             **(
                 {
@@ -260,7 +251,7 @@ def cache_images(
                     "text_layers": [10, 20, 30] if version == "dev" else [9, 18, 27],
                     "text_output_dtype": "float32",
                 }
-                if klein
+                if flux2
                 else {}
             ),
             **(
@@ -314,7 +305,7 @@ def cache_images(
                 **({"mask": file_sha256(masks[path.stem])} if masks else {}),
                 **(
                     {"references": [file_sha256(index[path.stem]) for index in reference_indices]}
-                    if klein or flux3 or moss_edit
+                    if flux2 or flux3 or moss_edit
                     else {}
                 ),
             }
@@ -323,9 +314,7 @@ def cache_images(
             source_sha256=source_digest,
             encoder_sha256=encoder_sha256,
             transform_sha256=canonical_sha256({"policy": transform, "bucket": list(resolution)}),
-            layout=f"bluepixel/turbo/DCAE-F64/CHW+LD+R{len(reference_indices)}"
-            if bluepixel
-            else f"flux2/{version}/{variant}/CHW+LD+R{len(reference_indices)}"
+            layout=f"flux2/{version}/{variant}/CHW+LD+R{len(reference_indices)}"
             if flux2
             else f"flux3/{variant}/CHW+LD+R{len(reference_indices)}"
             if flux3
@@ -378,17 +367,13 @@ def cache_images(
                 encoded = text.encode([prompt])
                 features, pooled = encoded.captions[0].float(), encoded.pooled[0].float()
             else:
-                if bluepixel:
-                    latents = vae.encode(pixels)[0]
-                elif isinstance(vae, Flux2VAE):
+                if isinstance(vae, Flux2VAE):
                     latents = _klein_mean(vae, pixels)
                 elif isinstance(vae, ZImageVAE):
                     latents = vae.normalize(vae.encode(pixels).mean)[0]
                 else:
                     raise TypeError("Flux cache requires matched native text provider")
-                if (bluepixel and isinstance(text, Flux2TextEncoder)) or (
-                    isinstance(text, Flux2TextEncoder | Flux3TextEncoder) and isinstance(vae, Flux2VAE)
-                ):
+                if isinstance(text, Flux2TextEncoder | Flux3TextEncoder) and isinstance(vae, Flux2VAE):
                     reference_latents = tuple(
                         _klein_mean(
                             vae,
@@ -441,7 +426,7 @@ def cache_images(
     manifest = LatentManifest.model_validate(
         {
             "family": family,
-            "variant": variant if flux or klein or flux3 or moss_edit else None,
+            "variant": variant if flux or flux2 or flux3 or moss_edit else None,
             "version": version,
             "entries": tuple(entries),
         }

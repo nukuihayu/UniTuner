@@ -2,7 +2,7 @@
 
 [English](../en/training/README.md) · [第一次训练](../getting-started.md) · [参数手册](parameters.md)
 
-图像训练按本页操作；Wan 与 MiniMax-H3 的数据准备、缓存和预览见[视频训练教程](video.md)。
+图像训练按本页操作；MiniMax-H3-Image 的模型资产配置见[专用指南](../minimax-h3-image.md)，Wan 与 MiniMax-H3 音视频的数据准备、缓存和预览见[视频训练教程](video.md)。
 
 <details>
 <summary>本页导航</summary>
@@ -49,7 +49,7 @@ uv run --no-dev unituner cache train.toml --device cuda
 uv run --no-dev unituner train train.toml --device cuda
 ```
 
-缓存命令只校验编码所需的参数；不会要求训练专用的优化器、LoRA 或损失参数。单独缓存可复制 image-cache、wan-cache 或 minimax-h3-cache 示例。已有缓存且不需要预览的训练可不加载 VAE/文本编码器；图像修复仍需实时读取图像和 VAE。
+缓存命令只校验编码所需的参数；不会要求训练专用的优化器、LoRA 或损失参数。单独缓存可复制 image-cache、wan-cache 或 minimax-h3-cache 示例；H3-Image 可用同一份训练 TOML 做缓存。已有缓存且不需要预览的训练可不加载 VAE/文本编码器；图像修复仍需实时读取图像和 VAE。
 
 ## 图像修复与中间时间
 

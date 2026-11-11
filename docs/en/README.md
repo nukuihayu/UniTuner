@@ -21,6 +21,7 @@
 | [Datasets](training/datasets.md) | Groups, captions, buckets, references, and pairing |
 | [Restoration tutorial](restoration-tutorial.md) | Paired LQ/HQ training from start to inference |
 | [Video and audio-video](training/video.md) | Wan and MiniMaxH3 data, assets, and commands |
+| [MiniMax-H3-Image](minimax-h3-image.md) | Image caching, training, editing, and restoration |
 | [Configuration recipes](examples/README.md) | Shared TOML recipes organized by task and model |
 
 ## Configuration reference

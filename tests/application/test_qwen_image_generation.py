@@ -143,7 +143,16 @@ def test_qwen_public_generation_is_repeatable_and_publishes_each_layer(tmp_path,
         model.to(os.environ.get("UNITUNER_TEST_DEVICE", "cpu")).train()
         model.transformer_blocks[0].eval()
         configuration = TrainingConfig(
-            model=ModelConfig(**{**generation["model"], "family": ModelFamily.QWEN_IMAGE}),
+            model=ModelConfig(
+                **{
+                    **generation["model"],
+                    "family": ModelFamily.QWEN_IMAGE,
+                    "text": {
+                        "tokenizer": {"source": str(tmp_path / "text"), "offline": True},
+                        "processor": {"source": str(tmp_path / "text"), "offline": True},
+                    },
+                }
+            ),
             dataset=DataConfig(
                 groups={
                     "main": DatasetConfig(

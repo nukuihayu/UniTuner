@@ -29,7 +29,12 @@ def build_resume_identity(
     default_policies = {
         "train": {"include_layers": ((),), "exclude_layers": ((),), "optimizer": (DEFAULT_ADAMW_CONFIG,)},
         "method": {"layersync": (None,), "tread": (None,), "repa": (None,), "wavelet": (None,)},
-        "execution": {"use_pinned_memory_for_block_swap": (None, False), "attention_activation_offload": (False,)},
+        "execution": {
+            "use_pinned_memory_for_block_swap": (None, False),
+            "attention_activation_offload": (False,),
+            "convrot_kernel": ("eager",),
+            "convrot_backward": ("float",),
+        },
     }
     fields = {
         section: {name for name, omitted in defaults.items() if getattr(getattr(config, section), name) in omitted}
@@ -100,6 +105,8 @@ def build_resume_identity(
     values["optimizer_implementation_policy"] = "adamw/fused-cuda/native-cpu/named-groups/2"
     if config.train.optimizer.backend != "auto":
         values["optimizer_implementation_policy"] = f"adamw/{config.train.optimizer.backend}/named-groups/2"
+    if config.train.optimizer.implementation == "adv_optm":
+        values["optimizer_implementation_policy"] = "adv_optm/adamw/2.6.3/named-groups/1"
     values["vae_activation_policy"] = "fused-silu/1"
     values["training_weight_storage_policy"] = "floating-frozen-base-follows-compute/fp32-trainable-masters/1"
     if config.execution.precision == "fp16":

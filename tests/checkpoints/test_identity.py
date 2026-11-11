@@ -117,6 +117,23 @@ def test_inactive_quantization_geometry_does_not_change_resume_identity():
     assert identity(quantized) != identity(quantized_geometry)
 
 
+def test_convrot_compute_policy_changes_resume_identity_without_changing_default():
+    baseline = load_training_config(EXAMPLE)
+    explicit_default = load_training_config(
+        EXAMPLE, overrides={"execution": {"convrot_kernel": "eager", "convrot_backward": "float"}}
+    )
+    fused = load_training_config(EXAMPLE, overrides={"execution": {"convrot_kernel": "triton"}})
+    int8_backward = load_training_config(
+        EXAMPLE, overrides={"execution": {"convrot_kernel": "triton", "convrot_backward": "int8"}}
+    )
+
+    def identity(config):
+        return build_resume_identity(config, dataset_manifest_sha256="a" * 64, model_artifact_sha256="b" * 64)
+
+    assert identity(baseline) == identity(explicit_default)
+    assert identity(baseline) != identity(fused) != identity(int8_backward)
+
+
 def test_phase_identity_preserves_disabled_runs_and_pins_enabled_parameters():
     example = EXAMPLE.with_name("restoration.toml")
 

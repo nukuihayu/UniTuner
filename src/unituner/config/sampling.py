@@ -20,6 +20,7 @@ class SamplingConfig(BaseModel):
     caption_language: Literal["en", "zh"] | None = None
     width: int = Field(default=1024, ge=16)
     height: int = Field(default=1024, ge=16)
+    h3_size_policy: Literal["comfyui", "official"] = "comfyui"
     seed: int = 42
     attention_backend: Literal["torch", "kitchen-int8"] = "torch"
     steps: int | None = Field(default=None, gt=0)
@@ -59,11 +60,32 @@ def validate_image_sampling(
         or sampling.training_shift != 1
     )
     if sampling.reference_images and family not in (
-        "flux2", "flux3", "qwen-image", "qwen-image-2-1", "moss-image", "bluepixel"
+        "flux2",
+        "flux3",
+        "qwen-image",
+        "qwen-image-2-1",
+        "moss-image",
+        "minimax-h3-image",
     ):
         raise ValueError("Sampling reference_images requires FLUX.2, FLUX3 or Qwen Image")
     if sampling.output_layers is not None and (family != "qwen-image" or variant != "layered"):
         raise ValueError("Sampling output_layers requires Qwen Image layered")
+    if family == "minimax-h3-image":
+        if sampling.width % 32 or sampling.height % 32 or len(sampling.reference_images) > 16:
+            raise ValueError("H3-Image samples need 32-aligned dimensions and at most 16 references")
+        if sampling.steps is not None or sampling.guidance is not None or sampling.negative_prompt is not None:
+            raise ValueError("H3-Image uses the fixed PDD schedule without CFG")
+        if (
+            sampling.shift is not None
+            or moss_controls
+            or sampling.conditioning_image is not None
+            or sampling.mask_image is not None
+            or sampling.condition_posterior != "sample"
+            or sampling.conditioning_resize != "preferred"
+        ):
+            raise ValueError("H3-Image does not support FLUX/MOSS conditioning, masks, shift or skip-layer controls")
+    elif sampling.h3_size_policy != "comfyui":
+        raise ValueError("Official H3-Image sizing requires minimax-h3-image")
     if sampling.caption_language is not None and (family != "qwen-image" or variant != "layered"):
         raise ValueError("Sampling caption_language requires Qwen Image layered")
     if sampling.conditioning_resize == "output" and family not in ("qwen-image", "qwen-image-2-1"):
@@ -118,15 +140,6 @@ def validate_image_sampling(
             raise ValueError("FLUX.2 distilled Klein fixes steps4 and guidance1")
         if sampling.guidance is not None and sampling.guidance < 0:
             raise ValueError("FLUX.2 guidance must be nonnegative")
-    if family == "bluepixel":
-        if variant != "turbo" or version is not None or len(sampling.reference_images) != 1:
-            raise ValueError("BluePixel-Turbo requires one reference image and model.variant=turbo")
-        if min(sampling.width, sampling.height) < 64 or sampling.width % 64 or sampling.height % 64:
-            raise ValueError("BluePixel output width/height must be multiples of 64")
-        if sampling.negative_prompt is not None or (sampling.guidance is not None and sampling.guidance < 0):
-            raise ValueError("BluePixel uses an empty negative prompt and nonnegative CFG guidance")
-        if sampling.shift is not None or sampling.conditioning_resize != "preferred" or moss_controls:
-            raise ValueError("BluePixel uses its empirical flow schedule and does not support conditioning_resize or MOSS controls")
     if family == "flux3":
         if len(sampling.reference_images) > 10:
             raise ValueError("FLUX3 supports at most ten reference images")

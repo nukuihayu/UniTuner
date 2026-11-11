@@ -8,7 +8,7 @@ from unituner.models.flux.inference.sampling import build_schedule
 
 
 def _validate_time_grid(family: str, resolution: tuple[int, int]) -> None:
-    if family not in IMAGE_FAMILIES:
+    if family not in IMAGE_FAMILIES and family != "minimax-h3-image":
         raise ValueError("A new restoration family must declare its native time grid")
     if any(type(size) is not int or size < 16 or size % 16 for size in resolution):
         raise ValueError("Restoration time grids require positive 16-aligned pixel dimensions")

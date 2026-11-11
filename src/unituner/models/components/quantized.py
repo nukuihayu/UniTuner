@@ -1,9 +1,13 @@
-"""Frozen quantized linears with one floating compute and input-gradient path."""
+"""Frozen quantized linears with floating or opt-in fused ConvRot compute."""
 
 from dataclasses import fields
 
 import torch
 from torch import Tensor, nn
+
+_CONVROT_ADDRESS_LIMIT = (1 << 31) - 1
+_CONVROT_OUTPUT_LIMIT = 1 << 26
+_CONVROT_SINGLE_CALL_LIMIT = 1 << 28
 
 
 def linear_dtype(projection: nn.Linear) -> torch.dtype:
@@ -48,11 +52,87 @@ class _StoredLinear(torch.autograd.Function):
         return (result, None, *(None for _ in storage))
 
 
-class QuantizedLinear(nn.Linear):
-    """Canonical packed weights with exact floating-matmul input gradients.
+def _convrot_int8_linear(
+    inputs: Tensor, weight: Tensor, scale: Tensor, bias: Tensor | None, group_size: int, *, rotate: bool
+) -> Tensor:
+    """Bound Triton row offsets and transient outputs for large H3 projections."""
+    from comfy_kitchen.backends.triton.quantization import int8_linear
 
-    Unlike inference-only low-bit kernels, this path quantizes weights only.
-    Dense weights are transient and are reconstructed again during backward.
+    rows = inputs.reshape(-1, inputs.shape[-1])
+    width = weight.shape[0]
+    if weight.numel() > _CONVROT_ADDRESS_LIMIT:
+        raise ValueError("ConvRot INT8 weight exceeds the installed Triton kernel's address range")
+    # Keep Kitchen's 32-bit row offsets in range. A single result needs no
+    # extra output buffer; chunk larger results with 64M-element temporaries.
+    address_rows = _CONVROT_ADDRESS_LIMIT // max(rows.shape[1], width)
+    if rows.shape[0] <= address_rows and rows.shape[0] * width <= _CONVROT_SINGLE_CALL_LIMIT:
+        return int8_linear(inputs, weight, scale, bias, inputs.dtype, rotate, group_size)
+    rows_per_call = max(1, min(address_rows, _CONVROT_OUTPUT_LIMIT // width))
+    output = torch.empty((*inputs.shape[:-1], width), dtype=inputs.dtype, device=inputs.device)
+    flat = output.view(-1, width)
+    for start in range(0, rows.shape[0], rows_per_call):
+        end = min(start + rows_per_call, rows.shape[0])
+        flat[start:end].copy_(int8_linear(rows[start:end], weight, scale, bias, inputs.dtype, rotate, group_size))
+    return output
+
+
+class _FusedConvRotLinear(torch.autograd.Function):
+    """Use packed INT8 weights for forward and retain only frozen storage for backward."""
+
+    @staticmethod
+    def forward(ctx, inputs, weight, scale, bias, group_size, backward_mode):
+        ctx.input_dtype = inputs.dtype
+        if torch.is_autocast_enabled(inputs.device.type):
+            inputs = inputs.to(torch.get_autocast_dtype(inputs.device.type))
+        ctx.compute_dtype = inputs.dtype
+        ctx.group_size = group_size
+        ctx.backward_mode = backward_mode
+        ctx.save_for_backward(weight, scale)
+        with torch.autocast(inputs.device.type, enabled=False):
+            return _convrot_int8_linear(
+                inputs,
+                weight,
+                scale.reshape(-1),
+                None if bias is None else bias.to(inputs.dtype),
+                group_size,
+                rotate=True,
+            )
+
+    @staticmethod
+    def backward(ctx, gradient):
+        from comfy_kitchen.tensor.int8_utils import _build_hadamard, _rotate_activation
+
+        weight, scale = ctx.saved_tensors
+        result = None
+        if ctx.needs_input_grad[0]:
+            with torch.autocast(gradient.device.type, enabled=False):
+                rows = gradient.reshape(-1, weight.shape[0]).to(ctx.compute_dtype)
+                if ctx.backward_mode == "int8":
+                    scaled = rows * scale.reshape(1, -1).to(rows.dtype)
+                    rotated = _convrot_int8_linear(
+                        scaled,
+                        weight.t().contiguous(),
+                        torch.ones(1, device=weight.device),
+                        None,
+                        ctx.group_size,
+                        rotate=False,
+                    )
+                else:
+                    rotated = rows @ (weight.to(rows.dtype) * scale.reshape(-1, 1).to(rows.dtype))
+                rotation = _build_hadamard(ctx.group_size, device=weight.device, dtype=rotated.dtype)
+                result = (
+                    _rotate_activation(rotated, rotation, ctx.group_size)
+                    .reshape(*gradient.shape[:-1], weight.shape[1])
+                    .to(ctx.input_dtype)
+                )
+        return result, None, None, None, None, None
+
+
+class QuantizedLinear(nn.Linear):
+    """Canonical packed weights with configurable ConvRot compute.
+
+    Eager execution reconstructs dense weights for forward and backward.
+    Fused ConvRot dynamically quantizes activations and optionally gradients.
     All sidecars are frozen parameters so residency owners stage them together.
     """
 
@@ -89,6 +169,19 @@ class QuantizedLinear(nn.Linear):
         self.register_buffer(
             "_compute_anchor", torch.empty(0, device=self.weight.device, dtype=dtype), persistent=False
         )
+        self._convrot_kernel = "eager"
+        self._convrot_backward = "float"
+
+    def configure_convrot(self, kernel: str, backward: str = "float") -> None:
+        """Choose fused ConvRot per layer without changing serialized weight keys."""
+        if kernel not in ("eager", "auto", "triton") or backward not in ("float", "int8"):
+            raise ValueError("Unknown ConvRot compute policy")
+        if self.quantization_format != "int8_convrot":
+            raise ValueError("Fused ConvRot requires a ConvRot INT8 layer")
+        if backward == "int8" and kernel == "eager":
+            raise ValueError("INT8 ConvRot backward requires a fused kernel")
+        self._convrot_kernel = kernel
+        self._convrot_backward = backward
 
     @property
     def compute_dtype(self) -> torch.dtype:
@@ -149,4 +242,18 @@ class QuantizedLinear(nn.Linear):
     def forward(self, input: Tensor) -> Tensor:
         if any(parameter.requires_grad for parameter in self.parameters()):
             raise ValueError("Quantized base layers must remain frozen; train adapters instead")
+        if self._convrot_kernel != "eager" and self.quantization_format == "int8_convrot":
+            from importlib.util import find_spec
+
+            if input.is_cuda and find_spec("triton") is not None:
+                return _FusedConvRotLinear.apply(
+                    input,
+                    self.weight,
+                    self.get_parameter("weight_scale"),
+                    self.bias,
+                    self._param_options.get("convrot_groupsize", 256),
+                    self._convrot_backward,
+                )
+            if self._convrot_kernel == "triton" or self._convrot_backward == "int8":
+                raise RuntimeError("Fused ConvRot INT8 requires CUDA and Triton")
         return _StoredLinear.apply(input, self, *(getattr(self, name) for name in self._storage_names))

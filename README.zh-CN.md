@@ -79,11 +79,11 @@ uv run --no-dev unituner train train.toml --device cuda \
 
 | 任务类型 | 家族 |
 | --- | --- |
-| 图像 | Z-Image · FLUX · FLUX.2 · FLUX3 · MOSS Image · Qwen Image · Qwen Image 2.1 · Krea2 · BluePixel-Turbo |
+| 图像 | Z-Image · FLUX · FLUX.2 · FLUX3 · MOSS Image · Qwen Image · Qwen Image 2.1 · Krea2 · MiniMax-H3-Image |
 | 视频 | Wan 2.1 / 2.2 |
 | 音视频 | MiniMaxH3 |
 
-各模型的图像修复支持范围、编辑/图层条件、变体和所需文件见[模型与变体](docs/training/models.md)。选择配置时必须同时匹配家族、变体和权重，不能只替换模型名称。
+各模型的图像修复支持范围、编辑/图层条件、变体和所需文件见[模型与变体](docs/training/models.md)。MiniMax-H3-Image 的缓存、训练和推理见[专用指南](docs/minimax-h3-image.md)。选择配置时必须同时匹配家族、变体和权重，不能只替换模型名称。
 
 ## 从数据到模型
 

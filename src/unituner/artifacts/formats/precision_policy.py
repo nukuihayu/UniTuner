@@ -148,6 +148,7 @@ POLICIES = {
         ),
     ),
 }
+POLICIES["minimax-h3-image"] = POLICIES["minimax-h3"]
 # Text-only projections: multimodal towers and auxiliary prediction heads stay dense.
 for _family in ("qwen2-5-vl", "qwen3", "qwen3-vl", "qwen3-5", "mistral", "t5", "umt5", "clip"):
     POLICIES[_family] = PrecisionPolicy(

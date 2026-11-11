@@ -41,8 +41,9 @@ def test_rejects_non_tensor_state_before_yielding(tmp_path, state):
 
 
 @pytest.mark.parametrize("legacy", (False, True))
-def test_checkpoint_mmap_selected_by_file_content(tmp_path, monkeypatch, legacy):
-    path = tmp_path / "renamed.safetensors"
+@pytest.mark.parametrize("extension", (".safetensors", ".renamed"))
+def test_checkpoint_mmap_selected_by_file_content(tmp_path, monkeypatch, legacy, extension):
+    path = tmp_path / f"renamed{extension}"
     value = torch.randn(3, 4)
     torch.save({"weight": value}, path, _use_new_zipfile_serialization=not legacy)
     original = torch.load
@@ -55,5 +56,5 @@ def test_checkpoint_mmap_selected_by_file_content(tmp_path, monkeypatch, legacy)
 
     monkeypatch.setattr(torch, "load", load)
     actual = dict(checkpoint_tensors(path, memory_map=True))
-    assert calls == [not legacy]
+    assert calls == [not legacy and extension != ".safetensors"]
     torch.testing.assert_close(actual["weight"], value, rtol=0, atol=0)

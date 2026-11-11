@@ -136,7 +136,8 @@ def update_phases(
                 if detached_metric.dtype in (torch.float16, torch.bfloat16):
                     detached_metric = detached_metric.float()
                 weighted = detached_metric * result.sample_count
-                metrics[phase][name] = metrics[phase].get(name, torch.zeros_like(weighted)) + weighted
+                previous = metrics[phase].get(name)
+                metrics[phase][name] = (torch.zeros_like(weighted) if previous is None else previous) + weighted
             samples[phase] += result.sample_count
             microbatches[phase] += 1
         if totals.keys() != optimizers.keys():

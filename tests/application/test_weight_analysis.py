@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -209,15 +208,11 @@ def test_final_exports_exclude_resume_and_periodic_weights(analysis_run):
     assert all(not key.startswith(("optimizer/", "rng/")) for key in native.tensors)
 
 
-def test_cli_and_notebook_save_only_final_scientific_products(analysis_run, tmp_path, monkeypatch):
+def test_cli_and_notebook_save_only_final_scientific_products(analysis_run, tmp_path):
     project, base = analysis_run
     mapping = tmp_path / "keys.json"
     mapping.write_text(json.dumps({"weights/layer": "weights/layer.weight"}))
     output = tmp_path / "results"
-    displayed = []
-    monkeypatch.setattr(
-        "unituner.analysis.publication.display_image", lambda path, mode, first: displayed.append(path)
-    )
     assert (
         main(
             [
@@ -237,12 +232,11 @@ def test_cli_and_notebook_save_only_final_scientific_products(analysis_run, tmp_
         )
         == 0
     )
-    assert (output / "figures.pdf").read_bytes().startswith(b"%PDF")
+    html = (output / "figures.html").read_text(encoding="utf-8")
+    assert "plotly.js" in html and "Plotly.newPlot" in html
     assert (output / "layers.csv").is_file() and (output / "summary.md").is_file()
-    assert any(output.glob("subspace-*.png")) and any(output.glob("heads-*.png"))
-    assert displayed and all(path.exists() for path in displayed)
-    assert not list(output.glob("*.html")) and not list(output.glob("*.json"))
-    assert {p.suffix for p in output.iterdir()} <= {".png", ".pdf", ".csv", ".md"}
+    assert not list(output.glob("*.png")) and not list(output.glob("*.pdf"))
+    assert {p.suffix for p in output.iterdir()} <= {".html", ".csv", ".md"}
     single = tmp_path / "single.safetensors"
     save_tensors({"x.weight": torch.eye(2)}, single)
     report = analyze_run(single, output=tmp_path / "notebook", show="never")
@@ -411,79 +405,21 @@ def test_zero_energy_and_non_lora_do_not_invent_capacity():
     assert diagnostic["roles"][0]["effective_layer_count"] is None
 
 
-def test_plotly_renderer_failure_keeps_numeric_products(tmp_path, monkeypatch):
+def test_plotly_export_failure_keeps_numeric_products(tmp_path, monkeypatch):
     from unituner.analysis.run import publish
 
     path = tmp_path / "final.safetensors"
     save_tensors({"x.weight": torch.eye(2)}, path)
     report = analyze(path)
-    monkeypatch.setattr("unituner.analysis.publication.browser_path", lambda: "/missing/chrome")
-
     def unavailable(*args, **kwargs):
-        raise RuntimeError("Chrome not found")
+        raise RuntimeError("Export unavailable")
 
-    monkeypatch.setattr("kaleido.Kaleido", unavailable)
-    with pytest.raises(RuntimeError, match="BROWSER_PATH"):
+    monkeypatch.setattr("unituner.analysis.publication.pio.to_html", unavailable)
+    with pytest.raises(RuntimeError, match="Export unavailable"):
         publish(report, tmp_path / "output", show="never")
     assert (tmp_path / "output/layers.csv").exists()
     assert (tmp_path / "output/summary.md").exists()
-    assert not (tmp_path / "output/figures.pdf").exists()
-
-
-def test_analysis_downloads_missing_chrome_to_managed_cache(monkeypatch, tmp_path):
-    from unituner.analysis.publication import browser_path
-
-    monkeypatch.delenv("BROWSER_PATH", raising=False)
-    monkeypatch.setattr("unituner.analysis.publication.Chromium.find_browser", lambda **kwargs: None)
-    downloads = []
-    browser = tmp_path / "chrome"
-    browser.touch()
-
-    def download(command, **kwargs):
-        downloads.append(kwargs["timeout"])
-        return subprocess.CompletedProcess(command, 0, stdout=f"{browser}\n", stderr="")
-
-    monkeypatch.setattr("unituner.analysis.publication.subprocess.run", download)
-    assert browser_path() == str(browser)
-    assert downloads == [180]
-
-
-@pytest.mark.parametrize("explicit", [True, False])
-def test_analysis_reuses_browser_without_download(monkeypatch, explicit):
-    from unituner.analysis.publication import browser_path
-
-    if explicit:
-        monkeypatch.setenv("BROWSER_PATH", "/custom/chrome")
-    else:
-        monkeypatch.delenv("BROWSER_PATH", raising=False)
-    monkeypatch.setattr("unituner.analysis.publication.Chromium.find_browser", lambda **kwargs: "/cached/chrome")
-
-    def unexpected_download(*args, **kwargs):
-        pytest.fail("An available browser must not trigger a download")
-
-    monkeypatch.setattr("unituner.analysis.publication.subprocess.run", unexpected_download)
-    assert browser_path() == ("/custom/chrome" if explicit else "/cached/chrome")
-
-
-@pytest.mark.parametrize("timeout", [False, True])
-def test_analysis_download_failure_keeps_numeric_products(tmp_path, monkeypatch, timeout):
-    from unituner.analysis.publication import publish
-
-    path = tmp_path / "final.safetensors"
-    save_tensors({"x.weight": torch.eye(2)}, path)
-    monkeypatch.delenv("BROWSER_PATH", raising=False)
-    monkeypatch.setattr("unituner.analysis.publication.Chromium.find_browser", lambda **kwargs: None)
-
-    def offline(command, **kwargs):
-        if timeout:
-            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-        return subprocess.CompletedProcess(command, 1, stdout="", stderr="Network unavailable")
-
-    monkeypatch.setattr("unituner.analysis.publication.subprocess.run", offline)
-    with pytest.raises(RuntimeError, match="timed out" if timeout else "Network unavailable"):
-        publish(analyze(path), tmp_path / "output", show="never")
-    assert (tmp_path / "output/layers.csv").exists()
-    assert (tmp_path / "output/summary.md").exists()
+    assert not (tmp_path / "output/figures.html").exists()
 
 
 def test_plotly_notebook_display_is_interactive(analysis_run, tmp_path, monkeypatch):

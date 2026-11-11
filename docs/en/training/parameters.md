@@ -42,14 +42,17 @@ uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_
 
 | Parameter | Type / choices | Default | How to fill |
 | --- | --- | --- | --- |
-| `family` | "z-image", "moss-image", "flux", "flux2", "bluepixel", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3" | `required` | Model family; match the checkpoint before selecting variant/version. |
+| `family` | "z-image", "moss-image", "flux", "flux2", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3", "minimax-h3-image" | `required` | Model family; match the checkpoint before selecting variant/version. |
 | `variant` | string | `required` | Checkpoint variant, such as base/turbo, dev or original; use matching weights. |
 | `version` | "dev", "klein-4b", "klein-9b", "2.1", "2.2" / null | `null` | Only FLUX.2 and Wan: dev/klein-4b/klein-9b or 2.1/2.2 respectively. |
 | `vae` | string / null | `null` | Matching local VAE weights, required for caching, previews and inference. |
 | `text_encoder` | string / null | `null` | Local text encoder file or directory; tokenizer assets are configured separately. |
 | `assets` | string / null | `null` | Auxiliary bundle root: FLUX CLIP in text_encoder/, Wan2.1 I2V vision weights in image_encoder/model.safetensors. |
 | `text` | object | `table defaults` | Text precision, quantization and tokenizer source table; weights remain in model.text_encoder. |
-| `minimax_h3` | object / null | `null` | H3-specific table: encoder assets under model, audio handling under data, schedules/conditioning under method. |
+| `minimax_h3` | object / null | `null` | Encoder assets for H3 audio-video and H3-Image; data/method sub-tables apply only to audio-video. |
+| `pdd_config` | string / null | `null` | Required H3-Image PDD sigma schedule for training and inference. |
+| `pdd_heads` | string / null | `null` | Published H3-Image six-step fused output heads, required with the original transformer weights. |
+| `image_topology` | object / null | `null` | H3-Image nonstandard denoiser topology override; omit for published weights. |
 | `text_source_format` | "auto", "transformers", "qwen" / null | `null` | Omission detects weight namespaces; transformers/qwen explicitly constrain supported families. |
 | `weights` | string | `required` | Local weight file, shard index or supported model directory; replace the example path. |
 
@@ -178,6 +181,9 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `betas` | [number, number]；length ≥ 2, length ≤ 2 | `[0.9, 0.999]` | AdamW first/second moment decay factors; each lies in [0,1). |
 | `eps` | number；> 0 | `1e-08` | Positive AdamW denominator stabilizer; normally keep 1e-8. |
 | `backend` | "auto", "fused", "foreach", "single" | `"auto"` | auto chooses the optimizer implementation; fused/foreach/single select it explicitly. |
+| `implementation` | "torch", "adv_optm" | `"torch"` | Advanced Optimizers AdamW is installed with the base dependencies. Default retains PyTorch AdamW. |
+| `state_precision` | "fp32", "bf16_sr", "int8_sr" | `"fp32"` | Advanced Optimizers moment storage; compressed states trade numerical precision for memory. Requires `implementation = "adv_optm"`. |
+| `factored_2nd` | boolean | `false` | Factorize the second moment for large parameter tensors; requires `implementation = "adv_optm"`. Changes optimizer math. |
 
 ## `method`
 
@@ -239,6 +245,8 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `quantization` | "none", "fp8", "convrot-int8", "float8_e4m3fn", "float8_e5m2", "mxfp8", "nvfp4", "int8_tensorwise", "int8_rowwise", "int8_convrot", "convrot_w4a4", "convrot_w4a8", "asym_w4a8_int8", "w6a8_int8" | `"none"` | Storage quantization for frozen base/text weights; none disables it; base quantization requires adapter training. |
 | `quantization_rotation_size` | integer；≥ 4 | `256` | Rotation block size for layouts that use rotations; choose a layout-supported dimension. |
 | `quantization_group_size` | integer；> 0 | `16` | Quantization group size; must satisfy the format's divisibility requirements for the weights. |
+| `convrot_kernel` | "eager", "auto", "triton" | `"eager"` | Applies only to frozen ConvRot INT8 base layers. eager retains floating-point matmul; auto uses fused INT8 GEMM on CUDA with Triton and falls back otherwise; triton requires CUDA/Triton and fails if unavailable. Requires `quantization = "int8_convrot"` or prepacked ConvRot INT8 weights. |
+| `convrot_backward` | "float", "int8" | `"float"` | Default input gradient uses transient floating-point weights; int8 requantizes gradients for fused GEMM, requires CUDA/Triton and a non-eager kernel, and introduces extra numerical error. It need not be faster for small matrices. Frozen weights receive no gradient. |
 
 ## `output`
 
@@ -285,6 +293,7 @@ Diffusers uses `transformer.<official projection>.lora_A.weight/lora_B.weight`, 
 | `caption_language` | "en", "zh" / null | `null` | Layer-caption language en/zh for Qwen layered. |
 | `width` | integer；≥ 16 | `1024` | Output width in pixels; generally align to 16, or 32 for Qwen2.1/H3. |
 | `height` | integer；≥ 16 | `1024` | Output height in pixels; together with width determines sampling memory use. |
+| `h3_size_policy` | "comfyui", "official" | `"comfyui"` | H3-Image only; omitted dimensions use 2048² or approximately 16 MP area. |
 | `seed` | integer | `42` | Sampling noise seed; keep fixed to compare checkpoints. |
 | `attention_backend` | "torch", "kitchen-int8" | `"torch"` | torch uses native attention; kitchen-int8 requires the relevant backend and supported inference paths. |
 | `steps` | integer / null | `null` | Sampling iterations; omission uses variant defaults, do not reuse one value across Turbo and nondistilled models. |
@@ -362,7 +371,7 @@ Weighted DWT band MSE. In restoration this compares decoded RGB output to detach
 
 | Parameter | Type / choices | Default | How to fill |
 | --- | --- | --- | --- |
-| `audio_vae` | string | `required` | Local H3 audio VAE weights. |
+| `audio_vae` | string / null | `null` | Audio VAE for H3 audio-video; not used by H3-Image. |
 | `text_config` | string | `required` | H3 text encoder configuration matching its weights. |
 | `text_processor` | string / null | `null` | Local H3 processor directory; otherwise the family default source can be used. |
 | `text_device` | "cpu", "cuda" / null | `null` | H3 text encoding device; set when placing the encoder separately. |

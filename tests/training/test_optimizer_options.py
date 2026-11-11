@@ -51,6 +51,81 @@ def test_explicit_fused_backend_rejects_unsupported_parameters():
         )
 
 
+@pytest.mark.parametrize("precision", ["fp32", "bf16_sr", "int8_sr"])
+@pytest.mark.parametrize("factored_2nd", [False, True])
+def test_advanced_adamw_state_precision_and_resume(precision, factored_2nd):
+    pytest.importorskip("adv_optm")
+    settings = AdamWConfig(implementation="adv_optm", state_precision=precision, factored_2nd=factored_2nd)
+    parameter = torch.nn.Parameter(torch.linspace(-1, 1, 64).reshape(8, 8))
+    reference = torch.nn.Parameter(parameter.detach().clone())
+
+    def build(value):
+        return create_adamw((ParameterGroup("model", (value,), 0.5),), lr=0.002, config=settings)
+
+    optimizer = build(parameter)
+    uninterrupted = build(reference)
+    assert optimizer.param_groups[0]["lr"] == pytest.approx(0.001)
+    for step in range(4):
+        if step == 2:
+            checkpoint = copy.deepcopy(optimizer.state_dict())
+            optimizer = build(parameter)
+            optimizer.load_state_dict(checkpoint)
+        gradient = torch.sin(reference.detach() + step)
+        parameter.grad = gradient.clone()
+        reference.grad = gradient.clone()
+        rng = torch.get_rng_state()
+        optimizer.step()
+        next_rng = torch.get_rng_state()
+        torch.set_rng_state(rng)
+        uninterrupted.step()
+        torch.set_rng_state(next_rng)
+        assert torch.isfinite(parameter).all()
+        torch.testing.assert_close(parameter, reference, atol=0, rtol=0)
+
+    state = optimizer.state[parameter]
+    if factored_2nd:
+        assert "exp_avg_sq" not in state
+        assert state["mu_v_nmf"].numel() + state["mv_v_nmf"].numel() < parameter.numel()
+    else:
+        assert "exp_avg_sq" in state
+    assert set(optimizer.state_dict()["unituner_rng"]) == {"cpu"}
+    if precision == "fp32":
+        assert state["exp_avg"].dtype == torch.float32
+    elif precision == "bf16_sr":
+        assert state["exp_avg"].dtype == torch.bfloat16
+    else:
+        assert state["exp_avg"].dtype == torch.int8
+
+
+def test_advanced_adamw_rejects_silent_backend_and_state_fallbacks():
+    with pytest.raises(ValueError, match="Compressed optimizer states"):
+        AdamWConfig(state_precision="int8_sr")
+    with pytest.raises(ValueError, match="Compressed optimizer states"):
+        AdamWConfig(factored_2nd=True)
+    with pytest.raises(ValueError, match="backend='auto'"):
+        AdamWConfig(implementation="adv_optm", backend="fused")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+@pytest.mark.parametrize("precision", ["bf16_sr", "int8_sr"])
+def test_advanced_adamw_cuda_state_survives_restore(precision):
+    pytest.importorskip("adv_optm")
+    settings = AdamWConfig(implementation="adv_optm", state_precision=precision, factored_2nd=True)
+    original = torch.nn.Parameter(torch.linspace(-1, 1, 64, device="cuda").reshape(8, 8))
+    optimizer = create_adamw((ParameterGroup("model", (original,)),), lr=0.001, config=settings)
+    original.grad = original.detach().sin()
+    optimizer.step()
+    restored = torch.nn.Parameter(original.detach().clone())
+    resumed = create_adamw((ParameterGroup("model", (restored,)),), lr=0.001, config=settings)
+    resumed.load_state_dict(copy.deepcopy(optimizer.state_dict()))
+    assert resumed.state[restored]["exp_avg"].dtype == (torch.bfloat16 if precision == "bf16_sr" else torch.int8)
+    original.grad = original.detach().cos()
+    restored.grad = original.grad.clone()
+    optimizer.step()
+    resumed.step()
+    torch.testing.assert_close(original, restored, atol=0, rtol=0)
+
+
 def test_learning_rate_policy_applies_to_every_optimizer_phase_and_group():
     parameters = [torch.nn.Parameter(torch.ones(1)) for _ in range(3)]
     generator = create_adamw(

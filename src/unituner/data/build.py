@@ -8,7 +8,8 @@ from unituner.config.text import TokenizerSourceConfig
 from unituner.data.cache.feature_encoding import RepaCacheWriter
 from unituner.data.cache.rebuild import fresh_cache_config
 from unituner.execution.runtime import runtime_scope
-from unituner.models.catalog import IMAGE_FAMILIES, ModelFamily, image_family_spec
+from unituner.models.catalog import CACHE_PROVIDERS, IMAGE_FAMILIES, image_family_spec
+from unituner.models.providers import load_provider
 from unituner.models.text_assets import pin_tokenizer_sources
 from unituner.progress import status
 
@@ -61,16 +62,7 @@ def _produce(config: CacheConfig, *, device: str) -> int:
 
 def _run(config: CacheConfig, *, device: str, repa: RepaCacheWriter | None, tokenizer_digests: dict[str, str]) -> int:
     """Import only the selected native cache assembly layer."""
-    if config.model.family == ModelFamily.MINIMAX_H3:
-        from unituner.data.production.minimax_h3 import produce_minimax_h3
-
-        return produce_minimax_h3(config, device=device, repa=repa, tokenizer_digests=tokenizer_digests)
-    if config.model.family == ModelFamily.WAN:
-        from unituner.data.production.wan import produce_wan
-
-        return produce_wan(config, device=device, repa=repa, tokenizer_digests=tokenizer_digests)
-    if config.model.family not in IMAGE_FAMILIES:
+    provider = CACHE_PROVIDERS.get(config.model.family)
+    if provider is None:
         raise ValueError(f"No cache producer for {config.model.family}")
-    from unituner.data.production.images import produce_images
-
-    return produce_images(config, device=device, repa=repa, tokenizer_digests=tokenizer_digests)
+    return load_provider(provider)(config, device=device, repa=repa, tokenizer_digests=tokenizer_digests)

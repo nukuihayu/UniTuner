@@ -11,7 +11,6 @@ from unituner.models.catalog import ImageFamilySpec, image_family_spec
 from unituner.models.providers import load_provider
 
 if TYPE_CHECKING:
-    from unituner.models.bluepixel.transformer import BluePixelTransformer
     from unituner.models.flux.transformer import FluxTransformer
     from unituner.models.flux2.transformer import Flux2Transformer
     from unituner.models.flux3.transformer import Flux3Transformer
@@ -30,7 +29,6 @@ type ImageModel = (
     | QwenImageTransformer
     | QwenImage21Transformer
     | ZImageTransformer
-    | BluePixelTransformer
 )
 
 

@@ -77,9 +77,11 @@ Read [TOML and CLI configuration](docs/en/configuration.md) for syntax and [para
 
 | Task | Families |
 | --- | --- |
-| Image | Z-Image · FLUX · FLUX.2 · FLUX3 · MOSS Image · Qwen Image · Qwen Image 2.1 · Krea2 · BluePixel-Turbo |
+| Image | Z-Image · FLUX · FLUX.2 · FLUX3 · MOSS Image · Qwen Image · Qwen Image 2.1 · Krea2 · MiniMax-H3-Image |
 | Video | Wan 2.1 / 2.2 |
 | Audio-video | MiniMaxH3 |
+
+MiniMax-H3-Image supports [generation, editing, caching and training](docs/en/minimax-h3-image.md) with native image weights and a Qwen3-VL text encoder.
 
 Supported families offer flow-matching training. See [models and variants](docs/en/training/models.md) for restoration support, editing/layer conditions, Base/Turbo/distilled variants, and required assets. Match the family, variant, and actual weights when selecting a recipe.
 

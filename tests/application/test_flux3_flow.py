@@ -15,6 +15,7 @@ from transformers.models.qwen3_vl.video_processing_qwen3_vl import Qwen3VLVideoP
 from tests.support.text_assets import main_with_local_tokenizers
 from unituner.config.loading import load_training_config
 from unituner.data.cache.storage import load_latent_manifest, read_latent_record
+from unituner.data.media.buckets import ImageBuckets
 from unituner.data.media.image import read_image
 from unituner.models.flux2.config.vae import Flux2VAEConfig
 from unituner.models.flux2.loading import load_flux2_vae, save_flux2_vae
@@ -216,9 +217,15 @@ def test_flux3_cache_train_generate_preview_and_resume(assets, algorithm, varian
     with torch.no_grad():
         expected = vae.encode(read_image(root / "images/a.png", (32, 16))[None].to(selected))[0].cpu()
     torch.testing.assert_close(records[0].latents, expected, atol=1e-5, rtol=1e-4)
+    reference_buckets = ImageBuckets((32, 16), alignment=16)
     with torch.no_grad():
         expected_refs = tuple(
-            vae.encode(read_image(root / f"ref{index}/a.png", (32, 16))[None].to(selected))[0]
+            vae.encode(
+                read_image(
+                    root / f"ref{index}/a.png",
+                    reference_buckets.for_image(root / f"ref{index}/a.png"),
+                )[None].to(selected)
+            )[0]
             .to(torch.bfloat16)
             .float()
             .cpu()

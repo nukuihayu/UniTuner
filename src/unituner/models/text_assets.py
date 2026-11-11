@@ -46,6 +46,7 @@ def default_tokenizer(
         "krea2": ("Qwen/Qwen3-VL-4B-Instruct", None),
         "wan": ("Wan-AI/Wan2.1-T2V-14B", "google/umt5-xxl"),
         "minimax-h3": ("MiniMaxAI/MiniMax-H3", "processor"),
+        "minimax-h3-image": ("MiniMaxAI/MiniMax-H3-Image", "processor"),
     }
     if family == "flux2":
         return {

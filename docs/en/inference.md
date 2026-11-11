@@ -1,5 +1,7 @@
 # Inference and model use
 
+MiniMax-H3-Image uses a fixed PDD schedule and its own reference-image assets; see the [H3-Image guide](minimax-h3-image.md) for generation, editing, and restoration.
+
 [简体中文](../inference.md) · English · [Documentation](README.md)
 
 First identify whether the file is an adapter, a full model, or training state. This determines how to load it. Image generation, video generation, and restoration each use their own inference configuration.
@@ -81,14 +83,6 @@ Copy the family's generation configuration and replace `model.weights` with the 
 Full mode publishes a complete model even when only selected denoiser layers were trained. Do not load that full publication as a LoRA on top of the original base.
 
 ## Restore an image
-
-BluePixel-Turbo supports reference-guided editing with [generate](../examples/bluepixel-generate.toml) and original-size repair with [restore](../examples/bluepixel-restore.toml), using the existing TOML fields. Download the model snapshot locally; `assets` must contain `tokenizer`.
-
-`generate` uses the published four-step CFG 3 Euler flow-matching sampler. `restore` uses the shared one-step flow prediction with sigma and optional encoder adapters, with DCAE-F64 encoding/decoding and 64-aligned padding/cropping. Use the [flow-matching](../examples/bluepixel-flow.toml) or [restoration](../examples/bluepixel-restoration-train.toml) training configuration for task-specific weights; the released editing weights alone are not a trained one-step restoration checkpoint.
-
-The weight repository specifies [FLUX Non-Commercial License v2.1](https://huggingface.co/openvivo/BluePixel-Turbo/blob/main/LICENSE.md), separately from the upstream Apache-2.0 code. UniTuner's native training is not the upstream SATP distillation recipe.
-
-Other families use the one-step restoration workflow below:
 
 Restoration uses `restore`; see the [restoration tutorial](restoration-tutorial.md) for the full workflow. Set input/output paths and the matching denoiser/encoder publications:
 

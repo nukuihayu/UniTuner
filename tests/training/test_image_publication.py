@@ -76,7 +76,7 @@ def test_family_preview_publication_policy(tmp_path, monkeypatch, family, cached
         image_channels=16,
         latent_channels=16,
     )
-    channels = 16 if family in ("krea2", "qwen_image", "qwen_image_2_1") else 4
+    channels = 4 if family in ("flux", "z_image") else 16
     if family == "z_image":
         model.config.in_channels = 4
     vae = nn.Module()

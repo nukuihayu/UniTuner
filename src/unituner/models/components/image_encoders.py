@@ -11,7 +11,6 @@ from unituner.config.model import EncoderModelConfig
 from unituner.models.catalog import ModelFamily, image_family_spec
 
 if TYPE_CHECKING:
-    from unituner.models.bluepixel.vae import BluePixelVAE
     from unituner.models.flux.text.encoder import FluxTextEncoder
     from unituner.models.flux.vae import FluxVAE
     from unituner.models.flux2.text.encoder import Flux2TextEncoder
@@ -31,7 +30,7 @@ if TYPE_CHECKING:
     )
     type ImageTextEncoder = PromptTextEncoder | FluxTextEncoder | Krea2TextEncoder | QwenImage21TextEncoder
 
-type ImageVAE = FluxVAE | Flux2VAE | QwenImageVAE | QwenImage21VAE | ZImageVAE | BluePixelVAE
+type ImageVAE = FluxVAE | Flux2VAE | QwenImageVAE | QwenImage21VAE | ZImageVAE
 
 
 def load_image_vae(
@@ -51,10 +50,6 @@ def load_image_vae(
             from unituner.models.flux2.loading import load_flux2_vae
 
             vae = load_flux2_vae(path, device=device)
-        case "bluepixel":
-            from unituner.models.bluepixel.vae import load_bluepixel_vae
-
-            vae = load_bluepixel_vae(path, device=device)
         case "qwen-image":
             from unituner.models.qwen_image.loading import load_qwen_image_vae
 

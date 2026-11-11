@@ -5,11 +5,11 @@ from typing import Literal
 import torch
 from torch import Tensor
 
-from unituner.models.bluepixel.vae import BluePixelVAE
-from unituner.models.catalog import ModelFamily, image_family_spec
+from unituner.models.catalog import IMAGE_FAMILIES, ModelFamily, image_family_spec
 from unituner.models.components.image_encoders import ImageVAE
 from unituner.models.flux.vae import FluxVAE
 from unituner.models.flux2.vae import Flux2VAE
+from unituner.models.minimax_h3.image_vae import MiniMaxH3ImageVAE
 from unituner.models.qwen_image.vae import QwenImageVAE
 from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
 
@@ -21,8 +21,9 @@ def restoration_posterior(family: str, posterior: Literal["mean", "sample"] | No
     sampling. Packed FLUX.2/FLUX3/MOSS VAEs expose means.
     Previews and restoration inference choose means independently.
     """
-    vae_family = image_family_spec(family).vae
-    deterministic = vae_family in (ModelFamily.FLUX2, ModelFamily.BLUEPIXEL)
+    selected = ModelFamily(family)
+    vae_family = image_family_spec(selected).vae if selected in IMAGE_FAMILIES else selected
+    deterministic = vae_family == ModelFamily.FLUX2
     selected = posterior or ("mean" if deterministic else "sample")
     if deterministic and selected != "mean":
         raise ValueError(f"{family} restoration uses deterministic posterior means")
@@ -47,14 +48,16 @@ def encode_restoration_image(
     """
     if pixels.ndim != 4 or pixels.shape[1] != 3 or posterior not in ("mean", "sample"):
         raise ValueError("Restoration encoding requires RGB BCHW and mean/sample posterior")
-    if isinstance(vae, BluePixelVAE):
-        if posterior != "mean":
-            raise ValueError("BluePixel DCAE uses deterministic scaled latents")
-        return vae.encode(pixels)
     if isinstance(vae, Flux2VAE):
         if posterior != "mean":
             raise ValueError("Packed FLUX.2/FLUX3/MOSS vaes use posterior mean")
         return vae.encode(pixels)
+    if isinstance(vae, MiniMaxH3ImageVAE):
+        moments = vae.posterior(pixels.unsqueeze(2))
+        if posterior == "sample":
+            noise = torch.randn(moments.mean.shape, device=moments.mean.device, dtype=moments.mean.dtype)
+            return vae.normalize(moments.sample(noise))
+        return vae.normalize(moments.mean)
     if isinstance(vae, QwenImage21VAE) and vae.config.input_channels == 4:
         pixels = torch.cat((pixels, torch.ones_like(pixels[:, :1])), dim=1)
     moments = (
@@ -86,8 +89,10 @@ def encode_restoration_image(
 
 def decode_restoration_latents(vae: ImageVAE, latents: Tensor) -> Tensor:
     """Decode normalized native image latents to RGB BCHW without detaching gradients."""
-    if isinstance(vae, FluxVAE | Flux2VAE | BluePixelVAE):
+    if isinstance(vae, FluxVAE | Flux2VAE):
         return vae.decode(latents)
+    if isinstance(vae, MiniMaxH3ImageVAE):
+        return vae.decode(latents)[:, :, 0]
     if isinstance(vae, QwenImage21VAE):
         return vae.decode(latents)[:, :3, 0]
     if isinstance(vae, QwenImageVAE):

@@ -21,6 +21,7 @@
 | [数据集](training/datasets.md) | 数据组、提示词、分桶、参考图与配对 |
 | [图像修复教程](restoration-tutorial.md) | 从配对 LQ/HQ 到一步修复推理 |
 | [视频与音视频](training/video.md) | Wan 与 MiniMaxH3 的资产、数据和命令 |
+| [MiniMax-H3-Image](minimax-h3-image.md) | 图像缓存、训练、编辑生成与修复 |
 | [配置示例](examples/README.md) | 按任务与模型选择可复制的 TOML |
 
 ## 配置与方法参考

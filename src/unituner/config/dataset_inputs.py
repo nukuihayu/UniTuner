@@ -55,12 +55,12 @@ class DatasetInputConfig(BaseModel):
         elif family == "flux3":
             if len(references) > 10:
                 raise ValueError("FLUX3 accepts at most ten reference sources")
-        elif family == "bluepixel":
-            if kind == "image" and len(references) != 1:
-                raise ValueError("BluePixel flow training requires exactly one reference source")
         elif family == "qwen-image":
             if references and variant in ("original", "layered"):
                 raise ValueError("Qwen original/layered does not consume edit references")
+        elif family == "minimax-h3-image":
+            if len(references) > 16:
+                raise ValueError("MiniMaxH3-Image accepts at most 16 image references")
         elif references and family not in ("flux2", "qwen-image-2-1"):
             raise ValueError(f"{family} does not support dataset.reference_sources")
         if self.control_source is not None and family != "wan":

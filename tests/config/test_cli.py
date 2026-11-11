@@ -67,7 +67,7 @@ def _flags(document, prefix=""):
         ("cache", "image-cache", "unituner.data.build"),
         ("mid-timestep", "mid-timestep", "unituner.training.calibration"),
         ("generate", "generate", "unituner.inference.generation"),
-        ("restore", "restore", "unituner.inference.restoration.run"),
+        ("restore", "restore", "unituner.inference.restoration.dispatch"),
         ("generate-video", "wan-generate-video", "unituner.models.wan.inference.run"),
         ("generate-video", "minimax-h3-generate", "unituner.models.minimax_h3.inference.run"),
     ],

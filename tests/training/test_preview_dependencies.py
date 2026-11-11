@@ -31,7 +31,7 @@ def test_factory_loads_only_selected_native_preview(monkeypatch, module, stem, o
     topology = getattr(import_module(f"unituner.models.{module}.config.model"), stem + "Config")(**options)
     model = getattr(import_module(f"unituner.models.{module}.transformer"), stem + "Transformer")(topology)
     seen = []
-    config = object()
+    config = SimpleNamespace(model=object())
 
     def publish(update):
         seen.append(update)
@@ -43,15 +43,20 @@ def test_factory_loads_only_selected_native_preview(monkeypatch, module, stem, o
             assert actual_config is config and actual_model is model
             return publish
 
-        return SimpleNamespace(ImagePreviews=factory)
+        return factory
 
-    monkeypatch.setattr(images, "import_module", load)
+    def validate(_config, actual_model):
+        if isinstance(actual_model, nn.Linear):
+            raise TypeError("No image preview for this model")
+
+    monkeypatch.setattr(images, "validate_model_selection", validate)
+    monkeypatch.setattr(images, "load_provider", load)
     publisher = images.build_flow_preview(config, model)
     publisher(7)
     provider = (
-        "unituner.training.previews.flow"
+        "unituner.training.previews.flow:ImagePreviews"
         if module in ("flux", "flux2", "flux3", "moss_image", "z_image")
-        else f"unituner.training.integrations.{module}.previews"
+        else f"unituner.training.integrations.{module}.previews:ImagePreviews"
     )
     assert seen == [provider, 7]
     with pytest.raises(TypeError, match="No image preview"):

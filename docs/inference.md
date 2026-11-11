@@ -4,6 +4,8 @@
 
 训练完成后，先确定手里是适配器、完整模型，还是训练状态。它们决定如何加载，而生成、视频和修复任务则分别使用自己的推理配置。
 
+MiniMax-H3-Image 的 PDD 固定步数、参考图条件和专用资产见[H3-Image 指南](minimax-h3-image.md)。
+
 <details>
 <summary>本页导航</summary>
 
@@ -81,14 +83,6 @@ uv run unituner generate generate.toml --device cuda
 Full 训练即使只选择部分 denoiser 层，仍发布完整模型。不要再将同一轮 full 产物当成 LoRA 叠加到原底模上。
 
 ## 一步图像修复
-
-BluePixel-Turbo 可用参考图指令编辑修复图像，使用现有 TOML 结构：`generate` 参见 [编辑配置](examples/bluepixel-generate.toml)，`restore` 参见 [原尺寸修复配置](examples/bluepixel-restore.toml)。将 Hugging Face 模型快照下载到本地，`assets` 指向包含 `tokenizer` 的根目录。
-
-`generate` 使用 BluePixel 默认四步、CFG 3 的 Euler 流匹配；`restore` 沿用现有单步修复公式和 sigma／编码器适配器语义，以 DCAE-F64 编解码，自动补齐到 64 倍数并裁回原尺寸。可用 [流匹配训练配置](examples/bluepixel-flow.toml) 或 [修复训练配置](examples/bluepixel-restoration-train.toml) 训练对应产物；修复效果需要任务训练权重，不能把原版编辑权重当作已训练的修复模型。
-
-权重仓库采用 [FLUX Non-Commercial License v2.1](https://huggingface.co/openvivo/BluePixel-Turbo/blob/main/LICENSE.md)，与官方代码的 Apache-2.0 许可证分开。UniTuner 的原生训练并非官方 SATP 蒸馏方案。
-
-以下是其他家族的一步修复工作流：
 
 修复使用 `restore`，完整流程见[修复教程](restoration-tutorial.md)。配置中指定输入图片、输出路径，以及对应的 denoiser／encoder 产物：
 

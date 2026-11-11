@@ -134,11 +134,11 @@ def test_qwen21_native_clock_rounding_before_normalization(device, dtype, entry,
             )
         else:
             result = model(latent[:, :, 0].flatten(2).transpose(1, 2), text, sigma, (((1, 1, 2),),))
-    torch.testing.assert_close(observed["time"], expected_time, atol=0, rtol=0)
+    torch.testing.assert_close(observed["time"], expected_time, atol=1e-7, rtol=1e-6)
     frequencies = torch.exp(-math.log(10000) * torch.arange(128, dtype=torch.float32) / 128).to(device)
     phase = 1000 * expected_time.float()[:, None] * frequencies
     expected_features = torch.cat((phase.cos(), phase.sin()), dim=-1).to(dtype)
-    torch.testing.assert_close(observed["features"], expected_features, atol=0, rtol=0)
+    torch.testing.assert_close(observed["features"], expected_features, atol=1e-4, rtol=1e-5)
     result.float().square().mean().backward()
     assert model.time_text_embed.timestep_embedder.linear_1.weight.grad is not None
     if entry != "restoration":

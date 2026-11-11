@@ -78,7 +78,7 @@ W/A describe deployment weight and activation precision. Conversion stores weigh
 
 ## Protect sensitive layers by model
 
-The default `--family auto` prefers native topology metadata. Without metadata, family-specific key signatures drive detection. Set `--family` explicitly when the key structure is ambiguous. Names match training: `z-image`, `flux`, `flux2`, `bluepixel`, `flux3`, `moss-image`, `qwen-image`, `qwen-image-2-1`, `krea2`, `wan`, and `minimax-h3`.
+The default `--family auto` prefers native topology metadata. Without metadata, family-specific key signatures drive detection. Set `--family` explicitly when the key structure is ambiguous. Names match training: `z-image`, `flux`, `flux2`, `flux3`, `moss-image`, `qwen-image`, `qwen-image-2-1`, `krea2`, `wan`, and `minimax-h3`.
 
 ```bash
 uv run unituner weights convert models/qwen21.safetensors models/qwen21-int8.safetensors \

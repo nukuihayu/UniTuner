@@ -41,7 +41,6 @@ Tokenizer／processor 默认从下表的 Hub 仓库获取，仅下载词表、�
 | FLUX.2 Dev | `mistralai/Mistral-Small-3.1-24B-Instruct-2503` |
 | FLUX.2 Klein 4B／9B | `Qwen/Qwen3-4B`／`Qwen/Qwen3-8B` |
 | Qwen Image | `Qwen/Qwen-Image` / `tokenizer`；processor：`Qwen/Qwen-Image-Edit` / `processor` |
-| BluePixel | `model.assets` 下的本地 `tokenizer` |
 | Krea2 | `Qwen/Qwen3-VL-4B-Instruct` |
 | Wan | `Wan-AI/Wan2.1-T2V-14B` / `google/umt5-xxl` |
 | MiniMaxH3 | `MiniMaxAI/MiniMax-H3` / `processor` |
@@ -105,7 +104,7 @@ uv run unituner weights convert models/qwen3/model.safetensors models/qwen3-fp8/
 
 | 模型家族 | 文本编码器转换预设 |
 | --- | --- |
-| Z-Image、FLUX.2 Klein、BluePixel | `qwen3` |
+| Z-Image、FLUX.2 Klein | `qwen3` |
 | MOSS Image | `qwen3-5` |
 | FLUX | 主文本目录 `t5`，辅助 CLIP 目录 `clip`，分别转换 |
 | FLUX.2 Dev | `mistral` |

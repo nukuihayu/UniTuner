@@ -363,7 +363,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             "cache": "unituner.data.build",
             "mid-timestep": "unituner.training.calibration",
             "generate": "unituner.inference.generation",
-            "restore": "unituner.inference.restoration.run",
+            "restore": "unituner.inference.restoration.dispatch",
         }[args.command]
         if args.command == "cache":
             status("[cache] Configuration loaded; importing encoder runtime")
