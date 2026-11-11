@@ -33,6 +33,7 @@ from unituner.models.components.quantized import QuantizedLinear
 from unituner.models.components.text_loading import (
     load_text_state,
     prepare_text_model,
+    resolve_tied_text_weights,
     text_execution,
     validate_cache_text,
 )
@@ -113,6 +114,48 @@ def forward(model):
     if isinstance(model, WanT5Encoder):
         return model(ids, torch.ones_like(ids))
     return model(input_ids=ids, return_dict=True).last_hidden_state
+
+
+@pytest.mark.parametrize("family", ("qwen3", "qwen2-5-vl", "qwen3-vl", "qwen3-5", "mistral", "t5", "umt5", "clip"))
+@pytest.mark.parametrize("precision", ("int8_convrot", "int8_rowwise", "float8_e4m3fn"))
+@torch.no_grad()
+def test_prepacked_embeddings_across_text_families(family, precision):
+    kitchen = pytest.importorskip("comfy_kitchen")
+    from unituner.artifacts.quantization import quantize_weight, serialize_weight
+
+    torch.manual_seed(67)
+    model = text_model(family).eval()
+    state = {key: value.bfloat16() for key, value in model.state_dict().items()}
+    dense = dict(state)
+    projections = []
+    with kitchen.use_backend("eager"):
+        for name, module in model.named_modules():
+            if not isinstance(module, nn.Embedding) and not (isinstance(module, nn.Linear) and not projections):
+                continue
+            if isinstance(module, nn.Linear):
+                projections.append(name)
+            key = name + ".weight"
+            packed = quantize_weight(state.pop(key), precision, rotation_size=4)
+            state.update(serialize_weight(key, packed, precision))
+            dense[key] = packed.dequantize()
+        if family == "t5":
+            state = {key: value for key, value in state.items() if not key.startswith("encoder.embed_tokens.")}
+            resolve_tied_text_weights(state, ("shared.weight", "encoder.embed_tokens.weight"), label="T5")
+            dense["encoder.embed_tokens.weight"] = dense["shared.weight"]
+        restored = text_model(family)
+        load_text_state(restored, state, dtype=torch.bfloat16, label=family)
+        prepare_text_model(restored, TextEncodingConfig(), family=family, device=torch.device("cpu"))
+        model.load_state_dict(dense, strict=True, assign=True)
+        model.eval().requires_grad_(False)
+        validate_cache_text(restored)
+        assert isinstance(restored.get_submodule(projections[0]), QuantizedLinear)
+        for name, module in restored.named_modules():
+            if isinstance(module, nn.Embedding):
+                assert module.weight.dtype == torch.bfloat16
+                torch.testing.assert_close(module.weight, dense[name + ".weight"], atol=0, rtol=0)
+        actual = forward(restored)
+        assert torch.isfinite(actual).all()
+        torch.testing.assert_close(actual, forward(model), atol=0, rtol=0)
 
 
 @pytest.mark.parametrize("family", ("qwen3", "qwen2-5-vl", "qwen3-vl", "qwen3-5", "mistral", "t5", "umt5", "clip"))

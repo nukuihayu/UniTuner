@@ -109,7 +109,8 @@ def test_flux2_text_language_only_and_retained_padding(tmp_path, version, single
                 device=torch.device("cpu"),
                 dtype=torch.float32,
             )
-            torch.testing.assert_close(loaded.encode(prompts).features, caption.features, atol=0, rtol=0)
+            torch.testing.assert_close(loaded.model.state_dict(), encoder.model.state_dict(), atol=0, rtol=0)
+            torch.testing.assert_close(loaded.encode(prompts).features, caption.features)
         save_file(values, tmp_path / "model.safetensors")
         key = "language_model.model.embed_tokens.weight" if version == "dev" else "model.embed_tokens.weight"
         for bad in (

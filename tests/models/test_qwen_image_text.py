@@ -219,7 +219,8 @@ def test_qwen_text_explicit_weight_formats_and_invalid_artifacts(text_assets):
     assert load_file(path).keys() == values.keys()
 
 
-def test_qwen_text_tied_embedding_artifact_has_one_owned_parameter(text_assets):
+@pytest.mark.parametrize("packed_alias", (None, "embedding", "head", "both"))
+def test_qwen_text_tied_embedding_artifact_has_one_owned_parameter(text_assets, packed_alias):
     config = Qwen2_5_VLConfig.from_pretrained(text_assets, local_files_only=True)
     config.tie_word_embeddings = True
     assert config.text_config is not None
@@ -227,6 +228,24 @@ def test_qwen_text_tied_embedding_artifact_has_one_owned_parameter(text_assets):
     config.text_config.tie_word_embeddings = True
     model = Qwen2_5_VLForConditionalGeneration(config)
     model.save_pretrained(text_assets)
+    if packed_alias is not None:
+        kitchen = pytest.importorskip("comfy_kitchen")
+        from unituner.artifacts.quantization import quantize_weight, serialize_weight
+
+        path = text_assets / "model.safetensors"
+        state = load_file(path)
+        embedding_key = next(key for key in state if key.endswith("embed_tokens.weight"))
+        values = state.pop(embedding_key)
+        state.pop("lm_head.weight", None)
+        with kitchen.use_backend("eager"):
+            packed = quantize_weight(values, "int8_convrot", rotation_size=4)
+            for key in (
+                (embedding_key, "lm_head.weight")
+                if packed_alias == "both"
+                else (embedding_key if packed_alias == "embedding" else "lm_head.weight",)
+            ):
+                state.update(serialize_weight(key, packed, "int8_convrot"))
+        save_file({key: value.clone() for key, value in state.items()}, path)
     encoder = load_qwen_image_text(
         text_assets,
         text_config=local_text_config(text_assets),

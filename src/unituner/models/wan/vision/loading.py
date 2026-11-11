@@ -6,6 +6,7 @@ from typing import Literal
 import torch
 
 from unituner.artifacts.tensors import TensorReader, iter_tensors, save_tensors
+from unituner.models.components.text_loading import load_text_state
 from unituner.models.wan.config.clip import WanClipConfig, WanClipTextArtifactConfig
 from unituner.models.wan.vision.model import WanClipVision
 
@@ -82,9 +83,20 @@ def load_wan_clip(
     expected = {prefix + name: tuple(value.shape) for name, value in model.state_dict().items()}
     if source_format == "full":
         expected.update(_text_shapes(text_artifact_config or WanClipTextArtifactConfig(), config.output_dim))
+    tensors = dict(iter_tensors(path))
+    if any(key.endswith(".comfy_quant") for key in tensors):
+        load_text_state(
+            model,
+            tensors,
+            dtype=torch.float32,
+            label="Wan CLIP",
+            expected={key: torch.empty(shape, device="meta") for key, shape in expected.items()},
+            selected_prefix=prefix,
+        )
+        return model.to(device=device).eval().requires_grad_(False)
     visual = {}
     seen: set[str] = set()
-    for name, value in iter_tensors(path):
+    for name, value in tensors.items():
         if name not in expected:
             raise ValueError(f"Wan CLIP unexpected tensor: {name}")
         if (

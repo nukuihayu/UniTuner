@@ -186,7 +186,7 @@ def load_krea2_text(
         source_format = qwen_vl_source_format(path)
     for original, value in iter_tensors(path):
         key = original
-        if source_format == "transformers" and original != "lm_head.weight":
+        if source_format == "transformers" and not original.startswith("lm_head."):
             if not original.startswith("model."):
                 raise ValueError(f"Invalid Krea2 text weight prefix: {original}")
             key = original.removeprefix("model.")

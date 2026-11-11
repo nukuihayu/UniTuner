@@ -47,6 +47,30 @@ def test_visual_artifact_frozen_owner_and_penultimate_inactive_parameters(assets
     assert pixels.grad is not None and torch.isfinite(pixels.grad).all()
 
 
+@pytest.mark.parametrize("precision", ("int8_convrot", "float8_e4m3fn"))
+def test_prepacked_visual_projection_keeps_storage_and_matches_dense(assets, precision):
+    from torch import nn
+
+    from unituner.artifacts.quantization import quantize_weight, serialize_weight
+    from unituner.models.components.quantized import QuantizedLinear
+
+    kitchen = pytest.importorskip("comfy_kitchen")
+    root, model = assets
+    state = dict(model.state_dict())
+    name = next(name for name, module in model.named_modules() if isinstance(module, nn.Linear))
+    with kitchen.use_backend("eager"):
+        packed = quantize_weight(state.pop(name + ".weight"), precision, rotation_size=4)
+        dense = dict(model.state_dict())
+        dense[name + ".weight"] = packed.dequantize()
+        state.update(serialize_weight(name + ".weight", packed, precision))
+    save_file(state, root / "packed.safetensors")
+    loaded = load_wan_clip(root / "packed.safetensors", config=model.config)
+    assert isinstance(loaded.get_submodule(name), QuantizedLinear)
+    model.load_state_dict(dense)
+    pixels = torch.randn(1, 3, 28, 28)
+    torch.testing.assert_close(loaded(pixels), model(pixels), atol=0, rtol=0)
+
+
 @pytest.mark.parametrize("damage", ["missing", "extra", "shape", "nonfinite"])
 def test_visual_artifact_rejects_invalid_inventory(assets, damage):
     root, model = assets

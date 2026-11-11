@@ -107,15 +107,13 @@ def load_text_encoder(
     for original, value in iter_tensors(weights):
         key = original
         if source_format == "transformers":
-            if original == "model.lm_head.weight" or (
-                original != "lm_head.weight" and not original.startswith("model.")
-            ):
+            if original == "model.lm_head.weight" or (not original.startswith(("lm_head.", "model."))):
                 raise ValueError(f"Invalid MiniMaxH3 transformers text key: {original}")
             key = original.removeprefix("model.")
         elif source_format == "qwen":
             if original.startswith("model."):
                 key = qwen_vl_base_key(original)
-            elif not original.startswith("visual.") and not (automatic and original == "lm_head.weight"):
+            elif not original.startswith("visual.") and not (automatic and original.startswith("lm_head.")):
                 raise ValueError(f"Invalid MiniMaxH3 qwen text key: {original}")
         if key in tensors:
             raise ValueError(f"Duplicate MiniMaxH3 text tensor: {original}")

@@ -212,7 +212,7 @@ def published_config[ConfigT: BaseModel](
                         break
                 # Only header dimensions; no weight payload or network access.
                 shapes[key] = reader.shape(original)
-                if name == "QwenImage21Config" and key.endswith(".comfy_quant"):
+                if key.endswith(".comfy_quant"):
                     from unituner.artifacts.quantization import tensor_json
 
                     # Packed storage can pad rows or pack several columns into a
@@ -225,7 +225,7 @@ def published_config[ConfigT: BaseModel](
                             or len(shape) != 2
                             or any(type(n) is not int or n < 1 for n in shape)
                         ):
-                            raise ValueError(f"Invalid Qwen Image 2.1 logical shape: {key}")
+                            raise ValueError(f"Invalid {name} logical shape: {key}")
                         logical_shapes[key.removesuffix("comfy_quant") + "weight"] = tuple(shape)
     shapes.update(logical_shapes)
     if name == "Flux2Config":

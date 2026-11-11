@@ -103,7 +103,8 @@ def test_strict_full_artifact_validation_and_explicit_formats(assets, qwen_visua
             config=local_text_config(assets, base=config),
             source_format="auto" if automatic else source_format,
         )
-        torch.testing.assert_close(loaded.encode(["hello"])[0], expected, atol=0, rtol=0)
+        torch.testing.assert_close(loaded.model.state_dict(), owner.model.state_dict(), atol=0, rtol=0)
+        torch.testing.assert_close(loaded.encode(["hello"])[0], expected)
         assert torch.equal(rng, torch.get_rng_state())
     visual = next(key for key in canonical if key.startswith("model.visual."))
     head = "lm_head.weight"

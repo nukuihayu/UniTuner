@@ -111,7 +111,9 @@ def test_strict_explicit_text_formats_and_invalid_weights(text_assets, automatic
             dtype=torch.float32,
             source_format="auto" if automatic else source_format,
         )
-        assert torch.equal(restored.encode(["hello"])[0].features, expected) and torch.equal(rng, torch.get_rng_state())
+        torch.testing.assert_close(restored.model.state_dict(), native, atol=0, rtol=0)
+        torch.testing.assert_close(restored.encode(["hello"])[0].features, expected)
+        assert torch.equal(rng, torch.get_rng_state())
     key = "language_model.embed_tokens.weight"
     for bad in [
         {k: v for k, v in native.items() if k != key},
@@ -153,6 +155,7 @@ def test_qwen_single_file_visual_namespaces_and_duplicate_validation(text_assets
         path, text_config=config, device=torch.device("cpu"), dtype=torch.float32, source_format=source_format
     )
     actual = restored.encode(["hello"], references=[[reference]])[0]
+    torch.testing.assert_close(restored.model.state_dict(), original.model.state_dict(), atol=0, rtol=0)
     torch.testing.assert_close(actual.features, expected.features, atol=1e-7, rtol=1e-6)
     assert actual.image_slots == expected.image_slots and torch.equal(rng, torch.get_rng_state())
 

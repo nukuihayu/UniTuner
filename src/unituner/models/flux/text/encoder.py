@@ -11,7 +11,13 @@ from transformers import AutoConfig, CLIPTextConfig, CLIPTextModel, CLIPTokenize
 from unituner.artifacts.tensors import iter_tensors
 from unituner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig
 from unituner.models.components.text_artifacts import text_config_path
-from unituner.models.components.text_loading import load_text_state, prepare_text_model, text_dtype, text_weight_path
+from unituner.models.components.text_loading import (
+    load_text_state,
+    prepare_text_model,
+    resolve_tied_text_weights,
+    text_dtype,
+    text_weight_path,
+)
 from unituner.models.flux.conditioning import FluxTextFeatures
 from unituner.models.text_assets import tokenizer_directory
 
@@ -115,17 +121,7 @@ def _load_model_weights(
     """
     tensors = dict(iter_tensors(_weight_path(directory)))
     if isinstance(model, T5EncoderModel):
-        shared, encoder = tensors.get("shared.weight"), tensors.get("encoder.embed_tokens.weight")
-        if (
-            shared is not None
-            and encoder is not None
-            and (shared.dtype != encoder.dtype or not torch.equal(shared, encoder))
-        ):
-            raise ValueError("FLUX T5 tied embedding values conflict")
-        if shared is None and encoder is not None:
-            tensors["shared.weight"] = encoder
-        if encoder is None and shared is not None:
-            tensors["encoder.embed_tokens.weight"] = shared
+        resolve_tied_text_weights(tensors, ("shared.weight", "encoder.embed_tokens.weight"), label="FLUX T5")
     elif any(key.startswith("text_model.") for key in tensors):
         if not all(key.startswith("text_model.") for key in tensors):
             raise ValueError("FLUX CLIP artifact mixes native and text_model prefixes")

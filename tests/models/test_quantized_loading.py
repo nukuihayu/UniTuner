@@ -74,6 +74,62 @@ def regular_hadamard(size, device, dtype):
     return h / size**0.5
 
 
+@pytest.mark.parametrize("dtype", (torch.float32, torch.bfloat16))
+def test_convrot_embedding_restores_basis_and_preserves_packed_linear(dtype):
+    torch.manual_seed(71)
+    values = torch.randn(19, 16)
+    packed = quantize_weight(values, "int8_convrot", rotation_size=4)
+    tensors = serialize_weight("0.weight", packed, "int8_convrot")
+    linear = quantize_weight(torch.randn(8, 16), "int8_convrot", rotation_size=4)
+    tensors.update(serialize_weight("1.weight", linear, "int8_convrot"))
+    with torch.device("meta"):
+        model = nn.Sequential(nn.Embedding(19, 16, padding_idx=0), nn.Linear(16, 8, bias=False))
+    assert load_quantized_model(model, tensors, device=torch.device("cpu"), dtype=dtype)
+    assert type(model[0]) is nn.Embedding and model[0].padding_idx == 0
+    assert model[0].weight.dtype == dtype
+    # Independent inverse rotation; a simple INT8 cast or codes * scale is wrong.
+    rotated = packed._qdata.float() * packed._params.scale
+    reference = (rotated.reshape(19, 4, 4) @ regular_hadamard(4, "cpu", torch.float32)).reshape(19, 16)
+    torch.testing.assert_close(model[0].weight, reference.to(dtype), atol=0, rtol=0)
+    assert (reference - values).norm() / values.norm() < 0.02
+    assert isinstance(model[1], QuantizedLinear)
+    assert model[1].weight.dtype == torch.int8
+    torch.testing.assert_close(model[1].weight, linear._qdata, atol=0, rtol=0)
+    assert model[1].weight_scale.dtype == torch.float32
+    indices = torch.tensor([[0, 1, 18, 1]])
+    torch.testing.assert_close(
+        model(indices), F.linear(F.embedding(indices, reference.to(dtype)), linear.dequantize().to(dtype))
+    )
+    assert not any("0.weight_" in key or key == "0.comfy_quant" for key in model.state_dict())
+
+
+@pytest.mark.parametrize("invalid", ("shape", "scale", "overflow", "sidecar", "extra"))
+def test_invalid_quantized_embedding_does_not_mutate_model(invalid):
+    model = nn.Sequential(nn.Embedding(19, 16), nn.Linear(16, 8, bias=False))
+    original = {key: value.clone() for key, value in model.state_dict().items()}
+    packed = quantize_weight(torch.randn(19, 16), "int8_convrot", rotation_size=4)
+    tensors = serialize_weight("0.weight", packed, "int8_convrot")
+    tensors.update(
+        serialize_weight("1.weight", quantize_weight(model[1].weight, "int8_convrot", rotation_size=4), "int8_convrot")
+    )
+    if invalid == "shape":
+        model[0] = nn.Embedding(20, 16)
+        original = {key: value.clone() for key, value in model.state_dict().items()}
+    elif invalid == "scale":
+        tensors["0.weight_scale"][0] = float("nan")
+    elif invalid == "overflow":
+        tensors["0.weight_scale"].fill_(torch.finfo(torch.float32).max)
+    elif invalid == "sidecar":
+        tensors["0.input_scale"] = torch.ones(1)
+    else:
+        tensors["0.unexpected"] = torch.ones(1)
+    with pytest.raises(ValueError):
+        load_quantized_model(model, tensors, device=torch.device("cpu"), dtype=torch.bfloat16)
+    assert type(model[1]) is nn.Linear
+    for key, value in model.state_dict().items():
+        torch.testing.assert_close(value, original[key], atol=0, rtol=0)
+
+
 @pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("dtype", (torch.float32, torch.float16, torch.bfloat16))
 def test_convrot_fp32_codes_and_floating_weight_gradients(device, dtype):
@@ -246,9 +302,7 @@ CASES = {
 def test_all_family_load_adapter_update_and_quantized_export(tmp_path, family, algorithm):
     classname, fields = CASES[family]
     config = getattr(importlib.import_module(f"unituner.models.{family}.config.model"), classname + "Config")(**fields)
-    model = getattr(importlib.import_module(f"unituner.models.{family}.transformer"), classname + "Transformer")(
-        config
-    )
+    model = getattr(importlib.import_module(f"unituner.models.{family}.transformer"), classname + "Transformer")(config)
     api = importlib.import_module(f"unituner.models.{family}.loading")
     suffix = "qwen_image_21" if family == "qwen_image_2_1" else family
     save, load = getattr(api, f"save_{suffix}"), getattr(api, f"load_{suffix}")
@@ -319,6 +373,42 @@ def test_quantized_linear_dtype_move_preserves_fp32_scales():
     assert layer.compute_dtype == torch.bfloat16
     assert layer.get_parameter("weight_scale").dtype == torch.float32
     assert torch.equal(layer.get_parameter("weight_scale"), original)
+
+
+@pytest.mark.parametrize("dtype", (torch.float32, torch.bfloat16))
+def test_z_image_prepacked_timestep_uses_compute_dtype(dtype):
+    from unituner.models.z_image.config.model import ZImageConfig
+    from unituner.models.z_image.layers import TimestepEmbedder
+
+    config = ZImageConfig(
+        dim=24, num_heads=4, num_kv_heads=2, axes_dims=(2, 2, 2), timestep_hidden_dim=32, timestep_frequency_dim=16
+    )
+    embedder = TimestepEmbedder(config).to(dtype)
+    reference = TimestepEmbedder(config).to(dtype)
+    state = dict(embedder.state_dict())
+    packed = quantize_weight(state.pop("mlp.0.weight"), "int8_convrot", rotation_size=4)
+    state.update(serialize_weight("mlp.0.weight", packed, "int8_convrot"))
+    dense = dict(embedder.state_dict())
+    dense["mlp.0.weight"] = packed.dequantize().to(dtype)
+    reference.load_state_dict(dense)
+    load_quantized_model(embedder, state, device=torch.device("cpu"), dtype=dtype)
+    timesteps = torch.tensor([0.0, 244.0, 1000.0])
+    output = embedder(timesteps)
+    assert output.dtype == dtype and torch.isfinite(output).all()
+    torch.testing.assert_close(output, reference(timesteps), atol=0, rtol=0)
+
+
+def test_flux_architecture_uses_logical_columns_of_packed_weights(tmp_path):
+    from unituner.artifacts.tensors import save_tensors
+    from unituner.models.components.transformer_artifacts import published_config
+    from unituner.models.flux.config.model import FluxConfig
+
+    packed = quantize_weight(torch.randn(128, 64, dtype=torch.bfloat16), "nvfp4")
+    state = serialize_weight("img_in.weight", packed, "nvfp4")
+    path = tmp_path / "packed.safetensors"
+    save_tensors(state, path)
+    config = published_config(path, FluxConfig)
+    assert config.in_channels == 64
 
 
 @pytest.mark.parametrize("precision", tuple(name for name, spec in FORMATS.items() if not spec.calibrated))

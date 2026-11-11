@@ -41,6 +41,19 @@ def test_per_parameter_storage_policy():
     assert model.bias.dtype == torch.float32
 
 
+@pytest.mark.parametrize("dtype", (None, torch.float32))
+def test_per_parameter_storage_policy_rejects_overflow_before_assignment(dtype):
+    model = nn.Linear(2, 2)
+    before = tuple(model.parameters())
+    state = {name: value.detach().clone() for name, value in model.state_dict().items()}
+    state["bias"].fill_(1e10)
+    with pytest.raises(ValueError, match="storage dtype range"):
+        load_model_state(
+            model, state, device=torch.device("cpu"), dtype=dtype, label="test", floating_dtypes={"bias": torch.float16}
+        )
+    assert all(a is b for a, b in zip(before, model.parameters(), strict=True))
+
+
 @pytest.mark.parametrize("dtype", [None, torch.float32])
 def test_unchanged_dtype_rejects_nonfinite_before_assignment(dtype):
     model = nn.Linear(2, 2)

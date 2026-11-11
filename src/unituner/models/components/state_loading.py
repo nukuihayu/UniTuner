@@ -41,6 +41,13 @@ def load_model_state(
             # An unchanged dtype cannot introduce conversion overflow.
             if dtype is not None and dtype != value.dtype and not torch.isfinite(value.to(dtype=dtype)).all():
                 raise ValueError(f"{label} tensor exceeds requested dtype range: {name}")
+            storage_dtype = dtype if floating_dtypes is None else floating_dtypes.get(name, dtype)
+            if (
+                storage_dtype is not None
+                and storage_dtype != dtype
+                and not torch.isfinite(value.to(storage_dtype)).all()
+            ):
+                raise ValueError(f"{label} tensor exceeds storage dtype range: {name}")
     model.load_state_dict(
         {
             name: value.to(device=device, dtype=dtype if floating_dtypes is None else floating_dtypes.get(name, dtype))

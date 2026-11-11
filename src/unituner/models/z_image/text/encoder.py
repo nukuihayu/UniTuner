@@ -121,7 +121,7 @@ def load_z_image_text(
     tensors = dict(iter_tensors(path))
     expected = dict(model.state_dict())
     if prefix:
-        if any(key != "lm_head.weight" and not key.startswith("model.") for key in tensors):
+        if any(not key.startswith(("lm_head.", "model.")) for key in tensors):
             raise ValueError("Z-Image causal text artifact requires uniform model prefixes")
         tensors = {key.removeprefix("model."): value for key, value in tensors.items()}
         if "lm_head.weight" in tensors:

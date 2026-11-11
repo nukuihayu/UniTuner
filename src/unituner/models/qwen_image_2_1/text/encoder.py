@@ -234,7 +234,7 @@ def load_qwen_image_21_text(
         source_format = qwen_vl_source_format(path)
     for original, value in iter_tensors(path):
         key = original
-        if source_format == "transformers" and original != "lm_head.weight" and not original.startswith("model."):
+        if source_format == "transformers" and not original.startswith(("lm_head.", "model.")):
             raise ValueError(f"Invalid Qwen Image2.1 text weight prefix: {original}")
         if source_format == "transformers" and original.startswith("model."):
             key = original.removeprefix("model.")

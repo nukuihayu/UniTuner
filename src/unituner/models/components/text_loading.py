@@ -91,6 +91,46 @@ def text_dtype(config: TextEncodingConfig, default: torch.dtype) -> torch.dtype:
     return FLOAT_DTYPES[config.precision]
 
 
+def resolve_tied_text_weights(tensors: dict[str, Tensor], keys: tuple[str, ...], *, label: str) -> None:
+    """Compare declared aliases in their decoded basis and restore dense sharing.
+
+    Copying only INT8 codes loses scales/rotation; tying a packed Linear to a
+    dense embedding corrupts its layout. Decode these shared tables before the
+    ordinary strict loader, leaving unrelated projections packed.
+    """
+    decoded = {}
+    owned = set()
+    for key in keys:
+        if key not in tensors:
+            continue
+        metadata = key.removesuffix("weight") + "comfy_quant"
+        if metadata in tensors:
+            from comfy_kitchen import use_backend
+
+            config = tensor_json(tensors[metadata])
+            name = config.get("format")
+            spec = FORMATS.get(name) if isinstance(name, str) else None
+            if spec is None or spec.calibrated:
+                raise ValueError(f"{label}: tied weights require a calibration-free layout")
+            prefix = key.removesuffix("weight")
+            if any(prefix + sidecar in tensors for sidecar in ("input_scale", "pre_quant_scale")):
+                raise ValueError(f"{label}: tied weights do not accept static input scaling")
+            packed = read_weight(key, tensors.__getitem__, config, device=torch.device("cpu"))
+            with use_backend("eager"):
+                decoded[key] = packed.dequantize()
+            owned.update((*packed.state_dict(key), metadata))
+        else:
+            decoded[key] = tensors[key]
+    if not decoded:
+        return
+    reference = next(iter(decoded.values()))
+    if any(value.dtype != reference.dtype or not torch.equal(value, reference) for value in decoded.values()):
+        raise ValueError(f"{label}: tied embedding values conflict")
+    for key in owned:
+        del tensors[key]
+    tensors.update(dict.fromkeys(keys, reference))
+
+
 def load_text_state(
     model: nn.Module,
     tensors: Mapping[str, Tensor],

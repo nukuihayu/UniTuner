@@ -16,6 +16,67 @@ from unituner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
 from unituner.models.qwen_image_2_1.vae import QwenImage21VAE
 
 
+def test_cache_with_prequantized_convrot_embedding(tmp_path):
+    kitchen = pytest.importorskip("comfy_kitchen")
+    from safetensors.torch import load_file, save_file
+
+    from unituner.artifacts.quantization import quantize_weight, serialize_weight
+    from unituner.models.components.quantized import QuantizedLinear
+
+    write_text_assets(tmp_path / "text", language_layers=3)
+    source = tmp_path / "text/model.safetensors"
+    state = load_file(source)
+    key = "model.language_model.embed_tokens.weight"
+    with kitchen.use_backend("eager"):
+        packed = quantize_weight(state.pop(key), "int8_convrot", rotation_size=4)
+        reference = packed.dequantize().bfloat16()
+        state.update(serialize_weight(key, packed, "int8_convrot"))
+        # Reproduce a published artifact containing both packed tables and projections.
+        linear_key = "model.language_model.layers.0.self_attn.q_proj.weight"
+        state.update(
+            serialize_weight(
+                linear_key, quantize_weight(state.pop(linear_key), "int8_convrot", rotation_size=4), "int8_convrot"
+            )
+        )
+    save_file(state, source, metadata={"format": "pt"})
+    options = local_text_config(tmp_path / "text", base=TextEncodingConfig(precision="bf16"))
+    encoder = load_qwen_image_21_text(tmp_path / "text", device=torch.device("cpu"), text_config=options)
+    torch.testing.assert_close(encoder.model.language_model.embed_tokens.weight, reference, atol=0, rtol=0)
+    assert isinstance(encoder.model.language_model.layers[0].self_attn.q_proj, QuantizedLinear)
+    expected = encoder.encode(["a purple flower"])[0].features.float()
+    assert torch.isfinite(expected).all()
+    del encoder
+    vae = QwenImage21VAE(
+        QwenImage21VAEConfig(
+            base_channels=2, decoder_base_channels=4, channel_multipliers=(1, 2, 4, 4, 4), layers_per_block=1
+        )
+    )
+    save_qwen_image_21_vae(vae, tmp_path / "vae.safetensors")
+    images = tmp_path / "images"
+    images.mkdir()
+    Image.new("RGB", (32, 32), (80, 40, 180)).save(images / "a.png")
+    (images / "a.txt").write_text("a purple flower")
+    config = tmp_path / "cache.toml"
+    root = tmp_path.as_posix()
+    config.write_text(f'''[model]
+family = "qwen-image-2-1"
+variant = "base"
+vae = "{root}/vae.safetensors"
+text_encoder = "{root}/text"
+[model.text]
+precision = "bf16"
+[dataset.groups.main]
+source = "{root}/images"
+cache_directory = "{root}/cache"
+resolution = [32, 32]
+''')
+    assert main_with_local_tokenizers(["cache", str(config), "--device", "cpu"]) == 0
+    entry = load_latent_manifest(tmp_path / "cache").entries[0]
+    record = read_qwen_image_21_record(tmp_path / "cache", entry, device=torch.device("cpu"))
+    torch.testing.assert_close(record.caption, expected, atol=0, rtol=0)
+    assert torch.isfinite(record.latents).all()
+
+
 @pytest.mark.parametrize("format", ("none", "float8_e4m3fn", "int8_convrot"))
 @pytest.mark.parametrize("precision", ("fp32", "bf16"))
 def test_conditioning_cache_quantization_reuse_and_precision_identity(tmp_path, format, precision):
@@ -39,15 +100,15 @@ def test_conditioning_cache_quantization_reuse_and_precision_identity(tmp_path, 
 family = "qwen-image-2-1"
 variant = "base"
 weights = "not-loaded.safetensors"
-vae = "{tmp_path}/vae.safetensors"
-text_encoder = "{tmp_path}/text"
+vae = "{tmp_path.as_posix()}/vae.safetensors"
+text_encoder = "{tmp_path.as_posix()}/text"
 [model.text]
 precision = "{precision}"
 quantization = "{format}"
 quantization_rotation_size = 4
 [dataset.groups.main]
-source = "{images}"
-cache_directory = "{tmp_path}/cache"
+source = "{images.as_posix()}"
+cache_directory = "{tmp_path.as_posix()}/cache"
 resolution = [32, 32]
 [train]
 parameter_mode = "full"

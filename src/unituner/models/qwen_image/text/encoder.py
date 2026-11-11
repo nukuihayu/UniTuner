@@ -41,6 +41,7 @@ from unituner.models.components.text_loading import (
     prepare_text_model,
     qwen_vl_base_key,
     qwen_vl_source_format,
+    resolve_tied_text_weights,
     text_dtype,
     text_weight_path,
 )
@@ -337,12 +338,7 @@ def load_qwen_image_text(
             raise ValueError(f"Duplicate Qwen text tensor: {original}")
         tensors[key] = value
     if config.tie_word_embeddings:
-        embedding = tensors.get("model.language_model.embed_tokens.weight")
-        head = tensors.get("lm_head.weight")
-        if embedding is not None and head is None:
-            tensors["lm_head.weight"] = embedding
-        elif embedding is not None and head is not None and not torch.equal(embedding, head):
-            raise ValueError("Qwen tied language head differs from token embeddings")
+        resolve_tied_text_weights(tensors, ("model.language_model.embed_tokens.weight", "lm_head.weight"), label="Qwen")
     load_text_state(model, tensors, dtype=dtype, label="Qwen text weight")
     if config.tie_word_embeddings:
         model.tie_weights()

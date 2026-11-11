@@ -1,4 +1,4 @@
-"""Strict native loading of canonical quantized Linear weights and sidecars."""
+"""Load packed Linear weights and reconstruct quantized embedding tables."""
 
 from collections.abc import Mapping
 
@@ -45,24 +45,35 @@ def load_quantized_model(
             projection = model.get_submodule(name)
         except AttributeError as error:
             raise ValueError(f"Quantization metadata targets missing module {name}") from error
-        if not name or not isinstance(projection, nn.Linear):
-            raise ValueError(f"{name}: quantized weight must belong to a named Linear")
+        if not name or not isinstance(projection, (nn.Linear, nn.Embedding)):
+            raise ValueError(f"{name}: quantized weight must belong to a named Linear or Embedding")
         format_name = config.get("format")
         spec = FORMATS.get(format_name) if isinstance(format_name, str) else None
         if spec is None:
             raise ValueError(f"{name}: training requires a supported Kitchen quantization format")
         key = prefix + "weight"
         weight = read_weight(key, tensors.__getitem__, config, device=device)
-        if tuple(weight.shape) != (projection.out_features, projection.in_features):
+        if tuple(weight.shape) != tuple(projection.weight.shape):
             raise ValueError(f"{key}: logical shape differs from model topology")
         if prefix + "input_scale" in tensors or prefix + "pre_quant_scale" in tensors:
             raise ValueError(f"{key}: training does not accept static input scaling/smoothing sidecars")
         compute = dtype if dtype is not None else inferred_dtype or weight._params.orig_dtype
         if floating_dtypes is not None:
             compute = floating_dtypes.get(key, compute)
-        local = {k: tensors[prefix + k].to(device) for k in weight.state_dict("weight")}
-        local["comfy_quant"] = tensors[prefix + "comfy_quant"].to(device)
-        owned.update(prefix + k for k in local)
+        storage = (*weight.state_dict("weight"), "comfy_quant")
+        owned.update(prefix + k for k in storage)
+        if isinstance(projection, nn.Embedding):
+            from comfy_kitchen import use_backend
+
+            # INT8 ConvRot codes are in a rotated basis. The layout restores
+            # both row scales and the inverse rotation before casting to compute.
+            with use_backend("eager"):
+                dense = weight.dequantize().to(dtype=compute)
+            if not torch.isfinite(dense.float()).all():
+                raise ValueError(f"Quantized artifact exceeds compute dtype: {key}")
+            converted[key] = dense
+            continue
+        local = {k: tensors[prefix + k].to(device) for k in storage}
         replacements.append((name, compute, local))
     base_keys = set(tensors) - owned | {prefix + "weight" for prefix in configs}
     if base_keys != set(expected):

@@ -10,6 +10,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from unituner.execution.attention import scaled_dot_product_attention
+from unituner.models.components.quantized import linear_dtype
 from unituner.models.z_image.config.model import ZImageConfig
 
 
@@ -35,7 +36,7 @@ class TimestepEmbedder(nn.Module):
         projection = self.mlp[0]
         if not isinstance(projection, nn.Linear):
             raise TypeError("Timestep projection must be Linear")
-        return self.mlp(embedding.to(projection.weight.dtype))
+        return self.mlp(embedding.to(linear_dtype(projection)))
 
     forward = embed
 
