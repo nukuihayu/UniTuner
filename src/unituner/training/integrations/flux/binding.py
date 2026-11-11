@@ -60,7 +60,7 @@ class FluxBinding:
         return adapter_projections(self.model)
 
     def cached_step(
-        self, records: list[ImageCacheRecord], noise: Tensor, sigma: Tensor, *, guidance: float
+        self, records: list[ImageCacheRecord], noise: Tensor, sigma: Tensor, *, guidance: float, latents: Tensor | None = None
     ) -> StepResult:
         """Assemble native cached text/conditions and reuse the same flow step.
 
@@ -68,7 +68,10 @@ class FluxBinding:
         packing, with explicit valid lengths and IDs; Fill mask packing retains
         native channel order. No randomness or cache tensor mutation occurs.
         """
-        latents = torch.stack([record.latents for record in records])
+        if latents is None:
+            latents = torch.stack([record.latents for record in records])
+        elif latents.shape != noise.shape or latents.shape[0] != len(records):
+            raise ValueError("Flux cached latents must match the noise and record batches")
         captions = torch.stack([record.caption for record in records])
         pooled = []
         controls, positions, masks = [], [], []

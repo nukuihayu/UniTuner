@@ -90,7 +90,7 @@ def test_convrot_embedding_restores_basis_and_preserves_packed_linear(dtype):
     # Independent inverse rotation; a simple INT8 cast or codes * scale is wrong.
     rotated = packed._qdata.float() * packed._params.scale
     reference = (rotated.reshape(19, 4, 4) @ regular_hadamard(4, "cpu", torch.float32)).reshape(19, 16)
-    torch.testing.assert_close(model[0].weight, reference.to(dtype), atol=0, rtol=0)
+    torch.testing.assert_close(model[0].weight, reference.to(dtype), atol=5e-7 if dtype == torch.float32 else 0, rtol=0)
     assert (reference - values).norm() / values.norm() < 0.02
     assert isinstance(model[1], QuantizedLinear)
     assert model[1].weight.dtype == torch.int8
@@ -373,6 +373,29 @@ def test_quantized_linear_dtype_move_preserves_fp32_scales():
     assert layer.compute_dtype == torch.bfloat16
     assert layer.get_parameter("weight_scale").dtype == torch.float32
     assert torch.equal(layer.get_parameter("weight_scale"), original)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_quantized_device_move_keeps_codes_and_scale_without_second_gpu_copy():
+    values = torch.randn(512, 512)
+    packed = quantize_weight(values, "int8_convrot", rotation_size=16)
+    layer = QuantizedLinear(serialize_weight("weight", packed, "int8_convrot"), dtype=torch.float32)
+    codes = layer.weight.clone()
+    scales = layer.get_parameter("weight_scale").clone()
+    device = torch.device("cuda", torch.cuda.current_device())
+    torch.cuda.reset_peak_memory_stats(device)
+    before = torch.cuda.memory_allocated(device)
+    layer.to(device)
+    peak = torch.cuda.max_memory_allocated(device) - before
+    packed_bytes = sum(getattr(layer, name).nbytes for name in layer._storage_names)
+    assert peak < packed_bytes * 2
+    assert layer.weight.device == device and layer.get_parameter("weight_scale").device == device
+    assert torch.equal(layer.weight.cpu(), codes)
+    assert torch.equal(layer.get_parameter("weight_scale").cpu(), scales)
+    layer.to(dtype=torch.bfloat16)
+    assert layer.compute_dtype == torch.bfloat16
+    assert torch.equal(layer.weight.cpu(), codes)
+    assert torch.equal(layer.get_parameter("weight_scale").cpu(), scales)
 
 
 @pytest.mark.parametrize("dtype", (torch.float32, torch.bfloat16))

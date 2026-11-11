@@ -219,7 +219,8 @@ class QuantizedLinear(nn.Linear):
         original = {name: getattr(self, name).detach() for name in self._storage_names}
         result = super()._apply(fn, recurse=recurse)
         for name, value in original.items():
-            setattr(self, name, nn.Parameter(value.to(device=self.weight.device), requires_grad=False))
+            if getattr(self, name).dtype != value.dtype:
+                setattr(self, name, nn.Parameter(value.to(device=self.weight.device), requires_grad=False))
         return result
 
     def dequantized(self, dtype: torch.dtype, *, storage: dict[str, Tensor] | None = None) -> Tensor:

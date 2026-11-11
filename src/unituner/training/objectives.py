@@ -161,6 +161,7 @@ def align_steps(steps: Callable[[], Iterator[StepResult]], alignment: FeatureAli
                 return
             aligned = alignment.step(result)
         yield aligned
+        del result, aligned
 
 
 class RoutedModel(Protocol):

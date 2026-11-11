@@ -358,10 +358,13 @@ def train(
                             latents21,
                         )
                     consumed += latents21.shape[0]
+                    noise21 = torch.randn_like(latents21)
+                    sigma21 = sample_sigmas(latents21.shape[0], device=device, grid=sigma_grid)
+                    del latents21
                     yield binding.cached_step(
                         records21,
-                        torch.randn_like(latents21),
-                        sample_sigmas(latents21.shape[0], device=device, grid=sigma_grid),
+                        noise21,
+                        sigma21,
                     )
                     continue
                 records = [read_latent_record(item.directory, item.entry, device=device) for item in selected]
@@ -378,6 +381,7 @@ def train(
                 noise = torch.randn_like(latents)
                 sigma = sample_sigmas(latents.shape[0], device=device, grid=sigma_grid)
                 if isinstance(binding, QwenImageBinding):
+                    del latents
                     yield binding.cached_step(
                         records,
                         noise,
@@ -391,6 +395,7 @@ def train(
                         noise,
                         sigma,
                         guidance=3.5 if config.method.guidance is None else config.method.guidance,
+                        latents=latents,
                     )
                     continue
                 if isinstance(binding, Flux2Binding):
@@ -460,6 +465,7 @@ def train(
                     if result.phase == last_phase:
                         completed += 1
                         progress.report(completed)
+                    del result
 
         def write_weights(update: int) -> Path:
             """Export inference weights and the separate restoration encoder."""

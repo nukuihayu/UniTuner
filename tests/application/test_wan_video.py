@@ -375,9 +375,9 @@ max_weight_checkpoints = 1
     if routing != "batch-real":
         monkeypatch.setattr(training, "_choose_high_noise", lambda **kwargs: next(choices) == 0.9)
 
-    def cached_step(binding, records, noise, sigma, timesteps):
+    def cached_step(binding, records, noise, sigma, timesteps, *, latents=None):
         forwards.append((binding.model, len(records)))
-        return original_step(binding, records, noise, sigma, timesteps)
+        return original_step(binding, records, noise, sigma, timesteps, latents=latents)
 
     monkeypatch.setattr(training.WanBinding, "cached_step", cached_step)
 

@@ -66,7 +66,15 @@ class WanBinding:
         """Borrow native block Linear targets without embeddings, head or modulation."""
         return adapter_projections(self.model)
 
-    def cached_step(self, records: list[WanCacheRecord], noise: Tensor, sigma: Tensor, timesteps: Tensor) -> StepResult:
+    def cached_step(
+        self,
+        records: list[WanCacheRecord],
+        noise: Tensor,
+        sigma: Tensor,
+        timesteps: Tensor,
+        *,
+        latents: Tensor | None = None,
+    ) -> StepResult:
         """Read an equal-grid batch without mutating cache tensors or drawing RNG.
 
         Independent-frame single-image features retain an explicit clean axis
@@ -76,6 +84,10 @@ class WanBinding:
         """
         if not records:
             raise ValueError("Wan cached training requires a nonempty batch")
+        if latents is None:
+            latents = torch.stack([record.latents for record in records])
+        elif latents.shape != noise.shape or latents.shape[0] != len(records):
+            raise ValueError("Wan cached latents must match the noise and record batches")
         images, features, controls, coordinates = [], [], [], []
         for record in records:
             if record.image_condition is not None:
@@ -93,7 +105,7 @@ class WanBinding:
             raise ValueError("Wan cached training requires a uniform condition/coordinate inventory")
         return self.step(
             WanFlowRequest(
-                torch.stack([record.latents for record in records]),
+                latents,
                 noise,
                 sigma,
                 timesteps,

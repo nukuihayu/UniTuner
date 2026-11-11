@@ -125,7 +125,7 @@ def sample_latents(
     negative_mask = None if negative_mask is None else negative_mask.to(noise.device)
     times = build_schedule(steps, shift=shift, training_shift=training_shift)
     native_times = (times[:-1] * 1000).to(noise.device)
-    latents = noise.clone()
+    latents = noise
     references = tuple(value.to(device=noise.device, dtype=sampling_dtype(model)) for value in references)
     if bool(references) != (model.config.variant == "edit"):
         raise ValueError("MOSS edit requires references; base/sft do not accept them")

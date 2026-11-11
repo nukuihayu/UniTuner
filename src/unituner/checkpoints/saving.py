@@ -67,8 +67,8 @@ def save_checkpoint(
     """Atomically save module/optimizer state, CPU/Python/NumPy and explicit CUDA RNG.
 
     With reference_frozen_parameters, schema3 stores exact content digests for
-    frozen parameters in the explicit model role. Restore requires the identical
-    already loaded base; all other method modules, including frozen teachers, and
+    frozen parameters in the model and paired high_noise_model roles. Restore requires
+    identical already loaded bases; all other method modules, including frozen teachers, and
     buffers and trainable/method/optimizer/RNG state remain embedded. Hashing
     trades IO volume for a full base validation scan, without a speed claim.
     Call at a completed update boundary with all model transfers quiescent.
@@ -88,7 +88,7 @@ def save_checkpoint(
             immutable = {
                 key: frozen_tensor_sha256(parameter)
                 for key, parameter in module.named_parameters()
-                if name == "model" and not parameter.requires_grad
+                if name in ("model", "high_noise_model") and not parameter.requires_grad
             }
             for key in immutable:
                 del tensor_state[key]

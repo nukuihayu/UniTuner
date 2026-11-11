@@ -106,6 +106,17 @@ def test_cached_single_frame_features_and_coordinates():
     )
     actual = binding.cached_step(records, noise, sigma, times)
     assert actual.sample_count == 1 and torch.equal(actual.loss, expected.loss)
+    reused = binding.cached_step(records, noise, sigma, times, latents=latents)
+    assert torch.equal(reused.loss, actual.loss)
+    parameters = tuple(binding.model.parameters())
+    for original, optimized in zip(
+        torch.autograd.grad(actual.loss, parameters, retain_graph=True),
+        torch.autograd.grad(reused.loss, parameters),
+        strict=True,
+    ):
+        torch.testing.assert_close(optimized, original, atol=0, rtol=0)
+    with pytest.raises(ValueError, match="cached latents"):
+        binding.cached_step(records, noise, sigma, times, latents=latents[:0])
     with pytest.raises(ValueError, match="nonempty"):
         binding.cached_step([], noise, sigma, times)
 

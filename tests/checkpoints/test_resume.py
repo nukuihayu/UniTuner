@@ -207,3 +207,25 @@ def test_frozen_references_reduce_payload_validate_base_and_restore_mutable_buff
     assert all(torch.equal(value, teacher.state_dict()[key]) for key, value in teacher_before.items())
     assert identities == [id(parameter) for module in modules.values() for parameter in module.parameters()]
     assert all(torch.equal(value, adapter.state_dict()[key]) for key, value in before.items())
+
+
+def test_paired_frozen_reference_omits_both_bases_and_checks_high_noise(tmp_path):
+    low = nn.Linear(256, 256).requires_grad_(False)
+    high = nn.Linear(256, 256).requires_grad_(False)
+    high.register_buffer("running", torch.tensor([1.0]))
+    adapter = nn.Linear(2, 2)
+    modules = {"model": low, "high_noise_model": high, "adapter": adapter}
+    optimizer = torch.optim.AdamW(adapter.parameters())
+    cursor = CheckpointCursor(updates=0, microbatches=0, samples=0)
+    complete, compact = tmp_path / "complete.safetensors", tmp_path / "compact.safetensors"
+    save_checkpoint(complete, modules, optimizer, cursor, IDENTITY)
+    save_checkpoint(compact, modules, optimizer, cursor, IDENTITY, reference_frozen_parameters=True)
+    assert compact.stat().st_size < complete.stat().st_size // 10
+    with torch.no_grad():
+        high.weight[0, 0].add_(1)
+    with pytest.raises(ValueError, match=r"high_noise_model\.weight"):
+        restore_checkpoint(compact, modules, optimizer, IDENTITY)
+    restore_checkpoint(complete, modules, optimizer, IDENTITY)
+    high.get_buffer("running").fill_(9)
+    assert restore_checkpoint(compact, modules, optimizer, IDENTITY) == cursor
+    assert high.get_buffer("running").item() == 1

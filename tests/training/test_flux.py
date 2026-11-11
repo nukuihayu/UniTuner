@@ -10,6 +10,7 @@ from unituner.adapters.config import AdapterConfig
 from unituner.checkpoints.restore import restore_checkpoint
 from unituner.checkpoints.saving import save_checkpoint
 from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
+from unituner.data.cache.storage import ImageCacheRecord
 from unituner.execution.compiler import CompilerInstallation
 from unituner.execution.recompute import RecomputeInstallation
 from unituner.models.flux.conditioning import FluxCondition, image_ids, pack_latents
@@ -111,6 +112,27 @@ def test_flux_binding_native_clock_sign_and_packing():
         torch.testing.assert_close(pack_latents(result.prediction), expected, atol=0, rtol=0)
         torch.testing.assert_close(result.timesteps, inputs.sigma, atol=0, rtol=0)
         torch.testing.assert_close(result.target, inputs.noise - inputs.latents, atol=0, rtol=0)
+
+
+def test_flux_cached_batch_reuse_preserves_loss_and_adapter_gradients():
+    with TrainingSession() as session:
+        binding, modules, _ = build(session, "lora")
+        clean = torch.randn(2, 2, 4, 6)
+        records = [ImageCacheRecord(clean[index], torch.randn(5, 12), pooled=torch.randn(6)) for index in range(2)]
+        noise = torch.randn_like(clean)
+        sigma = torch.tensor([0.3, 0.8])
+        original = binding.cached_step(records, noise, sigma, guidance=3.5)
+        reused = binding.cached_step(records, noise, sigma, guidance=3.5, latents=clean)
+        assert torch.equal(original.loss, reused.loss)
+        parameters = tuple(modules["adapter"].parameters())
+        for before, after in zip(
+            torch.autograd.grad(original.loss, parameters),
+            torch.autograd.grad(reused.loss, parameters),
+            strict=True,
+        ):
+            torch.testing.assert_close(after, before, atol=0, rtol=0)
+        with pytest.raises(ValueError, match="cached latents"):
+            binding.cached_step(records, noise, sigma, guidance=3.5, latents=clean[:1])
 
 
 @pytest.mark.parametrize(("algorithm", "variant"), [("lora", "dev"), ("loha", "kontext"), ("lokr", "fill")])

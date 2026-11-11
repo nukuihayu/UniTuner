@@ -1,7 +1,10 @@
 """Verify interleaved GAN accumulation and exact native multi-optimizer resume."""
 
 import copy
+import weakref
+from contextlib import nullcontext
 from dataclasses import asdict
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -15,6 +18,7 @@ from unituner.checkpoints.schema import CheckpointCursor, ResumeIdentity
 from unituner.training.contracts import RunState, StepResult
 from unituner.training.engine import update_phases
 from unituner.training.losses.adversarial import frozen_discriminator, gan_loss
+from unituner.training.objectives import align_steps
 
 IDENTITY = ResumeIdentity(config_sha256="a" * 64, dataset_manifest_sha256="b" * 64, model_artifact_sha256="c" * 64)
 
@@ -108,3 +112,26 @@ def test_invalid_second_phase_cannot_partially_step_first_optimizer():
         )
     assert (left.item(), right.item(), state.updates) == (2.0, 3.0, 0)
     assert left.grad is None and right.grad is None
+
+
+@pytest.mark.parametrize("precision", ["fp32", "bf16"])
+@pytest.mark.parametrize("aligned", [False, True])
+def test_previous_microbatch_graph_released_before_next_forward(precision, aligned):
+    parameter = nn.Parameter(torch.tensor(2.0))
+    optimizer = torch.optim.SGD([parameter], lr=0.1)
+    first_loss = None
+
+    def microbatches():
+        nonlocal first_loss
+        loss = (parameter * 2).square()
+        first_loss = weakref.ref(loss)
+        yield StepResult(loss, 1, metrics={"aux": loss * 0.5})
+        del loss
+        assert first_loss() is None
+        second_loss = (parameter * 3).square()
+        yield StepResult(second_loss, 1, metrics={"aux": second_loss * 0.5})
+
+    alignment = SimpleNamespace(capture=nullcontext, step=lambda result: result) if aligned else None
+    result = update_phases(align_steps(microbatches, alignment), {"main": optimizer}, RunState(), precision=precision)
+    assert result["main"].microbatches == 2
+    assert parameter.grad is None

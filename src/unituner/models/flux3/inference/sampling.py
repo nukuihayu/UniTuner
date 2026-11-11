@@ -105,7 +105,7 @@ def sample_latents(
             replace(sample, text=text_tokens(negative[index].to(noise.dtype))) for index, sample in enumerate(positive)
         ] + positive
     packed = pack_samples(samples, torch.zeros(len(samples), device=noise.device, dtype=torch.float32))
-    state = torch.cat([sample.image.values for sample in positive]).clone()
+    state = torch.cat([sample.image.values for sample in positive])
     # Subtract on the native FP32 schedule before conversion to host scalars.
     deltas = (schedule[1:] - schedule[:-1]).tolist()
     with sampling_context(model, noise.device, state_dtype=noise.dtype):

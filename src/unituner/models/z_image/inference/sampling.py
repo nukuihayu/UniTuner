@@ -79,7 +79,7 @@ def sample_latents(
             negative = Caption(torch.zeros_like(positive_features), positive.mask)
         negative_features = negative.features.to(device=noise.device, dtype=sampling_dtype(model))
         negative_mask = None if negative.mask is None else negative.mask.to(noise.device)
-    latents = noise.clone()
+    latents = noise
     with sampling_context(model, noise.device, state_dtype=noise.dtype):
         for index in range(steps):
             timesteps = (1000 - native_timesteps[index].expand(latents.shape[0])) / 1000

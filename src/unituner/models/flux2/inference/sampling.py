@@ -122,7 +122,7 @@ def sample_latents(
                 negative_context, negative_ids = pack_text(negative[index])
                 if negative_context.device != noise.device or negative_context.dtype not in FLOAT_DTYPES.values():
                     raise ValueError("FLUX.2 negative captions must be floating on the noise device")
-            state = image.tokens[:, : image.target_count].clone()
+            state = image.tokens[:, : image.target_count]
             clean = image.tokens[:, image.target_count :]
             embedded = state.new_full((1,), guidance) if model.config.use_guidance_embed else None
             for current, following in pairwise(schedule):

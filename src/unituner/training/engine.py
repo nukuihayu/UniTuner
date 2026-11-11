@@ -138,8 +138,10 @@ def update_phases(
                 weighted = detached_metric * result.sample_count
                 previous = metrics[phase].get(name)
                 metrics[phase][name] = (torch.zeros_like(weighted) if previous is None else previous) + weighted
+                del value, detached_metric, weighted
             samples[phase] += result.sample_count
             microbatches[phase] += 1
+            del result, loss, weighted_loss
         if totals.keys() != optimizers.keys():
             raise ValueError("An update requires at least one microbatch in every phase")
         if len(set(samples.values())) != 1 or len(set(microbatches.values())) != 1:
@@ -277,3 +279,4 @@ def _forward_steps(
         except StopIteration:
             return
         yield result
+        del result

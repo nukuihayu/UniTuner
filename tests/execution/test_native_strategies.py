@@ -440,13 +440,13 @@ def test_native_tread_resident_vs_h2d_three_updates(family, compiled):
                 assert (x is None) == (y is None)
                 if x is not None:
                     if compiled:
-                        # A scale-invariant FP32 error budget handles cancellation
-                        # near zero without accepting all small gradients outright.
+                        # Preserve the relative budget, with an FP32 floor for
+                        # near-zero gradients after independent fused reductions.
                         reference = y.double()
                         torch.testing.assert_close(
                             (x.double() - reference).norm(),
                             reference.new_zeros(()),
-                            atol=1e-5 * reference.norm().item(),
+                            atol=max(1e-5 * reference.norm().item(), 1e-7),
                             rtol=0,
                         )
                     else:

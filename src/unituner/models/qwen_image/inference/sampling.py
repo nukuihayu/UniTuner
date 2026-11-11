@@ -155,7 +155,7 @@ def sample_latents(
             raise ValueError("Qwen references require finite normalized floating 1C1HW with even H/W on noise device")
         grids.append((1, reference.shape[-2] // 2, reference.shape[-1] // 2))
     references = tuple(value.to(noise.dtype) for value in references)
-    state = pack_latents(noise).clone()
+    state = pack_latents(noise)
     initial = state
     fixed = None if not references else torch.cat([pack_latents(value) for value in references], dim=1)
     if inpainting_mask is not None and (

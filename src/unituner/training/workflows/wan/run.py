@@ -336,16 +336,16 @@ def train_wan(
                     timesteps = timesteps + 1
                 consumed += 1
                 if high_binding is None:
-                    yield binding.cached_step(records, noise, sigma, timesteps)
+                    yield binding.cached_step(records, noise, sigma, timesteps, latents=latents)
                     continue
                 expert = high_binding if high else binding
                 objective = high_alignment if high else alignment
                 if objective is None:
-                    result = expert.cached_step(records, noise, sigma, timesteps)
+                    result = expert.cached_step(records, noise, sigma, timesteps, latents=latents)
                 else:
                     with objective.capture():
                         objective.set_targets(tuple(entries), latents)
-                        result = objective.step(expert.cached_step(records, noise, sigma, timesteps))
+                        result = objective.step(expert.cached_step(records, noise, sigma, timesteps, latents=latents))
                 label = "high_noise" if high else "low_noise"
                 yield StepResult(
                     result.loss,
