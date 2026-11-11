@@ -19,6 +19,7 @@ from unituner.config.training_validation import (
     validate_training_policy,
     validate_training_preview,
 )
+from unituner.config.wan_experts import WanExpertTrainingConfig
 
 
 class TrainingConfig(BaseModel):
@@ -35,6 +36,7 @@ class TrainingConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     preview: PreviewConfig | None = None
+    wan_experts: WanExpertTrainingConfig | None = None
 
     @model_validator(mode="after")
     def validate_combinations(self) -> Self:

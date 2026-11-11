@@ -121,6 +121,8 @@ def build_resume_identity(
         values["minimax_h3_time_policy"] = "video-initial-base/model-and-audio-recovered-multiply1000-add1/1"
     if config.model.family == ModelFamily.WAN:
         values["wan_batch_policy"] = "stable-grid-buckets/repeat-before-chunk/short-tails/1"
+        if config.wan_experts is not None:
+            values["wan_expert_routing_policy"] = "host-domain-choice/conditional-device-sigma/2"
         values["wan_time_policy"] = (
             "separate-sigma/direct-multiply1000-add1/1"
             if config.train.timestep_sampling == "uniform"

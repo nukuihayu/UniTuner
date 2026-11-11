@@ -118,6 +118,26 @@ def test_latest_weights_update_with_saves_and_preserve_previous_snapshots(tmp_pa
         assert weights_path(config, update=10, encoder=encoder).read_bytes() == f"weights-10-{encoder}".encode()
 
 
+def test_latest_weights_requires_each_configured_expert_but_not_optional_encoder(tmp_path):
+    paired = Path(__file__).resolve().parents[2] / "docs/examples/wan-dual-expert-flow.toml"
+    config = load_training_config(paired).model_copy(
+        update={"output": OutputConfig(directory=str(tmp_path), name="wan")}
+    )
+    with pytest.raises(FileNotFoundError):
+        publish_latest_weights(config, 1)
+    low = weights_path(config, update=1)
+    low.parent.mkdir(parents=True, exist_ok=True)
+    low.write_bytes(b"low")
+    with pytest.raises(FileNotFoundError):
+        publish_latest_weights(config, 1)
+    high = weights_path(config, update=1, expert="high")
+    high.write_bytes(b"high")
+    publish_latest_weights(config, 1)
+    assert weights_path(config).read_bytes() == b"low"
+    assert weights_path(config, expert="high").read_bytes() == b"high"
+    assert not weights_path(config, encoder=True).exists()
+
+
 @pytest.mark.parametrize("resume_limit,weight_limit", [(1, 0), (2, 2), (0, 1), (0, 0)])
 def test_retention_counts_weight_sets_and_preserves_other_files(tmp_path, resume_limit, weight_limit):
     config = load_training_config(EXAMPLE).model_copy(

@@ -15,6 +15,23 @@ if TYPE_CHECKING:
 
 def validate_training_policy(config: "TrainingConfig") -> None:
     """Validate model/method/execution choices once for the whole run."""
+    if config.wan_experts is not None:
+        if (
+            config.model.family != ModelFamily.WAN
+            or config.model.version != "2.2"
+            or config.method.kind != "flow-matching"
+        ):
+            raise ConfigRuleError(
+                "wan_experts",
+                "Paired experts require Wan2.2 flow training",
+                "Select Wan version 2.2 with flow-matching.",
+            )
+        if config.model.weights == config.wan_experts.high_noise_weights:
+            raise ConfigRuleError(
+                "wan_experts.high_noise_weights",
+                "Wan experts require distinct input weights",
+                "Provide the high-noise checkpoint.",
+            )
     if config.method.kind == "restoration" and config.train.timestep_sampling != "shifted":
         raise ConfigRuleError(
             "train.timestep_sampling",

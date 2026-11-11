@@ -27,7 +27,15 @@ class VideoPreviews:
             raise ValueError("Wan previews require preview.videos")
         self.config = config
 
-    def __call__(self, update: int, model: WanTransformer, branches: nn.Module) -> None:
+    def __call__(
+        self,
+        update: int,
+        model: WanTransformer,
+        branches: nn.Module,
+        *,
+        high_noise_model: WanTransformer | None = None,
+        high_noise_branches: nn.Module | None = None,
+    ) -> None:
         """Publish one MP4 per configured prompt with exception-safe training restoration."""
         if type(update) is not int or update < 0:
             raise ValueError("Preview update must be a nonnegative integer")
@@ -38,7 +46,11 @@ class VideoPreviews:
         with (
             sampling_precision(config.execution.precision),
             preview_context(
-                model, additional_models=(branches,), cuda_devices=(device.index or 0,) if device.type == "cuda" else ()
+                model,
+                additional_models=tuple(
+                    item for item in (branches, high_noise_model, high_noise_branches) if item is not None
+                ),
+                cuda_devices=(device.index or 0,) if device.type == "cuda" else (),
             ),
         ):
             vae = load_qwen_image_vae(Path(config.model.vae)).eval().requires_grad_(False)
@@ -49,6 +61,8 @@ class VideoPreviews:
                     vae,
                     sampling,
                     inputs,
+                    high_noise_model=high_noise_model,
+                    boundary=None if config.wan_experts is None else config.wan_experts.boundary,
                     allow_cpu_frozen=self.config.execution.offloads_frozen_weights,
                 )
                 save_video(

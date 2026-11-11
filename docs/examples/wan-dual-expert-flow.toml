@@ -1,0 +1,40 @@
+# Wan2.2 A14B paired training. model.weights is the low-noise expert.
+# Use the same dataset/cache as single-expert Wan training; cache once.
+[model]
+family = "wan"
+version = "2.2"
+variant = "t2v"
+weights = "/models/wan2.2/low_noise_model.safetensors"
+vae = "/models/wan2.2/vae.safetensors"
+text_encoder = "/models/wan2.2/umt5.safetensors"
+assets = "/models/wan2.2"
+
+[wan_experts]
+high_noise_weights = "/models/wan2.2/high_noise_model.safetensors"
+boundary = 0.875 # T2V default; for I2V use the matching model's 0.900 boundary.
+
+[dataset.groups.main]
+kind = "video"
+source = "/data/videos"
+cache_directory = "/cache/wan2.2"
+resolution = [512, 512]
+batch_size = 1
+
+[train]
+max_updates = 1000
+accumulation_steps = 2
+learning_rate = 0.0001
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[execution]
+precision = "bf16"
+recompute = "block"
+
+[output]
+directory = "/runs/wan2.2-paired"
+name = "wan"
+save_every_updates = 100

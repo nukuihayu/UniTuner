@@ -25,6 +25,12 @@ Name your copies wan-cache.toml and wan-train.toml. Wan target_frames and max_fr
 
 head extracts a window from the start; alternatives are chunk, slide, uniform and full. Combine stride/samples for multiple windows; see [defaults](parameters.md). Copy wan-single-frame-cache.toml for image training with independent condition frames instead of mixing that setup with normal video controls.
 
+### Wan 2.2 paired experts
+
+Copy the [paired training example](../../examples/wan-dual-expert-flow.toml). `model.weights` is the low-noise expert; `wan_experts.high_noise_weights` must have the same version, variant and topology. Native training time selects the high-noise expert when `t/1000 >= boundary`; A14B T2V commonly uses 0.875 and I2V 0.900, subject to the checkpoint's recipe. Each microbatch runs one expert while preserving the marginal per-sample noise distribution. Checkpoints include both experts, adapters and optimizer states. Exports are `weights/wan.safetensors` and `weights/wan.high_noise.safetensors`, including periodic versions. Previews reuse paired sampling. For LoRA generation, supply both original base weights and their separate adapters with the same boundary.
+
+Both experts reside in memory, increasing VRAM and optimizer memory. Reduce video size, use adapters or frozen-block offload as needed; whole-expert CPU swapping is not automatic. Omit `[wan_experts]` for single-expert training.
+
 ## MiniMax-H3: AV assets and records
 
 Copy minimax-h3-cache.toml and minimax-h3-train.toml. H3 consumes audio/video records; an arbitrary video directory is not a native AV JSONL input.
@@ -60,7 +66,7 @@ uv run --no-dev unituner generate-video wan-generate.toml --device cuda
 uv run --no-dev unituner generate-video h3-generate.toml --device cuda
 ```
 
-Copy wan-generate-video.toml and minimax-h3-generate.toml for inference. Fill output paths, matching bases/adapters, native frame counts and conditions. Add Wan2.2 high_noise settings only when supplying a second expert's weights.
+Copy wan-generate-video.toml and minimax-h3-generate.toml for inference. Fill output paths, matching bases/adapters, native frame counts and conditions. Wan2.2 `[high_noise]` supplies the second expert, boundary and optional `[high_noise.adapter]`.
 
 ---
 

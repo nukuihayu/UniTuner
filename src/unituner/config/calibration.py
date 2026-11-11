@@ -111,7 +111,7 @@ def calibration_document(document: dict[str, Any]) -> dict[str, Any]:
     result = dict(document)
     train = result.pop("train", {})
     method = result.pop("method", {})
-    for section in ("losses", "execution", "output", "preview", "cache"):
+    for section in ("losses", "execution", "output", "preview", "cache", "wan_experts"):
         result.pop(section, None)
     if isinstance(train, dict) and "seed" in train:
         result.setdefault("seed", train["seed"])

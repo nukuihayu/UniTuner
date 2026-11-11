@@ -142,6 +142,13 @@ batch_size = 16
 
 Alternatively pass `--cache.batch-size 16` to the cache command. Shared training TOML files can retain this table without changing training microbatches. Batch size and peer source contents participate in cache identity because batching can change floating-point rounding; rebuild after changes. Reduce the value if device memory is insufficient.
 
+## `wan_experts` (Wan 2.2 paired training only)
+
+| Parameter | Type / values | Default | Usage |
+| --- | --- | --- | --- |
+| `high_noise_weights` | string | `required` | High-noise checkpoint; `model.weights` is the low-noise checkpoint. Both topologies must match. |
+| `boundary` | number; 0 < value < 1 | `required` | Route native training time `t/1000 >= boundary` to the high-noise expert; both experts are independently updated, resumed and exported. |
+
 ## `train`
 
 | Parameter | Type / choices | Default | How to fill |

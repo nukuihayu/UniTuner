@@ -2,6 +2,8 @@
 
 from contextlib import closing
 from fractions import Fraction
+from importlib import import_module
+from itertools import cycle
 
 import av
 import numpy as np
@@ -19,7 +21,7 @@ from unituner.artifacts.formats.adapters import (
     adapter_prefixes,
     convert_adapter_keys,
 )
-from unituner.artifacts.tensors import save_tensors
+from unituner.artifacts.tensors import TensorReader, save_tensors
 from unituner.data.media.video_output import save_video
 from unituner.models.qwen_image.config.vae import QwenImageVAEConfig
 from unituner.models.qwen_image.loading import save_qwen_image_vae
@@ -288,6 +290,217 @@ seed=29
     for media in (root / "preview/previews").glob("*.mp4"):
         with av.open(str(media)) as container:
             assert len(list(container.decode(video=0))) == 5
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "sigmas", "routing"),
+    [
+        ("full", (0.2, 0.9), "batch"),
+        ("lora", (0.2, 0.9), "batch"),
+        ("full", (0.2, 0.9), "batch-real"),
+    ],
+)
+def test_wan22_trains_both_experts_and_resumes_exactly(video_assets, monkeypatch, algorithm, sigmas, routing):
+    root, _ = video_assets
+    topology = WanConfig(
+        version="2.2",
+        hidden_size=48,
+        num_heads=4,
+        num_layers=2,
+        ffn_dim=80,
+        timestep_dim=16,
+        text_dim=24,
+        text_length=7,
+    )
+    low = WanTransformer(topology)
+    high = WanTransformer(topology)
+    with torch.no_grad():
+        low.head.head.weight.normal_(std=0.03)
+        high.head.head.weight.normal_(std=0.06)
+    save_wan(low, root / "low.safetensors")
+    save_wan(high, root / "high.safetensors")
+    source = root / "source"
+    source.mkdir()
+    with Image.open(root / "image.png") as image:
+        for stem in ("a", "b"):
+            image.save(source / f"{stem}.png")
+            (source / f"{stem}.txt").write_text("cat", encoding="utf-8")
+    document = f'''[model]
+family = "wan"
+version = "2.2"
+variant = "t2v"
+assets = "{root}"
+weights = "{root / "low.safetensors"}"
+vae = "{root / "vae.safetensors"}"
+text_encoder = "{root / "text.safetensors"}"
+[wan_experts]
+high_noise_weights = "{root / "high.safetensors"}"
+boundary = 0.5
+[dataset.groups.main]
+kind = "image"
+source = "{source}"
+cache_directory = "{root / "cache"}"
+resolution = [16, 16]
+batch_size = 2
+[train]
+max_updates = 2
+learning_rate = 0.001
+seed = 29
+[execution]
+recompute = "block"
+[output]
+directory = "{root / "continuous"}"
+name = "wan"
+save_every_updates = 1
+max_resume_checkpoints = 0
+max_weight_checkpoints = 1
+'''
+    if algorithm == "lora":
+        document = document.replace(
+            "[execution]", '[train.adapter]\nalgorithm = "lora"\nrank = 2\nalpha = 2.0\n[execution]'
+        )
+    else:
+        document = document.replace("[train]\n", '[train]\nparameter_mode = "full"\n')
+    if algorithm == "full" and sigmas == (0.2, 0.9):
+        document = document.replace(
+            "[execution]",
+            "[method.layersync]\nweight = 0.1\nstudent_layer = 0\nteacher_layer = 1\n"
+            "[method.tread]\ndrop_fraction = 0.25\nstart_layer = 0\nend_layer = 2\n[execution]",
+        )
+    training = import_module("unituner.training.workflows.wan.run")
+    original_sample = training.sample_sigmas
+    original_step = training.WanBinding.cached_step
+    choices = cycle(sigmas)
+    forwards = []
+    if routing != "batch-real":
+        monkeypatch.setattr(training, "_choose_high_noise", lambda **kwargs: next(choices) == 0.9)
+
+    def cached_step(binding, records, noise, sigma, timesteps):
+        forwards.append((binding.model, len(records)))
+        return original_step(binding, records, noise, sigma, timesteps)
+
+    monkeypatch.setattr(training.WanBinding, "cached_step", cached_step)
+
+    def sample(size, *, device, grid):
+        if size == 2:
+            value = 0.9 if bool(torch.all(grid >= 0.5)) else 0.2
+            return torch.full((size,), value, device=device)
+        return original_sample(size, device=device, grid=grid)
+
+    if routing != "batch-real":
+        monkeypatch.setattr(training, "sample_sigmas", sample)
+    path = root / "train.toml"
+    path.write_text(document, encoding="utf-8")
+    with sdpa_kernel(SDPBackend.MATH):
+        assert main_with_local_tokenizers(["cache", str(path), "--device", "cpu"]) == 0
+        assert main_with_local_tokenizers(["train", str(path), "--device", "cpu"]) == 0
+    assert len(forwards) == 2 and all(size == 2 for _, size in forwards)
+    weights = root / "continuous/weights"
+    assert (weights / "wan.safetensors").is_file()
+    assert (weights / "wan.high_noise.safetensors").is_file()
+    assert not (weights / "wan-00000001.safetensors").exists()
+    assert not (weights / "wan-00000001.high_noise.safetensors").exists()
+    assert (weights / "wan-00000002.high_noise.safetensors").is_file()
+    if algorithm == "full":
+        with TensorReader(weights / "wan.safetensors") as reader:
+            low_changed = any(not torch.equal(reader.read(name), value) for name, value in low.state_dict().items())
+        with TensorReader(weights / "wan.high_noise.safetensors") as reader:
+            high_changed = any(not torch.equal(reader.read(name), value) for name, value in high.state_dict().items())
+        if routing == "batch-real":
+            assert low_changed or high_changed
+        else:
+            assert low_changed and high_changed
+    preview = (
+        document.replace(str(root / "continuous"), str(root / "preview"))
+        + """[preview]
+every_updates = 1
+at_start = true
+[[preview.videos]]
+prompt = "cat"
+negative_prompt = "bad"
+width = 16
+height = 16
+frames = 5
+fps = 12
+steps = 2
+seed = 29
+"""
+    )
+    path.write_text(preview, encoding="utf-8")
+    with sdpa_kernel(SDPBackend.MATH):
+        assert main_with_local_tokenizers(["train", str(path), "--device", "cpu"]) == 0
+    assert len(list((root / "preview/previews").glob("*.mp4"))) == 3
+    path.write_text(preview.replace(str(root / "preview"), str(root / "resumed")), encoding="utf-8")
+    choices = cycle((sigmas[1], sigmas[0]))
+    with sdpa_kernel(SDPBackend.MATH):
+        assert (
+            main_with_local_tokenizers(
+                [
+                    "train",
+                    str(path),
+                    "--device",
+                    "cpu",
+                    "--resume",
+                    str(root / "preview/resume/wan.state-00000001.safetensors"),
+                ]
+            )
+            == 0
+        )
+    for name in (
+        "weights/wan.safetensors",
+        "weights/wan.high_noise.safetensors",
+        "resume/wan.state-00000002.safetensors",
+    ):
+        expected = (root / "continuous" / name).read_bytes()
+        assert (root / "preview" / name).read_bytes() == expected
+        assert (root / "resumed" / name).read_bytes() == expected
+    low_base = weights / "wan.safetensors" if algorithm == "full" else root / "low.safetensors"
+    high_base = weights / "wan.high_noise.safetensors" if algorithm == "full" else root / "high.safetensors"
+    generation = f'''output = "{root / "paired.mkv"}"
+[model]
+family = "wan"
+version = "2.2"
+variant = "t2v"
+assets = "{root}"
+weights = "{low_base}"
+vae = "{root / "vae.safetensors"}"
+text_encoder = "{root / "text.safetensors"}"
+[sampling]
+prompt = "cat"
+negative_prompt = "bad"
+width = 16
+height = 16
+frames = 5
+fps = 12
+steps = 2
+seed = 29
+'''
+    if algorithm == "lora":
+        generation += f'''[adapter]
+weights = "{weights / "wan.safetensors"}"
+[adapter.config]
+algorithm = "lora"
+rank = 2
+alpha = 2.0
+'''
+    generation += f'''[high_noise]
+weights = "{high_base}"
+boundary = 0.5
+'''
+    if algorithm == "lora":
+        generation += f'''[high_noise.adapter]
+weights = "{weights / "wan.high_noise.safetensors"}"
+[high_noise.adapter.config]
+algorithm = "lora"
+rank = 2
+alpha = 2.0
+'''
+    generate = root / "generate-paired.toml"
+    generate.write_text(generation, encoding="utf-8")
+    with sdpa_kernel(SDPBackend.MATH):
+        assert main_with_local_tokenizers(["generate-video", str(generate), "--device", "cpu"]) == 0
+    with av.open(str(root / "paired.mkv")) as container:
+        assert len(list(container.decode(video=0))) == 5
 
 
 def test_lossless_video_quantization_and_rejected_input_keep_previous_output(tmp_path):

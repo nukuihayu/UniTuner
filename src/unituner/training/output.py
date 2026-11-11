@@ -5,6 +5,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from unituner.artifacts.atomic import atomic_output
 from unituner.config.training import TrainingConfig
@@ -28,10 +29,12 @@ def create_run_directory(root: Path, name: str) -> Path:
         return directory
 
 
-def weights_path(config: TrainingConfig, *, update: int | None = None, encoder: bool = False) -> Path:
+def weights_path(
+    config: TrainingConfig, *, update: int | None = None, encoder: bool = False, expert: Literal["low", "high"] = "low"
+) -> Path:
     """Locate consumer weights independently of exact training continuation files."""
     suffix = "" if update is None else f"-{update:08d}"
-    component = ".encoder" if encoder else ""
+    component = ".encoder" if encoder else ".high_noise" if expert == "high" else ""
     return Path(config.output.directory) / "weights" / f"{config.output.name}{suffix}{component}.safetensors"
 
 
@@ -42,11 +45,13 @@ def resume_path(config: TrainingConfig, update: int) -> Path:
 
 def publish_latest_weights(config: TrainingConfig, update: int) -> None:
     """Update latest inference files at each save boundary without rewriting tensor data."""
-    for encoder in (False, True):
-        source = weights_path(config, update=update, encoder=encoder)
+    for encoder, expert in ((False, "low"), (True, "low"), (False, "high")):
+        if expert == "high" and config.wan_experts is None:
+            continue
+        source = weights_path(config, update=update, encoder=encoder, expert=expert)
         if encoder and not source.is_file():
             continue
-        with atomic_output(weights_path(config, encoder=encoder)) as temporary:
+        with atomic_output(weights_path(config, encoder=encoder, expert=expert)) as temporary:
             temporary.unlink()
             try:
                 os.link(source, temporary)
@@ -74,6 +79,7 @@ def prune_checkpoints(config: TrainingConfig) -> None:
             path.unlink()
             if section == "weights":
                 path.with_suffix(".encoder.safetensors").unlink(missing_ok=True)
+                path.with_suffix(".high_noise.safetensors").unlink(missing_ok=True)
 
 
 def prepare_training_output(config: TrainingConfig, *, resume: Path | None = None) -> TrainingConfig:
@@ -90,6 +96,11 @@ def prepare_training_output(config: TrainingConfig, *, resume: Path | None = Non
         run_name = directory.name
     if fixed and resume is None:
         # Match literal filenames, never interpret the user-supplied name as a glob.
+        known_latest = {f"{config.output.name}.safetensors", f"{config.output.name}.encoder.safetensors"}
+        weight_suffix = r"\d{8,}(?:\.encoder)?\.safetensors"
+        if config.wan_experts is not None:
+            known_latest.add(f"{config.output.name}.high_noise.safetensors")
+            weight_suffix = r"\d{8,}(?:\.encoder|\.high_noise)?\.safetensors"
         candidates = list(directory.iterdir())
         for section in ("weights", "resume"):
             child = directory / section
@@ -98,7 +109,7 @@ def prepare_training_output(config: TrainingConfig, *, resume: Path | None = Non
         for path in candidates:
             name = path.name
             if path.is_file() and (
-                name in {f"{config.output.name}.safetensors", f"{config.output.name}.encoder.safetensors"}
+                name in known_latest
                 or (
                     name.startswith(f"{config.output.name}.state-")
                     and re.fullmatch(r"\d{8,}\.safetensors", name[len(config.output.name) + 7 :])
@@ -106,7 +117,7 @@ def prepare_training_output(config: TrainingConfig, *, resume: Path | None = Non
                 or (
                     path.parent == directory / "weights"
                     and name.startswith(f"{config.output.name}-")
-                    and re.fullmatch(r"\d{8,}(?:\.encoder)?\.safetensors", name[len(config.output.name) + 1 :])
+                    and re.fullmatch(weight_suffix, name[len(config.output.name) + 1 :])
                 )
             ):
                 path.unlink()

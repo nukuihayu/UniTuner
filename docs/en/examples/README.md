@@ -63,6 +63,7 @@ Training examples include training settings; cache-only examples need only encod
 | Krea2 | [krea2-flow.toml](../../examples/krea2-flow.toml) | RAW/Turbo must match weights |
 | Wan caching | [wan-cache.toml](../../examples/wan-cache.toml), [single-frame cache](../../examples/wan-single-frame-cache.toml) | Video and independent condition-frame caches |
 | Wan training | [wan-flow.toml](../../examples/wan-flow.toml), [with previews](../../examples/wan-flow-preview.toml) | Native video training |
+| Wan 2.2 paired experts | [wan-dual-expert-flow.toml](../../examples/wan-dual-expert-flow.toml) | Train and export high/low noise experts together |
 | H3 caching | [minimax-h3-cache.toml](../../examples/minimax-h3-cache.toml) | Native AV JSONL; full AV VAE assets |
 | H3 training | [minimax-h3-train.toml](../../examples/minimax-h3-train.toml), [with previews](../../examples/minimax-h3-train-preview.toml) | Existing caches, optional AV previews |
 

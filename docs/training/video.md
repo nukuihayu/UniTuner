@@ -25,6 +25,12 @@ uv run --no-dev unituner train wan-train.toml --device cuda
 
 提取策略 head 从开头取窗口；其他可选值为 chunk、slide、uniform、full。需要多个窗口时结合 stride/samples，具体默认值见[参数表](parameters.md)。独立条件帧的图片训练复制 `wan-single-frame-cache.toml`，不要混入普通视频控制目录。
 
+### Wan 2.2 双专家
+
+复制[双专家示例](../examples/wan-dual-expert-flow.toml)：`model.weights` 是低噪声模型，`wan_experts.high_noise_weights` 是同一版本/变体/结构的高噪声模型。`boundary` 按原生训练时间 `t/1000 >= boundary` 选择高噪声专家；A14B T2V 常用 0.875，I2V 常用 0.900，具体仍应匹配权重配方。每个 microbatch 只运行一个专家，保持单样本噪声边缘分布，避免双模型前向。两套模型、适配器和优化器状态一起保存在续训检查点；输出为 `weights/wan.safetensors` 与 `weights/wan.high_noise.safetensors`（以及对应按步文件）。预览和 `generate-video` 用两套模型与相同边界生成；LoRA 推理需分别指定原始底模与两个适配器。
+
+双模型同时驻留，显存及优化器内存高于单专家训练；可降低分辨率/帧数、使用适配器及冻结块卸载。不会自动交换整个专家到 CPU。只训练单专家时不填写 `[wan_experts]`。
+
 ## MiniMax-H3：准备 AV 资产和记录
 
 复制 `minimax-h3-cache.toml` 与 `minimax-h3-train.toml`。H3 使用音视频记录，不能将任意视频目录直接当成原生 AV JSONL。
@@ -60,7 +66,7 @@ uv run --no-dev unituner generate-video wan-generate.toml --device cuda
 uv run --no-dev unituner generate-video h3-generate.toml --device cuda
 ```
 
-推理配置分别复制 `wan-generate-video.toml` 和 `minimax-h3-generate.toml`。填写输出文件、同一底模、适配器、原生采样帧数和条件。Wan2.2 双专家生成的 high_noise 设置只在需要第二个专家权重时添加。
+推理配置分别复制 `wan-generate-video.toml` 和 `minimax-h3-generate.toml`。填写输出文件、同一底模、适配器、原生采样帧数和条件。Wan2.2 双专家生成的 `[high_noise]` 填写高噪声模型、边界及可选的 `[high_noise.adapter]`。
 
 ---
 

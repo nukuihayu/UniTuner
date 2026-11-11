@@ -63,6 +63,7 @@
 | Krea2 | [krea2-flow.toml](krea2-flow.toml) | RAW／Turbo 须匹配权重 |
 | Wan 缓存 | [wan-cache.toml](wan-cache.toml)、[wan-single-frame-cache.toml](wan-single-frame-cache.toml) | 视频与独立条件帧缓存 |
 | Wan 训练 | [wan-flow.toml](wan-flow.toml)、[wan-flow-preview.toml](wan-flow-preview.toml) | 不带／带视频预览 |
+| Wan 2.2 双专家 | [wan-dual-expert-flow.toml](wan-dual-expert-flow.toml) | 高低噪声专家同训，分别输出权重 |
 | H3 缓存 | [minimax-h3-cache.toml](minimax-h3-cache.toml) | 原生 AV JSONL，需完整音视频编码器 |
 | H3 训练 | [minimax-h3-train.toml](minimax-h3-train.toml)、[minimax-h3-train-preview.toml](minimax-h3-train-preview.toml) | 已有缓存训练／带 AV 预览 |
 
