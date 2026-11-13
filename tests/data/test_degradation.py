@@ -116,7 +116,7 @@ def test_scale_parameter_is_strictly_bounded(scale):
 def test_resize_uses_phase_stable_integer_grid(mode):
     source = np.random.default_rng(3).random((101, 99, 3), dtype=np.float32)
     target = (61, 60)
-    actual = _resize(source, *target, np.random.default_rng(0), mode=mode)
+    actual = _resize(source, *target, np.random.default_rng(0), mode=mode, second_stage=True)
     reference = (
         F.interpolate(
             torch.from_numpy(source).permute(2, 0, 1)[None],
@@ -140,15 +140,34 @@ def test_phase_fix_differs_from_float_scale_factor_on_odd_grids():
     assert np.max(np.abs(fixed - old)) > 1e-3
 
 
-def test_nearest_is_available_only_for_downscaling():
+def test_blocky_modes_are_only_available_for_second_stage_micro_resizing():
     source = np.random.default_rng(5).random((101, 99, 3), dtype=np.float32)
-    assert "nearest" in _resize_modes_for_shape(source, 61, 60)
-    assert "nearest" in _resize_modes_for_shape(source, 101, 60)
-    assert "nearest" not in _resize_modes_for_shape(source, 101, 99)
-    assert "nearest" not in _resize_modes_for_shape(source, 102, 100)
-    assert "nearest" not in _resize_modes_for_shape(source, 100, 100)
-    with pytest.raises(ValueError, match="only supported for downscaling"):
+    for shape in ((61, 60), (101, 60), (101, 99), (102, 100)):
+        assert _resize_modes_for_shape(source, *shape) == ("bilinear", "bicubic")
+        assert _resize_modes_for_shape(source, *shape, second_stage=True) == (
+            "area", "bilinear", "bicubic", "nearest"
+        )
+    with pytest.raises(ValueError, match="restricted to the second stage"):
         _resize(source, 202, 198, np.random.default_rng(0), mode="nearest")
+    with pytest.raises(ValueError, match="restricted to the second stage"):
+        _resize(source, 202, 198, np.random.default_rng(0), mode="area")
+    assert _resize(source, 102, 100, np.random.default_rng(0), mode="nearest", second_stage=True).shape == (102, 100, 3)
+
+
+def test_pipeline_never_uses_blocky_modes_for_delivery_or_final_alignment(monkeypatch):
+    from unituner.data.degradation import pipeline
+
+    calls = []
+    original = pipeline._resize
+
+    def track(image, height, width, rng, **options):
+        calls.append(((height, width), options.get("second_stage", False)))
+        return original(image, height, width, rng, **options)
+
+    monkeypatch.setattr(pipeline, "_resize", track)
+    degrade_pair(torch.rand(3, 64, 64), DegradationConfig(scale=4), 17)
+    assert [second_stage for _, second_stage in calls] == [False, True, False, False]
+    assert calls[-1][0] == (64, 64)
 
 
 def test_scale_range_is_continuous_deterministic_and_uses_integer_grid():

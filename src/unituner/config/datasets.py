@@ -127,6 +127,7 @@ class DatasetConfig(CacheDatasetConfig):
     """Add training-only aligned/synthetic restoration inputs."""
 
     low_quality_source: str | None = None
+    sampling_weight: int = Field(default=1, gt=0)
     degradation: DegradationConfig | None = None
     horizontal_flip_probability: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
 
@@ -134,6 +135,11 @@ class DatasetConfig(CacheDatasetConfig):
     def validate_restoration_sources(self) -> Self:
         """Reject incomplete or ambiguous restoration training inputs."""
         synthetic = self.degradation is not None and self.degradation.enabled
+        if self.kind != "restoration" and self.sampling_weight != 1:
+            raise ConfigRuleError(
+                "sampling_weight", "Weighted group sampling is supported only for restoration",
+                "Use kind='restoration' or remove sampling_weight.",
+            )
         if self.kind != "restoration" and (self.degradation is not None or self.low_quality_source is not None):
             raise ConfigRuleError(
                 "kind",

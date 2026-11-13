@@ -62,15 +62,28 @@ class EpochBatches[T]:
 class DatasetBatches[T]:
     """Shuffle independent dataset batches together without combining their partial tails."""
 
-    def __init__(self, plans: Mapping[str, EpochBatches[T]], *, seed: int) -> None:
+    def __init__(
+        self, plans: Mapping[str, EpochBatches[T]], *, seed: int, batch_weights: Mapping[str, int] | None = None
+    ) -> None:
         if not plans:
             raise ValueError("Dataset batches require at least one dataset")
+        if batch_weights is not None and (
+            set(batch_weights) != set(plans) or any(type(weight) is not int or weight < 1 for weight in batch_weights.values())
+        ):
+            raise ValueError("Dataset batch weights require positive integers for every group")
         self._plans = dict(plans)
+        self._batch_weights = dict(batch_weights) if batch_weights is not None else None
         self._seed = seed
         self._epoch = -1
         self._order: list[tuple[str, int]] = []
-        self.num_batches = sum(plan.num_batches for plan in plans.values())
-        self.num_samples = sum(plan.num_samples for plan in plans.values())
+        self.num_batches = (
+            sum(batch_weights.values()) if batch_weights is not None else sum(plan.num_batches for plan in plans.values())
+        )
+        self.num_samples = (
+            sum(plan.samples_before(batch_weights[name]) for name, plan in plans.items())
+            if batch_weights is not None
+            else sum(plan.num_samples for plan in plans.values())
+        )
 
     def batch(self, microbatch: int) -> tuple[str, tuple[T, ...]]:
         """Return a named group and its batch at an exact resumable cursor."""
@@ -78,16 +91,26 @@ class DatasetBatches[T]:
             raise ValueError("Microbatch cursor must be nonnegative")
         epoch, offset = divmod(microbatch, self.num_batches)
         if epoch != self._epoch:
-            self._order = [(name, index) for name, plan in self._plans.items() for index in range(plan.num_batches)]
+            self._order = [
+                (name, index)
+                for name, plan in self._plans.items()
+                for index in range(self._batch_weights[name] if self._batch_weights is not None else plan.num_batches)
+            ]
             random.Random(self._seed + epoch).shuffle(self._order)
             self._epoch = epoch
         name, index = self._order[offset]
         plan = self._plans[name]
-        return name, plan.batch(epoch * plan.num_batches + index)
+        cycle_count = self._batch_weights[name] if self._batch_weights is not None else plan.num_batches
+        return name, plan.batch(epoch * cycle_count + index)
 
     def samples_before(self, microbatches: int) -> int:
         """Count completed samples including independent short tails in every dataset."""
         if microbatches < 0:
             raise ValueError("Microbatch cursor must be nonnegative")
         epochs, tail = divmod(microbatches, self.num_batches)
+        if self._batch_weights is not None:
+            completed = sum(
+                plan.samples_before(epochs * self._batch_weights[name]) for name, plan in self._plans.items()
+            )
+            return completed + sum(len(self.batch(epochs * self.num_batches + i)[1]) for i in range(tail))
         return epochs * self.num_samples + sum(len(self.batch(epochs * self.num_batches + i)[1]) for i in range(tail))

@@ -66,6 +66,19 @@ class RestorationPreviews:
                 PreviewSample(pair, config.train.seed + position, group.resolution, group.horizontal_flip_probability)
             )
         self.samples = tuple(samples)
+        self.group_weights = {name: getattr(group, "sampling_weight", 1) for name, group in config.dataset.groups.items()}
+        self.weighted_slots: tuple[tuple[str, int], ...] = ()
+        self.group_samples: dict[str, tuple[PreviewSample, ...]] = {}
+        if any(weight != 1 for weight in self.group_weights.values()):
+            self.weighted_slots = tuple(
+                (name, offset) for name, weight in self.group_weights.items() for offset in range(weight)
+            )
+            for name, group in config.dataset.groups.items():
+                path = Path(group.cache_directory)
+                selected = tuple(sample for sample in self.samples if sample.pair.cache_directory == path)
+                if not selected:
+                    raise ValueError(f"No restoration preview samples in weighted group {name}")
+                self.group_samples[name] = selected
         self.dataset = dataset
         self.preview = preview
         self.seed = config.train.seed
@@ -79,6 +92,16 @@ class RestorationPreviews:
         round_index = max(
             0, (update + self.preview.every_updates - 1) // self.preview.every_updates - int(not self.preview.at_start)
         )
+        if self.weighted_slots:
+            slots = len(self.weighted_slots)
+            selected_samples = []
+            for offset in range(count):
+                selected = round_index * count + offset
+                name, slot_offset = self.weighted_slots[selected % slots]
+                group_samples = self.group_samples[name]
+                position = (selected // slots * self.group_weights[name] + slot_offset) % len(group_samples)
+                selected_samples.append((selected, group_samples[position]))
+            return tuple(selected_samples)
         indices = ((round_index * count + index) % len(self.samples) for index in range(count))
         return tuple((index, self.samples[index]) for index in indices)
 

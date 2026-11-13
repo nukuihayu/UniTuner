@@ -65,6 +65,20 @@ def test_pages_are_repeat_independent_and_resume_from_update(tmp_path, at_start,
     assert random.getstate() == before
 
 
+def test_weighted_previews_follow_group_ratio_even_with_one_image_per_update(tmp_path):
+    config, dataset, _ = fixture(tmp_path, count=1)
+    config.dataset.groups["a"].sampling_weight = 9
+    config.dataset.groups["b"].sampling_weight = 1
+    preview = RestorationPreviews(config, dataset)
+    names = [
+        "a" if sample.pair.cache_directory == config.dataset.groups["a"].cache_directory else "b"
+        for update in range(0, 200, 10)
+        for _, sample in preview.select(update)
+    ]
+    assert names == (["a"] * 9 + ["b"]) * 2
+    assert preview.select(90) == RestorationPreviews(config, dataset).select(90)
+
+
 def test_render_uses_original_group_options_and_publishes_comparison(tmp_path, monkeypatch):
     from unituner.training.previews import restoration
 

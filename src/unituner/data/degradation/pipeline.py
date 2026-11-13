@@ -21,7 +21,8 @@ from unituner.data.degradation.diffjpeg import diffjpeg
 
 type Pixels = NDArray[np.float32]
 
-_RESIZE_MODES = ("area", "bilinear", "bicubic", "nearest")
+_RESIZE_MODES = ("bilinear", "bicubic")
+_SECOND_STAGE_RESIZE_MODES = ("area", "bilinear", "bicubic", "nearest")
 _KERNEL_SIZES = tuple(range(11, 42, 2))
 _KERNEL_MAX = 41
 _KERNEL_MID = 25
@@ -104,10 +105,9 @@ def _filter(image: Pixels, kernel: Pixels) -> Pixels:
     return F.conv2d(value, weight, groups=3)[0].permute(1, 2, 0).contiguous().numpy()
 
 
-def _resize_modes_for_shape(image: Pixels, height: int, width: int) -> tuple[str, ...]:
-    source_height, source_width = image.shape[:2]
-    downscaling = height <= source_height and width <= source_width and (height < source_height or width < source_width)
-    return _RESIZE_MODES if downscaling else _RESIZE_MODES[:-1]
+def _resize_modes_for_shape(image: Pixels, height: int, width: int, *, second_stage: bool = False) -> tuple[str, ...]:
+    """Keep block-preserving interpolation inside the small second-stage resize only."""
+    return _SECOND_STAGE_RESIZE_MODES if second_stage else _RESIZE_MODES
 
 
 def _resize(
@@ -117,14 +117,15 @@ def _resize(
     rng: np.random.Generator,
     *,
     mode: str | None = None,
+    second_stage: bool = False,
 ) -> Pixels:
     """Resize on the integer grid so repeated half-pixel mappings compose."""
-    available = _resize_modes_for_shape(image, height, width)
+    available = _resize_modes_for_shape(image, height, width, second_stage=second_stage)
     selected = str(rng.choice(available)) if mode is None else mode
-    if selected not in _RESIZE_MODES:
+    if selected not in _SECOND_STAGE_RESIZE_MODES:
         raise ValueError(f"Unsupported OMGSR resize mode: {selected}")
     if selected not in available:
-        raise ValueError("Nearest resize is only supported for downscaling")
+        raise ValueError("Area and nearest resize are restricted to the second stage")
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)[None]
     return (
         F.interpolate(
@@ -297,7 +298,7 @@ def degrade_pair(
     resize_rng, noise_rng, codec_rng = streams[5:8]
     factor = _resize_scale(settings.second, resize_rng)
     requested = (max(1, int(target[0] * factor)), max(1, int(target[1] * factor)))
-    image = _resize(image, *requested, resize_rng)
+    image = _resize(image, *requested, resize_rng, second_stage=True)
     record("resize", image, stage=2, factor=factor, requested_shape=list(requested))
     image = add_noise(image, settings.second.noise, noise_rng, trace=trace)
 

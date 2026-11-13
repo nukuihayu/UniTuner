@@ -46,6 +46,7 @@ def test_groups_inherit_defaults_and_explicit_values_win():
         {"resolution": [0, 512]},
         {"repeats": 0},
         {"batch_siz": 2},
+        {"sampling_weight": 0},
     ],
 )
 def test_each_group_is_validated(changes):
@@ -121,6 +122,34 @@ def test_independent_batches_preserve_repeats_short_tails_and_resume():
     assert [resumed.batch(index) for index in range(7, 20)] == expected[7:]
     assert resumed.samples_before(13) == sum(len(batch) for _, batch in expected[:13])
     assert expected[:4] != expected[4:8]
+
+
+def test_weighted_batches_follow_group_ratio_and_resume_exactly():
+    def plan():
+        return DatasetBatches(
+            {
+                "hr": EpochBatches({(0,): ["h0", "h1", "h2"]}, batch_size=2, seed=42),
+                "face": EpochBatches({(0,): ["f0", "f1"]}, batch_size=1, seed=42),
+            },
+            seed=42,
+            batch_weights={"hr": 9, "face": 1},
+        )
+
+    continuous = plan()
+    assert continuous.num_batches == 10
+    expected = [continuous.batch(index) for index in range(30)]
+    assert Counter(name for name, _ in expected) == {"hr": 27, "face": 3}
+    assert [plan().batch(index) for index in range(11, 30)] == expected[11:]
+    assert all(continuous.samples_before(index) == sum(len(batch) for _, batch in expected[:index]) for index in range(31))
+    with pytest.raises(ValueError, match="positive integers"):
+        DatasetBatches({"hr": EpochBatches({(0,): [1]}, batch_size=1, seed=0)}, seed=0, batch_weights={"hr": 0})
+
+
+def test_sampling_weight_requires_restoration_group():
+    values = document()
+    values["dataset"]["groups"]["landscapes"]["sampling_weight"] = 9
+    with pytest.raises(ConfigError, match="sampling_weight"):
+        load_training_config(overrides=values)
 
 
 def test_group_order_is_part_of_resume_identity():

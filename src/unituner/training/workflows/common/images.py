@@ -177,6 +177,11 @@ def train(
                 for name, data in config.dataset.groups.items()
             },
             seed=config.train.seed,
+            batch_weights=(
+                {name: data.sampling_weight for name, data in config.dataset.groups.items()}
+                if any(data.sampling_weight != 1 for data in config.dataset.groups.values())
+                else None
+            ),
         )
     )
     status("[train] Hashing model artifacts for checkpoint identity (large files may take a while)")
