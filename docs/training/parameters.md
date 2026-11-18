@@ -1,0 +1,643 @@
+# 配置参数与填写手册
+
+[English](../en/training/parameters.md) · [训练教程](README.md)
+
+下表默认值来自当前配置定义。默认值不代表适用于所有模型的推荐配方。`null` 表示省略该字段，TOML 不支持填写 null。表只在对应任务需要时添加；“必填”指添加该表后该字段必填。将 NAME 换成 main 等 ASCII 标识符。
+
+首次填写只需改路径、模型变体、数据尺寸、学习率、rank、更新数和保存周期。其他默认参数可以省略；详细示例把常用可调项展开以便学习。
+
+## 按职责查参数
+
+| 范围 | 参数位置 |
+| --- | --- |
+| 模型与数据 | [模型](#model) · [文本](#modeltext) · [数据组](#datasetgroupsname) |
+| 训练 | [更新](#train) · [适配器](#trainadapter) · [优化器](#trainoptimizer) · [方法](#method) |
+| 执行与产物 | [执行](#execution) · [输出](#output) · [预览](#preview) · [运行时](#runtime) |
+| 修复 | [修复方法](#methodrestoration) · [损失](#losses) · [退化](#degradationconfig) |
+| 辅助目标 | [LayerSync](#methodlayersync) · [TREAD](#methodtread) · [REPA](#methodrepa) · [小波](#methodwavelet) |
+
+命令选择与覆盖规则见 [TOML 与 CLI](../configuration.md)，报错处理见[故障排查](../troubleshooting.md)。
+
+## TOML 与 CLI 填写规则
+
+字符串加引号，布尔值写 true/false，数值不加引号，数组写方括号。相对路径以命令工作目录为基准；Windows 可用正斜杠或单引号路径。修改已有表中的字段，不重复追加同名表。
+
+```toml
+[train]
+learning_rate = 5e-5
+accumulation_steps = 4
+
+[output]
+name = "portrait-lora"
+# directory = "runs/portrait-lora"
+# tensorboard = "runs/tensorboard"
+```
+
+```bash
+uv run unituner train train.toml --device cuda --train.learning-rate 5e-5
+uv run unituner train train.toml --device cuda --set 'dataset.groups.main.batch_size=1'
+```
+
+## `model`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `family` | "z-image", "moss-image", "flux", "flux2", "flux3", "qwen-image", "qwen-image-2-1", "krea2", "wan", "minimax-h3", "minimax-h3-image" | `必填` | 模型家族；先按实际权重选择，再填写对应 variant/version。 |
+| `variant` | string | `必填` | 权重变体，如 base/turbo、dev、original；不能仅改名称来切换底模。 |
+| `version` | "dev", "klein-4b", "klein-9b", "2.1", "2.2" / null | `null` | 仅 FLUX.2 与 Wan 填写；分别选择 dev/klein-4b/klein-9b 或 2.1/2.2。 |
+| `vae` | string / null | `null` | 匹配该家族的本地 VAE 权重；缓存、预览和推理需要。 |
+| `text_encoder` | string / null | `null` | 本地文本编码器文件或目录；分词器来源单独配置。 |
+| `assets` | string / null | `null` | 辅助资产根目录；FLUX 的 CLIP 位于 text_encoder/，Wan2.1 I2V 的图像编码器位于 image_encoder/model.safetensors。 |
+| `text` | object | `子表默认值` | 文本编码精度、量化和分词器来源子表；编码器权重路径仍在 model.text_encoder。 |
+| `minimax_h3` | object / null | `null` | H3 音视频和 H3-Image 的编码资产；数据／方法子表仅用于 H3 音视频。 |
+| `pdd_config` | string / null | `null` | H3-Image 训练和推理必填的 PDD sigma 时间表路径。 |
+| `pdd_heads` | string / null | `null` | 官方 H3-Image 六步融合输出头；使用原始 transformer 权重时需要。 |
+| `image_topology` | object / null | `null` | H3-Image 非标准去噪器结构覆盖；标准模型省略。 |
+| `text_source_format` | "auto", "transformers", "qwen" / null | `null` | 省略时按权重键名自动识别；可显式限定 transformers/qwen。 |
+| `weights` | string | `必填` | 本地权重文件、分片索引或支持的模型目录；替换为实际路径。 |
+
+## `model.text`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `tokenizer` | object | `子表默认值` | 使用下方 tokenizer 表结构；clip_tokenizer 供 FLUX CLIP，processor 供 Qwen 编辑。 |
+| `clip_tokenizer` | object / null | `null` | 使用下方 tokenizer 表结构；clip_tokenizer 供 FLUX CLIP，processor 供 Qwen 编辑。 |
+| `processor` | object / null | `null` | 使用下方 tokenizer 表结构；clip_tokenizer 供 FLUX CLIP，processor 供 Qwen 编辑。 |
+| `max_length` | integer / null | `null` | 文本 token 上限；只对支持覆盖的家族填写，其他家族使用固定预算。 |
+| `precision` | "fp32", "fp16", "bf16" / null | `null` | 计算精度；训练 auto 按底模解析，CUDA 可显式 bf16，CPU 流程用 fp32。 |
+| `quantization` | "none", "fp8", "convrot-int8", "float8_e4m3fn", "float8_e5m2", "mxfp8", "nvfp4", "int8_tensorwise", "int8_rowwise", "int8_convrot", "convrot_w4a4", "convrot_w4a8", "asym_w4a8_int8", "w6a8_int8" | `"none"` | 冻结基模/文本权重的存储量化布局；none 关闭，底模量化仅用于 adapter。 |
+| `quantization_rotation_size` | integer；≥ 4 | `256` | 支持旋转布局的旋转块大小；使用该布局要求的合法尺寸。 |
+| `quantization_group_size` | integer；≥ 4 | `16` | 分组量化大小；必须满足该格式及权重形状的整除要求。 |
+
+## `model.text.tokenizer`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `source` | string / null | `null` | 分词器本地目录或 Hub 仓库 ID；省略使用该模型默认来源。 |
+| `subfolder` | string / null | `null` | 来源中的相对子目录，如 tokenizer；本地目录已直接指向分词器时通常省略。 |
+| `revision` | string / null | `null` | Hub 来源的分支/标签/commit；正式实验可固定 commit，离线需本地已有该版本。 |
+| `offline` | boolean | `false` | true 仅读取本地目录/缓存；false 允许下载分词器文件，不自动下载编码器权重。 |
+
+## `dataset.defaults`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `batch_size` | integer；> 0 | `1` | 每个 microbatch 的样本数；显存不足先减此项。 |
+| `repeats` | integer；> 0 | `1` | 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。 |
+| `resolution` | [宽, 高] 或 [[宽, 高], ...] | `[1024, 1024]` | 单档面积预算，或每张图按列表各档生成训练样本；每档独立分桶及缓存子目录。列表须非空、不能重复；多尺度用于生成/编辑训练。 |
+| `enable_bucket` | boolean | `true` | 按宽高比分桶；关闭时使用固定 resolution 裁剪。 |
+| `bucket_no_upscale` | boolean | `false` | 避免将小图放大到较大 bucket；小图可能落入更小的桶。 |
+| `prompt` | string / null | `null` | 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。 |
+| `caption_extension` | string / null | `null` | 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。 |
+
+## `dataset.groups.NAME`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `batch_size` | integer；> 0 | `1` | 每个 microbatch 的样本数；显存不足先减此项。 |
+| `repeats` | integer；> 0 | `1` | 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。 |
+| `resolution` | [宽, 高] 或 [[宽, 高], ...] | `[1024, 1024]` | 单档面积预算，或每张图按列表各档生成训练样本；每档独立分桶及缓存子目录。列表须非空、不能重复；多尺度用于生成/编辑训练。 |
+| `enable_bucket` | boolean | `true` | 按宽高比分桶；关闭时使用固定 resolution 裁剪。 |
+| `bucket_no_upscale` | boolean | `false` | 避免将小图放大到较大 bucket；小图可能落入更小的桶。 |
+| `prompt` | string / null | `null` | 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。 |
+| `caption_extension` | string / null | `null` | 提示词侧文件扩展名，包含点，如 .txt；未设 prompt 时使用。 |
+| `reference_sources` | [string, …] | `[]` | 有序参考图目录列表；与目标同名主体匹配，仅供支持参考条件的变体使用。 |
+| `reference_resolution` | [int, int] / null | `null` | Qwen2.1 独立参考图面积预算（宽×高）；按参考长宽比分桶，32 对齐；省略时使用数据集预算按自身尺寸分桶，同尺寸配对与目标对齐。 |
+| `control_source` | string / null | `null` | Wan 对齐控制目录；其他家族不使用。 |
+| `mask_source` | string / null | `null` | FLUX Fill 掩码目录；文件主体需匹配目标。 |
+| `layer_sources` | [string, …] | `[]` | Qwen layered 的前景层目录列表，与合成目标按主体对应。 |
+| `kind` | "image", "video", "restoration" | `"image"` | 任务或输入类型；数据用 image/video/restoration，训练方法用 flow-matching/restoration。 |
+| `video` | object / null | `null` | 视频窗口与帧率子表；仅 kind=video 时添加。 |
+| `wan` | object / null | `null` | Wan 条件帧子表；单帧 I2V 使用 single_frame。 |
+| `minimax_h3` | object / null | `null` | H3 专属子表；模型表填编码资产，数据表填音频处理，方法表填时间与条件策略。 |
+| `source` | string | `必填` | 数据源目录或该模型要求的记录文件；改动内容后重建缓存。 |
+| `cache_directory` | string | `必填` | 该组独立的缓存目录；不同组不能指向同一路径。 |
+| `low_quality_source` | string / null | `null` | 修复输入 LQ 目录，与 source 的 HQ 按文件主体配对；不同时开启合成退化。 |
+| `degradation` | object / null | `null` | 合成 LQ 的两阶段退化子表；与同组 low_quality_source 互斥。 |
+| `horizontal_flip_probability` | number；≥ 0, ≤ 1 | image/video：`0.0`；restoration：`0.5` | target/control/参考图/遮罩/图层同步翻转概率。图片与视频在缓存时确定；修改概率或 seed 后重新 cache。 |
+
+## `dataset.groups.NAME.video`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `target_frames` | [integer, …] | `[81]` | 训练窗口目标帧数列表；Wan 为 1+4k，H3 为 17n+5。 |
+| `extraction` | "head", "chunk", "slide", "uniform", "full" | `"head"` | 视频窗口提取 head/chunk/slide/uniform/full；决定从同一视频生成哪些窗口。 |
+| `stride` | integer；> 0 | `1` | 视频滑动/提取的步长，必须为正整数。 |
+| `samples` | integer；> 0 | `1` | 视频 uniform 模式采样窗口数；preview.samples 则为图像采样配置列表。 |
+| `max_frames` | integer；> 0 | `129` | 视频处理帧数上限；Wan 仍须 1+4k，H3 至少 5。 |
+| `source_fps` | number / null | `null` | fractional 重采样的显式源帧率；timestamps 模式省略此项。 |
+| `target_fps` | number；> 0 | `16.0` | 缓存重采样目标帧率；H3 必须 24.0。 |
+| `fps_resampling` | "fractional", "timestamps" | `"fractional"` | fractional 使用分数索引；timestamps 使用解码时间戳，H3 要求后者。 |
+
+## `cache`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `batch_size` | integer；> 0 | `1` | 缓存编码批大小，独立于 dataset 的训练 batch_size。目前仅 Z-Image 支持大于 1：连续同尺寸图片批量编码 VAE 与文本，尾批可少于此值。其他家族保持 1。 |
+
+```toml
+[cache]
+batch_size = 16
+```
+
+也可仅在缓存命令中设置 `--cache.batch-size 16`。共享训练 TOML 可保留此表，不改变训练 microbatch。批大小和批次源内容计入缓存身份，批量结果可能有浮点舍入差异；修改后重建缓存。显存不足时降低该值。
+
+## `wan_experts`（仅 Wan 2.2 双专家训练）
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `high_noise_weights` | string | `必填` | 高噪声专家权重；`model.weights` 为低噪声专家，两者结构须一致。 |
+| `boundary` | number；0 < 值 < 1 | `必填` | 原生训练时间 `t/1000 >= boundary` 走高噪声专家；两个专家在同一运行中独立更新、续训和导出。 |
+
+## `train`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `parameter_mode` | "adapter", "full" | `"adapter"` | adapter 训练适配器；full 更新底模并删除 train.adapter。 |
+| `adapter` | object / null | `null` | 适配器设置；训练在 train.adapter 填算法，推理在 adapter 填 weights 和 config。 |
+| `include_layers` | [string, …] | `[]` | 原生层/模块/参数 glob；空数组选择所有合格目标，不使用 ComfyUI 导出键。 |
+| `exclude_layers` | [string, …] | `[]` | 在 include_layers 之后排除匹配目标，排除规则优先。 |
+| `learning_rate` | number；≥ 0 | `0.0001` | AdamW 基础学习率；先固定数据与 rank，再根据预览和损失调整。 |
+| `weight_decay` | number；≥ 0 | `0.01` | AdamW 解耦权重衰减；0 关闭，不是学习率。 |
+| `optimizer` | object | `子表默认值` | AdamW 实现与数值选项子表，常规训练使用默认值。 |
+| `max_updates` | integer；> 0 | `1000` | 有效优化器更新总数；梯度累积的 microbatch 不单独计数。 |
+| `accumulation_steps` | integer；> 0 | `1` | 每次有效更新累计的 microbatch 数；降低单批显存需求但会增加一次更新耗时。 |
+| `max_grad_norm` | number；≥ 0 | `1.0` | 全局梯度范数裁剪阈值；0 关闭。 |
+| `seed` | integer | `42` | 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。 |
+| `skip_dataset_validation` | boolean | `false` | 图像训练启动时信任已有缓存，跳过完整数据内容校验；保留清单、配对、模型与形状检查。 |
+| `dataset_validation_workers` | integer; 1..32 | `4` | 并行校验线程数，1 为串行；任务有界排队，不改变样本顺序和续训标识。 |
+| `lr_schedule` | "constant", "linear", "cosine" | `"constant"` | constant 固定、linear 线性衰减、cosine 余弦衰减；均支持 warmup。 |
+| `warmup_updates` | integer；≥ 0 | `0` | 学习率线性预热的有效更新数；必须小于 max_updates。 |
+| `timestep_sampling` | "shifted", "uniform" | `"shifted"` | Flow 训练默认使用各模型固定移位时间步；uniform 使用连续均匀 σ，不接受数值倍率。 |
+
+图像／Wan 的 shifted 模式从 1000 点 FP32 网格均匀抽索引。默认倍率：FLUX.1／Z-Image 为 3，Wan 为 5，FLUX3 为 6.93，FLUX.2／Qwen／Qwen2.1／Krea2 使用 μ=0.8（倍率 exp(μ)），MOSS 为 1；Qwen 网格末端 σ=0.02。此选项不添加 loss 加权，也不改变推理时间表。H3 保留成对的音视频 shift，uniform 将有效训练倍率均设为 1。固定时间步图像恢复使用自己的 σ／校准配置。时间步类型参与续训身份，恢复训练时应保持一致。
+
+## `train.adapter`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `algorithm` | "lora", "loha", "lokr" | `"lora"` | 适配器算法 lora/loha/lokr；推理时与训练保持一致。 |
+| `fused` | boolean | `true` | 融合适用的 CUDA LoRA 缩放与残差相加，保留中间精度舍入；同时允许编译器联合优化冻结底模与 LoRA 分支。通常保持默认。 |
+| `rank` | integer；> 0 | `32` | 适配器容量，必须为正整数；增大会增加参数、优化器内存和文件体积。 |
+| `alpha` | number；> 0 | `32.0` | 适配器缩放参数；普通 LoRA 使用 alpha/rank，常以 alpha=rank 起步。 |
+
+## `train.optimizer`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `betas` | [number, number]；length ≥ 2, length ≤ 2 | `[0.9, 0.999]` | AdamW 一阶/二阶矩衰减系数，两个数均在 [0,1)。 |
+| `eps` | number；> 0 | `1e-08` | AdamW 分母稳定项，必须大于 0；通常保留 1e-8。 |
+| `backend` | "auto", "fused", "foreach", "single" | `"auto"` | auto 自动选择优化器实现；fused/foreach/single 显式指定后端。 |
+| `implementation` | "torch", "adv_optm" | `"torch"` | Advanced Optimizers AdamW 随基础依赖安装；默认仍使用 PyTorch AdamW。 |
+| `state_precision` | "fp32", "bf16_sr", "int8_sr" | `"fp32"` | Advanced Optimizers 的动量状态存储精度；压缩状态以数值精度换取显存。需要 `implementation = "adv_optm"`。 |
+| `factored_2nd` | boolean | `false` | 将大参数的二阶矩分解存储；需要 `implementation = "adv_optm"`，会改变优化器计算。 |
+
+## `method`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `kind` | "flow-matching", "restoration" | `"flow-matching"` | 任务或输入类型；数据用 image/video/restoration，训练方法用 flow-matching/restoration。 |
+| `layersync` | object / null | `null` | 流匹配层间特征自监督；填写 weight 与学生/教师层索引。 |
+| `repa` | object / null | `null` | 流匹配特征对齐；需要特征编码器、真实摘要与独立特征缓存。 |
+| `tread` | object / null | `null` | 流匹配 token 路由；填写丢弃比例和有效层区间。 |
+| `wavelet` | object / null | `null` | 小波目标子表；wavelet 字段选择 haar/db4，其余字段设置频带与时间权重。 |
+| `guidance` | number / null | `null` | 支持该字段的 FLUX 变体训练 guidance embedding；不是推理 CFG。 |
+| `restoration` | object / null | `null` | 修复时间、VAE encoder adapter 和感知模型子表；仅 restoration 方法添加。 |
+| `qwen_image` | object / null | `null` | Qwen layered 监督选项；其他模型不填写。 |
+| `minimax_h3` | object / null | `null` | H3 专属子表；模型表填编码资产，数据表填音频处理，方法表填时间与条件策略。 |
+
+## `method.restoration`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `midtimestep` | integer；≥ 1, ≤ 998 | `244` | 修复训练的整数时间 1..998，默认 244；不同模型时间表对应不同 sigma。 |
+| `sigma` | number / null | `null` | 修复噪声水平，严格在 (0,1)；显式设置时不同时开启 calibrate。 |
+| `calibrate` | boolean | `false` | 训练开始前从数据估计修复 sigma；固定时间配方保持 false。 |
+| `calibration_pairs` | integer；> 0 | `32` | 自动校准使用的配对数量；非默认值要求 calibrate=true。 |
+| `encoder_rank` | integer；≥ 0 | `4` | VAE encoder adapter 的 rank；0 禁用，推理时也不再填写 encoder_weights。 |
+| `posterior` | "mean", "sample" / null | `null` | 训练 VAE 后验 mean/sample；省略遵循各家族策略，推理/预览使用均值。 |
+| `histogram_bins` | integer；≥ 2 | `32` | 颜色直方图损失的桶数，至少 2；仅 histogram 权重大于 0 时影响训练。 |
+| `dino_weights` | string / null | `null` | 本地 DINOv3 ConvNeXt 权重；dv3d 或 gan 大于 0 时必填。 |
+| `feature_precision` | "bf16", "fp32" | `"bf16"` | 感知特征网络精度；支持 bf16/fp32，与主模型计算精度分开。 |
+| `dino_widths` | [integer, …]；length ≥ 4, length ≤ 4 | `[192, 384, 768, 1536]` | DINO ConvNeXt 四阶段通道数；默认匹配 Large，只在匹配其他结构时更改。 |
+| `dino_depths` | [integer, …]；length ≥ 4, length ≤ 4 | `[3, 3, 27, 3]` | DINO 四阶段深度；必须与 dino_weights 结构一致。 |
+
+## `losses`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `lrr` | number；≥ 0 | `5.0` | latent 修复回归损失系数；0 关闭。 |
+| `dv3d` | number；≥ 0 | `3.0` | DINOv3 特征距离损失系数；大于 0 需 DINO 权重。 |
+| `l1` | number；≥ 0 | `0.5` | 输出与 HQ 的像素 L1 损失系数；0 关闭。 |
+| `gan` | number；≥ 0 | `0.5` | 生成器对抗损失系数；大于 0 启用判别器并需要 DINO 权重。 |
+| `histogram` | number；≥ 0 | `0.0` | 颜色直方图损失系数；无需额外特征模型。 |
+
+## `execution`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `precision` | "auto", "fp32", "fp16", "bf16" | `"auto"` | 计算精度；训练 auto 按底模解析，CUDA 可显式 bf16，CPU 流程用 fp32。 |
+| `fp16_loss_scale` | number；≥ 1.0 | `128.0` | FP16 损失缩放倍数；仅 FP16 路径需要。 |
+| `compile` | boolean / "auto" | `false` | false 直接执行；true 使用 CUDA 编译，auto 按设备选择；首次编译额外耗时。 |
+| `recompute` | "none", "block" | `"none"` | none 保存激活；block 按块重算以降低激活显存，增加计算量。 |
+| `recompute_interval` | integer；> 0 | `1` | 块重算间隔；冻结块卸载策略要求逐块重算时保持 1。 |
+| `restoration_recompute` | "inherit", "none", "block" | `"inherit"` | 图像恢复的 VAE 与 DINO 重算；inherit 跟随 recompute。block 保留辅助网络重算，不受 recompute_interval 影响，可单独减少 DiT 重算。 |
+| `attention_activation_offload` | boolean | `false` | 将保存的注意力激活卸载到主机，节省显存但增加传输和内存需求。 |
+| `residency` | "resident", "frozen-blocks", "trainable-blocks" | `"resident"` | resident 常驻；frozen-blocks 用于冻结权重管理；trainable-blocks 为保留值，当前不支持。 |
+| `use_pinned_memory_for_block_swap` | boolean / null | `null` | 块交换是否用锁页主机内存；省略由策略决定，注意主机 RAM 占用。 |
+| `frozen_weight_cache_mb` | integer / null | `null` | 冻结块 CUDA 缓存预算，单位 MiB；省略时自动，0 最小保留，仍需当前块工作区。 |
+| `quantization` | "none", "fp8", "convrot-int8", "float8_e4m3fn", "float8_e5m2", "mxfp8", "nvfp4", "int8_tensorwise", "int8_rowwise", "int8_convrot", "convrot_w4a4", "convrot_w4a8", "asym_w4a8_int8", "w6a8_int8" | `"none"` | 冻结基模/文本权重的存储量化布局；none 关闭，底模量化仅用于 adapter。 |
+| `quantization_rotation_size` | integer；≥ 4 | `256` | 支持旋转布局的旋转块大小；使用该布局要求的合法尺寸。 |
+| `quantization_group_size` | integer；> 0 | `16` | 分组量化大小；必须满足该格式及权重形状的整除要求。 |
+| `convrot_kernel` | "eager", "auto", "triton" | `"eager"` | 仅对冻结的 ConvRot INT8 基模层生效。eager 保持浮点矩阵乘法；auto 在 CUDA 且安装 Triton 时使用融合 INT8 GEMM，否则回退；triton 强制融合计算，缺少 CUDA/Triton 时报错。需配合 `quantization = "int8_convrot"` 或已打包的 ConvRot INT8 权重。 |
+| `convrot_backward` | "float", "int8" | `"float"` | 输入梯度默认用临时浮点权重矩阵乘法；int8 将梯度再量化并用融合 GEMM，要求 CUDA/Triton 且 `convrot_kernel` 非 eager，可能增加训练数值误差，小矩阵不一定更快。冻结权重不计算梯度。 |
+
+## `output`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `directory` | string | `"runs"` | 产物目录；省略自动建立 runs/<name>_<时间戳>，显式路径会复用。 |
+| `name` | string | `"model"` | 正式权重文件的名称前缀，也是日志及 TensorBoard run 命名的基础。 |
+| `log_every_seconds` | number；> 0 | `60.0` | 后台/重定向摘要间隔，默认 60 秒；终端原位刷新，完整指标仍逐步写入文件。 |
+| `save_every_updates` | integer；> 0 | `100` | 每 N 次有效更新同时导出正式权重与独立续训状态；末步也保存。 |
+| `max_resume_checkpoints` | integer；≥ 0 | `1` | 最多保留最近 N 份续训状态；默认 1，0 表示全部。 |
+| `max_weight_checkpoints` | integer；≥ 0 | `0` | 最多保留最近 N 组正式权重；默认 0 全保留，encoder 随组清理。 |
+| `tensorboard` | string / null | `null` | 事件根目录；只填目录，训练器自动建立带训练名的 run 子目录。 |
+| `save_precision` | "fp32", "fp16", "bf16" | `"fp32"` | 正式权重导出精度 fp32/bf16/fp16；不改变续训状态的训练 dtype。 |
+| `adapter_format` | "comfyui", "diffusers" | `"comfyui"` | LoRA 默认使用 ComfyUI 兼容格式；diffusers 导出官方 PEFT A/B 格式，仅支持普通 LoRA。 |
+| `checkpoint_storage` | "complete", "frozen-reference" | `"frozen-reference"` | complete 包含完整续训张量；frozen-reference 省略重复冻结参数，恢复需完全相同底模。 |
+
+LoRA 格式可以在 TOML 中设置 `output.adapter_format = "diffusers"`，或启动时使用 `--set output.adapter_format=diffusers`。导出直接转换因子，不把 LoRA 合入底模、不合并不同层、不执行 SVD。ComfyUI 支持的拆分投影保持独立，例如 Qwen Image 2.1 的 `gate_layer/proj`。官方布局要求拆分已有融合投影时，只切分输出因子并复用输入因子。
+
+Diffusers 使用 `transformer.<官方投影路径>.lora_A.weight/lora_B.weight`，原始 `alpha/r` 缩放折入 B，默认消费缩放为 1。用支持相应模型架构的 Diffusers/PEFT 加载器消费该格式；UniTuner 原生推理继续使用默认 ComfyUI 导出。LoHa/LoKr 选择 ComfyUI 格式。此参数只影响 denoiser 适配器导出，不改变全参权重、配套 VAE encoder 或续训状态。
+
+## `preview`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `every_updates` | integer；> 0 | `100` | 每 N 次有效更新预览，末步也预览；只影响观察频率。 |
+| `at_start` | boolean | `false` | 从头训练时先生成基线预览；续训不重复初始预览。 |
+| `samples` | [object, …] | `[]` | 视频 uniform 模式采样窗口数；preview.samples 则为图像采样配置列表。 |
+| `videos` | [object, …] | `[]` | Wan 视频预览数组表，填写原生视频采样参数。 |
+| `audio_video` | [object, …] | `[]` | H3 音视频预览数组表，包含 inputs 与 sampling。 |
+| `num_images` | integer；> 0 | `1` | 每轮修复预览抽取的图像数量；按固定种子顺序轮换数据。 |
+
+## `preview.samples`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `prompt` | string | `""` | 本次推理或预览使用的提示词。 |
+| `negative_prompt` | string / null | `null` | 采样负提示词；是否支持以及 CFG 语义由模型变体决定。 |
+| `reference_images` | [string, …] | `[]` | 推理参考图路径列表，顺序有意义；按模型变体要求填写。 |
+| `conditioning_image` | string / null | `null` | 单张条件图路径；如 FLUX Kontext/Fill 或 Wan I2V，遵循模型约束。 |
+| `mask_image` | string / null | `null` | 推理掩码图；仅用于支持局部编辑的模型变体。 |
+| `condition_posterior` | "sample", "mean" | `"sample"` | FLUX 条件图 VAE 后验 sample/mean；其他模型不一定开放该项。 |
+| `conditioning_resize` | "preferred", "original", "output" | `"preferred"` | 推理条件图缩放策略 preferred/original/output；output 仅支持对应 Qwen 模型。 |
+| `output_layers` | integer / null | `null` | Qwen layered 输出前景层数量；仅此变体使用。 |
+| `caption_language` | "en", "zh" / null | `null` | Qwen layered 的图层描述语言 en/zh。 |
+| `width` | integer；≥ 16 | `1024` | 输出宽度，像素；一般 16 对齐，Qwen2.1/H3 使用 32 对齐。 |
+| `height` | integer；≥ 16 | `1024` | 输出高度，像素；与宽度一起决定采样显存需求。 |
+| `h3_size_policy` | "comfyui", "official" | `"comfyui"` | 仅 H3-Image；未填写宽高时按 2048² 或约 16 MP 的面积生成。 |
+| `seed` | integer | `42` | 采样噪声种子；比较训练版本时保持不变。 |
+| `attention_backend` | "torch", "kitchen-int8" | `"torch"` | torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。 |
+| `steps` | integer / null | `null` | 采样迭代数；省略使用变体默认，Turbo 与非蒸馏模型不要套用同一数值。 |
+| `shift` | number / null | `null` | 采样时间表移位；含义因模型而异，省略用原生默认。 |
+| `guidance` | number / null | `null` | 该模型原生采样 guidance/CFG；省略使用变体默认。 |
+| `training_shift` | number；> 0 | `1.0` | MOSS 训练时间表对应的采样移位倍率；其他家族不随意设置。 |
+| `uncond_skip_layers` | [integer, …] / null | `null` | MOSS 无条件分支跳过的零起始块列表；需匹配实际模型深度。 |
+| `slg_layers` | [integer, …] | `[]` | MOSS SLG 跳层列表；仅适用模型支持时填写。 |
+| `slg_scale` | number；≥ 0 | `0.0` | SLG 引导强度；0 关闭。 |
+| `slg_start` | number；≥ 0, ≤ 1 | `0.0` | SLG 生效的采样进度起点，0..1。 |
+| `slg_stop` | number；≥ 0, ≤ 1 | `1.0` | SLG 生效的采样进度终点，须大于等于 slg_start。 |
+
+## `runtime`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `cuda_allow_tf32` | boolean | `false` | 允许支持 GPU 上的 TF32 矩阵运算；可能改变数值轨迹。 |
+| `cudnn_enabled` | boolean | `true` | 启用 cuDNN 卷积后端；通常保持 true。 |
+| `cudnn_benchmark` | boolean | `true` | 默认搜索卷积算法；首次运行及新尺寸有搜索开销，可显式关闭。 |
+| `cudnn_deterministic` | boolean | `false` | 限制为确定性 cuDNN 算法；需要重复性时开启，可能降低速度。 |
+
+## `method.layersync`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `weight` | number；> 0 | `1.0` | 该辅助目标在总目标中的权重；0 禁用其贡献。 |
+| `student_layer` | integer；≥ 0 | `0` | LayerSync 学生块的原生零起始索引。 |
+| `teacher_layer` | integer；≥ 0 | `1` | LayerSync 教师块的原生零起始索引。 |
+
+## `method.tread`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `drop_fraction` | number；> 0, < 1 | `0.5` | TREAD 丢弃 token 比例，作用于指定块区间；先用小值比较效果。 |
+| `start_layer` | integer；≥ 0 | `0` | TREAD 起始块索引，零起始。 |
+| `end_layer` | integer；> 0 | `1` | TREAD 结束块边界，须满足方法与模型的层区间限制。 |
+
+## `method.repa`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `weight` | number；> 0 | `1.0` | 该辅助目标在总目标中的权重；0 禁用其贡献。 |
+| `layer` | integer；≥ 0 | `0` | REPA 对齐的原生块零起始索引。 |
+| `encoder_dim` | integer；> 0 | `必填` | REPA 特征维度；必须与实际特征编码器输出匹配。 |
+| `encoder_sha256` | string；pattern ^[0-9a-f]{64}$ | `必填` | REPA 编码器文件的真实 SHA256；示例全零必须替换。 |
+| `cache_directory` | string | `必填` | 该组独立的缓存目录；不同组不能指向同一路径。 |
+| `encoder_weights` | string / null | `null` | 修复 encoder adapter 或 REPA 特征编码器路径，按所在表的任务选择。 |
+| `encoder_device` | string | `"cpu"` | REPA 特征编码设备 cpu/cuda；影响缓存阶段显存。 |
+
+## `method.wavelet`
+
+加权 DWT 频带 MSE。图像恢复时比较解码 RGB 输出与 detach 的 HQ，不应用时间步衰减；见[图像恢复](restoration.md)。
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `weight` | number；> 0 | `1.0` | 该辅助目标在总目标中的权重；0 禁用其贡献。 |
+| `wavelet` | "haar", "db4" | `"db4"` | 小波目标子表；wavelet 字段选择 haar/db4，其余字段设置频带与时间权重。 |
+| `levels` | integer；≥ 1, ≤ 8 | `3` | 小波分解层数，1..8；更深层包含更低空间频率。 |
+| `ll` | number；≥ 0 | `0.1` | 小波 LL 低频分量损失权重。 |
+| `lh` | number；≥ 0 | `0.01` | 小波 LH 细节分量损失权重。 |
+| `hl` | number；≥ 0 | `0.01` | 小波 HL 细节分量损失权重。 |
+| `hh` | number；≥ 0 | `0.05` | 小波 HH 高频细节分量损失权重。 |
+| `ll_level_threshold` | integer / null | `-1` | 选择计入 LL 损失的分解层门限；-1 使用实现的默认选择。 |
+| `normalize_bands` | boolean | `false` | 是否归一化频带损失尺度；对比配方时保持一致。 |
+| `timestep_cutoff` | number；≥ 0, ≤ 1 | `0.7` | 小波目标的时间权重分界，0..1。 |
+| `timestep_transition_width` | number；> 0 | `0.4` | 小波时间权重的平滑过渡宽度，必须大于 0。 |
+
+## `method.qwen_image`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `remove_base` | boolean | `false` | Qwen layered 是否移除合成基图监督；仅 layered 流匹配使用。 |
+
+## `model.minimax_h3`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `audio_vae` | string / null | `null` | H3 音视频的音频 VAE；H3-Image 不使用。 |
+| `text_config` | string | `必填` | H3 文本编码器结构配置文件，需与权重匹配。 |
+| `text_processor` | string / null | `null` | H3 本地 processor 目录；未填时可用该家族默认来源。 |
+| `text_device` | "cpu", "cuda" / null | `null` | H3 文本编码设备；仅在需要单独放置编码器时设置。 |
+| `video_topology` | object / null | `null` | H3 非标准视频 VAE 结构覆盖；标准权重一般省略。 |
+| `audio_topology` | object / null | `null` | H3 非标准音频 VAE 结构覆盖；标准权重一般省略。 |
+
+## `method.minimax_h3`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `sigma_min` | number；≥ 0, ≤ 1 | `0.0` | H3 训练 sigma 采样下界。 |
+| `sigma_max` | number；≥ 0, ≤ 1 | `1.0` | H3 训练 sigma 采样上界。 |
+| `focus_min` | number；≥ 0, ≤ 1 | `0.0` | H3 重点时间区间下界。 |
+| `focus_max` | number；≥ 0, ≤ 1 | `1.0` | H3 重点时间区间上界。 |
+| `focus_probability` | number；≥ 0, ≤ 1 | `0.0` | H3 从重点时间区间抽样的概率。 |
+| `video_shift` | number；≥ 0.01, ≤ 100 | `12.0` | H3 视频时间表移位，默认 12.0；训练和采样使用匹配配方。 |
+| `audio_shift` | number；≥ 0.01, ≤ 100 | `3.0` | H3 音频时间表移位，默认 3.0。 |
+| `visual_condition_clean` | number；≥ 0, ≤ 1 | `0.999` | H3 视觉条件清洁度；默认 0.999。 |
+| `audio_condition_clean` | number；≥ 0, ≤ 1 | `1.0` | H3 音频条件清洁度；默认 1.0。 |
+| `audio_loss_weight` | number；≥ 0 | `1.0` | H3 音频损失相对权重，默认 1.0。 |
+
+## `dataset.groups.NAME.wan.single_frame`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `clean_sources` | [string, …]；length ≥ 1, length ≤ 2 | `必填` | Wan 单帧 I2V 的干净条件图目录列表。 |
+| `clean_indices` | [integer, …]；length ≥ 1, length ≤ 2 | `必填` | 与 clean_sources 顺序对应的条件帧索引。 |
+| `target_index` | integer；≥ 0, < 1024 | `必填` | 目标帧索引；应与数据记录和条件索引对应。 |
+
+## `dataset.groups.NAME.minimax_h3`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `cache_seed` | integer | `0` | H3 缓存生成种子，固定缓存随机条件。 |
+| `allow_experimental_duration` | boolean | `false` | 允许 H3 实验性时长；常规训练保持 false。 |
+| `audio_decode` | object | `子表默认值` | H3 音频解码采样率、声道与时间连续性子表。 |
+| `audio_pad_tolerance` | integer；≥ 0 | `800` | H3 音频对齐填充容差，使用模型原生单位与限制。 |
+| `audio_max_repair_samples` | integer；≥ 0 | `6400` | H3 允许修复的最大音频采样点数量；不是训练样本数。 |
+
+## `dataset.groups.NAME.minimax_h3.audio_decode`
+
+| 参数 | 类型／可选值 | 默认值 | 用途与填写方式 |
+| --- | --- | --- | --- |
+| `sample_rate` | integer；> 0 | `必填` | 解码音频采样率；H3 原生为 32000 Hz。 |
+| `channels` | integer；≥ 1, ≤ 2 | `必填` | 解码音频声道数；H3 原生为双声道。 |
+| `max_discontinuity_seconds` | number；≥ 0 | `0.05` | 允许的音频时间戳不连续容差，单位秒。 |
+
+## `DegradationConfig`
+
+在此配置 OMGSR-F-1024 合成退化。完整配方见[数据集指南](datasets.md)。
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | Enable synthetic degradation / 启用合成退化 |
+| `scale` | `4.0` | 固定 1～16，或 `[min,max]` 按样本连续采样；整数目标网格避免相位偏移 / Fixed 1..16 or continuous per-sample `[min,max]` |
+| `first / second` | `subtable` | StageConfig / SecondStageConfig |
+| `final_sinc_probability` | `0.8` | Final sinc on native LQ, before alignment / 对齐放大前的 LQ sinc |
+| `gray_probability / color_jitter_probability` | `0 / 0` | Optional output augmentation / 输出增强 |
+| `brightness / contrast / saturation / hue` | `[0.5,1.5] / [0.5,1.5] / [0,1.5] / [-0.1,0.1]` | Ranges for enabled color jitter / 已启用颜色增强的范围 |
+
+## `StageConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `blur / noise / compression` | `subtable` | BlurConfig / NoiseConfig / CompressionConfig |
+| `sinc_probability` | `0.1` | Conditional sinc replacement probability / sinc 替换概率 |
+| `resize_probabilities / resize_range` | `[0.2,0.7,0.1] / [0.3,1.5]` | OMGSR 升降保持；按实际整数 size 插值 |
+
+## `SecondStageConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `blur / noise / compression` | `subtable` | SecondBlurConfig / SecondNoiseConfig / SecondCompressionConfig |
+| `blur_probability / sinc_probability` | `0.5 / 0.1` | No scale-dependent probability attenuation / 不随倍率衰减概率 |
+| `resize_probabilities / resize_range` | `[0.3,0.4,0.3] / [0.8,1.2]` | 相对原生 LQ；允许低于原生 LQ 后再放大 |
+
+## `BlurConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `sigma` | `[0.2,3.0]` | Uniform OMGSR pixel sigma / OMGSR 像素 sigma |
+| `probabilities` | `[0.45,0.25,0.12,0.03,0.12,0.03]` | Isotropic/anisotropic Gaussian, generalized, plateau / 各向同性与异性六类 |
+| `generalized_beta / plateau_beta` | `[0.5,4] / [1,2]` | Official beta distributions / 官方 beta 分布 |
+
+## `SecondBlurConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `sigma` | `[0.2,1.5]` | All other settings inherited from BlurConfig / 其余继承 |
+
+## `NoiseConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `gaussian_probability / iso_probability` | `1/3 / 1/3` | Gaussian 与 ISO 的绝对概率；剩余概率为 Poisson |
+| `gaussian_sigma / poisson_scale` | `[1,15] / [0.05,2]` | OMGSR standard deviation (8-bit units) / Poisson amplitude / OMGSR 幅度 |
+| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.0008,0.015] / [0.0001,0.006] / [0.92,1.15]` | Trainer 强度的 FP32 信号相关相机 ISO 噪声 |
+| `gray_probability` | `0.4` | 三种噪声的灰度概率 |
+
+## `SecondNoiseConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `gaussian_sigma / poisson_scale` | `[1,12] / [0.05,1]` | Other fields inherited / 其余继承 |
+| `iso_shot_noise / iso_read_noise / iso_color_gain` | `[0.001,0.02] / [0.0002,0.008] / [0.9,1.2]` | Trainer 第二阶段 ISO 强度 |
+
+## `CompressionConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `jpeg_probability` | `0.5` | DiffJPEG 与 WebP 等概率选择 |
+| `jpeg_quality / webp_quality` | `[60,95] / [60,95]` | 第一阶段质量区间 |
+
+## `SecondCompressionConfig`
+
+| Field / 字段 | Default / 默认 | Meaning / 说明 |
+| --- | --- | --- |
+| `jpeg_quality / webp_quality` | `[60,100] / [60,100]` | 第二阶段质量区间，上界不取到 |
+
+## `restore` 独立命令
+
+使用独立 TOML 和对应命令。图像生成 sampling 表使用上方 preview.samples 的图像采样字段。
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `runtime` | object | `子表默认值` | 共享 CUDA/cuDNN 后端选项子表；各命令可独立设置。 |
+| `model` | object | `必填` | 模型选择与本地权重路径子表；校准命令只填 family 与 vae。 |
+| `input` | string | `必填` | 待修复图像文件；输出保留经过方向校正后的输入尺寸。 |
+| `output` | string | `必填` | 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。 |
+| `prompt` | string | `""` | 本次推理或预览使用的提示词。 |
+| `attention_backend` | "torch", "kitchen-int8" | `"torch"` | torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。 |
+| `sigma` | number / null | `null` | 修复噪声水平，严格在 (0,1)；显式设置时不同时开启 calibrate。 |
+| `adapter` | object / null | `null` | 适配器设置；训练在 train.adapter 填算法，推理在 adapter 填 weights 和 config。 |
+| `encoder_weights` | string / null | `null` | 修复 encoder adapter 或 REPA 特征编码器路径，按所在表的任务选择。 |
+
+## `generate` 独立命令
+
+使用独立 TOML 和对应命令。图像生成 sampling 表使用上方 preview.samples 的图像采样字段。
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `runtime` | object | `子表默认值` | 共享 CUDA/cuDNN 后端选项子表；各命令可独立设置。 |
+| `model` | object | `必填` | 模型选择与本地权重路径子表；校准命令只填 family 与 vae。 |
+| `sampling` | object | `子表默认值` | 推理采样子表，按图像、Wan 或 H3 选择对应字段。 |
+| `adapter` | object / null | `null` | 适配器设置；训练在 train.adapter 填算法，推理在 adapter 填 weights 和 config。 |
+| `output` | string | `必填` | 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。 |
+
+## `Wan generate-video` 独立命令
+
+使用独立 TOML 和对应命令。图像生成 sampling 表使用上方 preview.samples 的图像采样字段。
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `runtime` | object | `子表默认值` | 共享 CUDA/cuDNN 后端选项子表；各命令可独立设置。 |
+| `model` | object | `必填` | 模型选择与本地权重路径子表；校准命令只填 family 与 vae。 |
+| `sampling` | object | `子表默认值` | 推理采样子表，按图像、Wan 或 H3 选择对应字段。 |
+| `adapter` | object / null | `null` | 适配器设置；训练在 train.adapter 填算法，推理在 adapter 填 weights 和 config。 |
+| `high_noise` | object / null | `null` | Wan2.2 高噪声模型及适配器的专属设置；按视频生成示例填写。 |
+| `output` | string | `必填` | 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。 |
+
+## `H3 generate-video` 独立命令
+
+使用独立 TOML 和对应命令。图像生成 sampling 表使用上方 preview.samples 的图像采样字段。
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `inputs` | object | `必填` | H3 提示词、首末帧、控制和参考输入子表。 |
+| `sampling` | object | `子表默认值` | 推理采样子表，按图像、Wan 或 H3 选择对应字段。 |
+| `runtime` | object | `子表默认值` | 共享 CUDA/cuDNN 后端选项子表；各命令可独立设置。 |
+| `model` | object | `必填` | 模型选择与本地权重路径子表；校准命令只填 family 与 vae。 |
+| `adapter` | object / null | `null` | 适配器设置；训练在 train.adapter 填算法，推理在 adapter 填 weights 和 config。 |
+| `output` | string | `必填` | 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。 |
+
+## `mid-timestep` 独立命令
+
+使用独立 TOML 和对应命令。图像生成 sampling 表使用上方 preview.samples 的图像采样字段。
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `runtime` | object | `子表默认值` | 共享 CUDA/cuDNN 后端选项子表；各命令可独立设置。 |
+| `model` | object | `必填` | 模型选择与本地权重路径子表；校准命令只填 family 与 vae。 |
+| `dataset` | object | `必填` | 命名数据组及可选 defaults；每组声明自身 source。 |
+| `seed` | integer | `42` | 随机种子；固定后便于比较配方，续训由状态文件恢复 RNG。 |
+| `posterior` | "mean", "sample" / null | `null` | 训练 VAE 后验 mean/sample；省略遵循各家族策略，推理/预览使用均值。 |
+| `calibration_pairs` | integer | `32` | 自动校准使用的配对数量；非默认值要求 calibrate=true。 |
+
+## `wan-generate.sampling`
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `prompt` | string | `""` | 数据组中覆盖所有同名 txt；空字符串也会覆盖。采样配置中为生成提示词。 |
+| `negative_prompt` | string | `""` | 采样负提示词；是否支持以及 CFG 语义由模型变体决定。 |
+| `width` | integer | `832` | 输出宽度，像素；一般 16 对齐，Qwen2.1/H3 使用 32 对齐。 |
+| `height` | integer | `480` | 输出高度，像素；与宽度一起决定采样显存需求。 |
+| `frames` | integer | `81` | 生成帧数；遵守家族帧数约束并与 fps 一起决定时长。 |
+| `fps` | integer | `16` | 生成帧率；H3 使用原生 24 FPS。 |
+| `steps` | integer | `40` | 采样迭代数；省略使用变体默认，Turbo 与非蒸馏模型不要套用同一数值。 |
+| `solver` | "euler", "dpm++", "unipc" | `"unipc"` | Wan 采样求解器名称；使用该家族支持的取值。 |
+| `shift` | number | `5.0` | 采样时间表移位；含义因模型而异，省略用原生默认。 |
+| `guidance` | number | `5.0` | 该模型原生采样 guidance/CFG；省略使用变体默认。 |
+| `seed` | integer | `42` | 采样噪声种子；比较训练版本时保持不变。 |
+| `attention_backend` | "torch", "kitchen-int8" | `"torch"` | torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。 |
+| `conditioning_image` | string / null | `null` | 单张条件图路径；如 FLUX Kontext/Fill 或 Wan I2V，遵循模型约束。 |
+| `control_video` | string / null | `null` | Wan 控制视频路径；仅在对应 I2V 控制输入需要时填写。 |
+
+## `wan-generate.high_noise`
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `weights` | string | `必填` | 本地权重文件、分片索引或支持的模型目录；替换为实际路径。 |
+| `boundary` | number | `必填` | Wan2.2 高低噪声专家切换的归一化边界，0..1。 |
+| `guidance` | number / null | `null` | 采样中为模型 guidance/CFG；method.guidance 为受支持模型的训练 embedding。 |
+| `adapter` | object / null | `null` | 适配器设置；训练在 train.adapter 填算法，推理在 adapter 填 weights 和 config。 |
+
+## `h3-generate.inputs`
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `prompt` | string | `必填` | 本次推理或预览使用的提示词。 |
+| `first_frame` | string / null | `null` | H3 首帧条件路径。 |
+| `last_frame` | string / null | `null` | H3 末帧条件路径。 |
+| `controls` | [object, …] | `[]` | H3 带时间索引的控制图记录列表。 |
+| `target_index` | integer / null | `null` | 目标帧索引；应与数据记录和条件索引对应。 |
+| `references` | [table, …] | `[]` | H3 有序图像/视频/音频参考记录列表。 |
+
+## `h3-generate.sampling`
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `width` | integer | `768` | 输出宽度，像素；一般 16 对齐，Qwen2.1/H3 使用 32 对齐。 |
+| `height` | integer | `1344` | 输出高度，像素；与宽度一起决定采样显存需求。 |
+| `frames` | integer | `124` | 生成帧数；遵守家族帧数约束并与 fps 一起决定时长。 |
+| `fps` | integer | `24` | 生成帧率；H3 使用原生 24 FPS。 |
+| `temporal_fine_bands` | integer | `0` | H3 原生时间频带设置；常规推理保留模型默认。 |
+| `allow_experimental_duration` | boolean | `false` | 允许 H3 实验性时长；常规训练保持 false。 |
+| `steps` | integer | `30` | 采样迭代数；省略使用变体默认，Turbo 与非蒸馏模型不要套用同一数值。 |
+| `seed` | integer | `42` | 采样噪声种子；比较训练版本时保持不变。 |
+| `attention_backend` | "torch", "kitchen-int8" | `"torch"` | torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。 |
+| `video_shift` | number | `12.0` | H3 视频时间表移位，默认 12.0；训练和采样使用匹配配方。 |
+| `audio_shift` | number | `3.0` | H3 音频时间表移位，默认 3.0。 |
+| `visual_condition_clean` | number | `0.999` | H3 视觉条件清洁度；默认 0.999。 |
+| `audio_condition_clean` | number | `1.0` | H3 音频条件清洁度；默认 1.0。 |
+
+## `mid-timestep.dataset.defaults`
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `resolution` | [integer, integer] | `[1024, 1024]` | [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。 |
+| `repeats` | integer | `1` | 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。 |
+| `horizontal_flip_probability` | number | `0.5` | 修复训练成对水平翻转概率 0..1；方向敏感任务填 0。 |
+
+## `mid-timestep.dataset.groups.NAME`
+
+| 字段 | 类型／可选值 | 默认值 | 填写方式 |
+| --- | --- | --- | --- |
+| `resolution` | [integer, integer] | `[1024, 1024]` | [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。 |
+| `repeats` | integer | `1` | 该组每轮样本重复次数；提高小数据组的相对出现频率，不改变 max_updates。 |
+| `horizontal_flip_probability` | number | `0.5` | 修复训练成对水平翻转概率 0..1；方向敏感任务填 0。 |
+| `source` | string | `必填` | 数据源目录或该模型要求的记录文件；改动内容后重建缓存。 |
+| `low_quality_source` | string / null | `null` | 修复输入 LQ 目录，与 source 的 HQ 按文件主体配对；不同时开启合成退化。 |
+| `degradation` | object / null | `null` | 合成 LQ 的两阶段退化子表；与同组 low_quality_source 互斥。 |
+
+---
+
+[文档首页](../README.md) · [参数参考](parameters.md) · [故障排查](../troubleshooting.md)

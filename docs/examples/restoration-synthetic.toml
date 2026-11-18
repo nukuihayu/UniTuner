@@ -1,0 +1,104 @@
+# 用途 / Task: z-image · train
+# 命令 / Command: uv run unituner train docs/examples/restoration-synthetic.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "z-image"
+variant = "base"
+weights = "/models/z-image.safetensors"
+vae = "/models/vae.safetensors"
+text_encoder = "/models/qwen3"
+
+[cache]
+# 缓存 VAE/文本编码批大小，独立于训练 batch_size；目前仅 Z-Image 支持大于 1。
+# Cache VAE/text batch size, independent of training batch_size; values above 1 currently require Z-Image.
+batch_size = 1
+
+[dataset.groups.main]
+kind = "restoration"
+source = "/data/hq"
+cache_directory = "/data/cache"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+# 从原图裁出 1536 切片后按连续倍率退化；不把整张图缩成切片。
+# Crop 1536 pixels before degradation with continuously sampled factors.
+resolution = [1536,1536]
+batch_size = 1
+repeats = 1
+enable_bucket = false
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+horizontal_flip_probability = 0.5
+
+[dataset.groups.main.degradation]
+# 启用该组的合成退化；真实 LQ 配对任务不添加此表。
+# Enable synthetic degradation for this group; omit this table for real paired LQ data.
+enabled = true
+# 固定 4x 最终倍率；也可填写 [4.0, 8.0] 连续采样。
+# Fixed 4x final scale; use [4.0, 8.0] for continuous sampling.
+scale = 4.0
+
+[method]
+kind = "restoration"
+
+[losses]
+lrr = 5.0
+dv3d = 3.0
+l1 = 0.5
+gan = 0.5
+histogram = 0.0
+
+[method.restoration]
+midtimestep = 244
+dino_weights = "/models/dinov3-convnext.safetensors"
+
+encoder_rank = 4
+calibrate = false
+histogram_bins = 32
+# posterior = "sample"
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[train]
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[execution]
+residency = "resident"
+recompute = "none"
+compile = false
+# attention_activation_offload = false
+
+[output]
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

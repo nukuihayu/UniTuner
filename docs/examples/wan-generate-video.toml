@@ -1,0 +1,60 @@
+# 用途 / Task: wan · generate-video
+# 命令 / Command: uv run unituner generate-video docs/examples/wan-generate-video.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "outputs/wan.mp4"
+
+[model]
+family = "wan"
+version = "2.2"
+variant = "i2v"
+weights = "artifacts/wan-2.2-i2v.safetensors"
+vae = "artifacts/wan-vae.safetensors"
+text_encoder = "artifacts/wan-umt5.safetensors"
+
+[sampling]
+prompt = "A small boat moving across a quiet lake"
+negative_prompt = "blurry, distorted"
+# 单张条件图路径；如 FLUX Kontext/Fill 或 Wan I2V，遵循模型约束。
+# Single conditioning image path, e.g. FLUX Kontext/Fill or Wan I2V; follow family constraints.
+conditioning_image = "inputs/lake.png"
+width = 832
+height = 480
+frames = 81
+fps = 16
+steps = 40
+# Wan 采样求解器名称；使用该家族支持的取值。
+# Wan sampling solver; choose a family-supported value.
+solver = "unipc"
+shift = 5.0
+guidance = 5.0
+seed = 42
+
+# Optional second resident expert. Both must have matching Wan2.2 topology.
+# [high_noise]
+# weights = "artifacts/wan-2.2-i2v-high.safetensors"
+# boundary = 0.9
+# guidance = 4.0
+
+# Optional primary-format adapter for the low/single expert.
+# [adapter]
+# weights = "runs/wan/weights/model.safetensors"
+# [adapter.config]
+# algorithm = "lora"
+# rank = 16
+# alpha = 16.0
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

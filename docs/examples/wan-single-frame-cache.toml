@@ -1,0 +1,55 @@
+# 用途 / Task: wan · cache
+# 命令 / Command: uv run unituner cache docs/examples/wan-single-frame-cache.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# Independent-frame FP32 cache only; public Wan training is not available yet.
+
+[model]
+# 辅助资产根目录；FLUX 的 CLIP 位于 text_encoder/，Wan2.1 I2V 的图像编码器位于 image_encoder/model.safetensors。
+# Auxiliary bundle root: FLUX CLIP in text_encoder/, Wan2.1 I2V vision weights in image_encoder/model.safetensors.
+assets = "artifacts"
+family = "wan"
+version = "2.1"
+variant = "i2v"
+vae = "artifacts/wan-vae.safetensors"
+text_encoder = "artifacts/wan-umt5.safetensors"
+
+[dataset.groups.main]
+kind = "image"
+source = "data/targets"
+cache_directory = "cache/wan-single-frame"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [512, 512]
+
+batch_size = 1
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[dataset.groups.main.wan.single_frame]
+# Each source remains bound to its coordinate even when these are unsorted.
+# Wan 单帧 I2V 的干净条件图目录列表。
+# Clean conditioning-frame directories for Wan single-frame I2V.
+clean_sources = ["data/last-frames", "data/first-frames"]
+# 与 clean_sources 顺序对应的条件帧索引。
+# Condition-frame indices corresponding to clean_sources in order.
+clean_indices = [24, 0]
+# 目标帧索引；应与数据记录和条件索引对应。
+# Target frame index; match the record and conditioning indices.
+target_index = 12
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

@@ -1,0 +1,100 @@
+# 用途 / Task: flux · train
+# 命令 / Command: uv run unituner train docs/examples/restoration-calibration.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# Run: unituner mid-timestep docs/examples/restoration-calibration.toml --device cuda
+# Only model.vae and image sources are loaded by this command.
+
+[model]
+family = "flux"
+variant = "dev"
+weights = "/models/flux-dev.safetensors"
+vae = "/models/flux-vae.safetensors"
+text_encoder = "/models/t5"
+
+[dataset.groups.main]
+kind = "restoration"
+source = "/data/hq"
+low_quality_source = "/data/lq"
+cache_directory = "/data/cache-calibration"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [1024, 1024]
+
+batch_size = 1
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+horizontal_flip_probability = 0.5
+
+[method]
+kind = "restoration"
+
+[method.restoration]
+calibrate = true
+# 自动校准使用的配对数量；非默认值要求 calibrate=true。
+# Number of pairs for automatic calibration; a nondefault value requires calibrate=true.
+calibration_pairs = 32
+# 按 dataset 分辨率逐块校准；上限此时统计块数。默认 random 每图取一次。
+# Calibrate tiles at dataset resolution; the limit counts tiles. Default random takes one crop per image.
+# calibration_sampling = "tiles"
+
+encoder_rank = 4
+histogram_bins = 32
+# posterior = "sample"
+
+[losses]
+lrr = 5.0
+l1 = 0.5
+dv3d = 0.0
+gan = 0.0
+histogram = 0.0
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[output]
+directory = "runs/calibrated-restoration"
+name = "model"
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[train]
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[execution]
+residency = "resident"
+recompute = "none"
+compile = false
+# attention_activation_offload = false
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

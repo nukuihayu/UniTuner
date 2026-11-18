@@ -1,0 +1,94 @@
+# 用途 / Task: z-image · train
+# 命令 / Command: uv run unituner train docs/examples/flow-preview.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "z-image"
+variant = "base"
+weights = "/models/z-image.safetensors"
+vae = "/models/z-image-vae.safetensors"
+text_encoder = "/models/qwen3"
+
+[dataset.groups.main]
+kind = "image"
+source = "/data/images"
+cache_directory = "/data/cache"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [1024, 1024]
+batch_size = 1
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[train]
+parameter_mode = "adapter"
+learning_rate = 0.0001
+max_updates = 1000
+accumulation_steps = 1
+seed = 42
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[method]
+kind = "flow-matching"
+
+[execution]
+precision = "fp32"
+residency = "resident"
+recompute = "none"
+compile = false
+# attention_activation_offload = false
+
+[output]
+directory = "runs/z-image"
+name = "z-image"
+
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[preview]
+every_updates = 100
+at_start = true
+
+[[preview.samples]]
+prompt = "a quiet mountain lake at sunrise"
+negative_prompt = ""
+width = 1024
+height = 1024
+steps = 20
+guidance = 4.0
+seed = 42
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

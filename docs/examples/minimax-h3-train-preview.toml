@@ -1,0 +1,127 @@
+# 用途 / Task: minimax-h3 · train
+# 命令 / Command: uv run unituner train docs/examples/minimax-h3-train-preview.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "minimax-h3"
+variant = "ref2va"
+weights = "/models/h3/transformer.safetensors"
+vae = "/models/h3/video.safetensors"
+text_encoder = "/models/h3/text.safetensors"
+
+[model.minimax_h3]
+audio_vae = "/models/h3/audio.safetensors"
+text_config = "/models/h3/text-config"
+# H3 本地 processor 目录；未填时可用该家族默认来源。
+# Local H3 processor directory; otherwise the family default source can be used.
+text_processor = "/models/h3/processor"
+text_device = "cpu"
+
+[dataset.groups.main]
+kind = "video"
+source = "/data/h3/records.jsonl"
+cache_directory = "/data/h3/cache"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [768, 768]
+batch_size = 1
+repeats = 1
+
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[dataset.groups.main.video]
+target_frames = [124]
+target_fps = 24.0
+fps_resampling = "timestamps"
+
+[method.minimax_h3]
+video_shift = 12.0
+audio_shift = 3.0
+visual_condition_clean = 0.999
+audio_condition_clean = 1.0
+# H3 音频损失相对权重，默认 1.0。
+# Relative H3 audio loss coefficient; default 1.0.
+audio_loss_weight = 1.0
+
+[train]
+max_updates = 1000
+accumulation_steps = 4
+learning_rate = 0.0001
+seed = 42
+
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[execution]
+precision = "fp32"
+residency = "resident"
+recompute = "block"
+
+compile = false
+# attention_activation_offload = false
+
+[output]
+directory = "/runs/h3"
+name = "h3"
+save_every_updates = 100
+
+# Conditions are encoded once at the first preview and reused for this run.
+# Each preview samples the current live adapter without advancing training RNG.
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[preview]
+every_updates = 100
+at_start = true
+
+[[preview.audio_video]]
+[preview.audio_video.inputs]
+prompt = "A quiet street at sunset, with distant traffic and birdsong."
+# H3 有序图像/视频/音频参考记录列表。
+# Ordered H3 image/video/audio reference records.
+references = [{kind = "video", path = "/data/h3/reference.mp4", audio_enabled = false}]
+
+[preview.audio_video.sampling]
+width = 768
+height = 768
+frames = 124
+fps = 24
+steps = 30
+seed = 42
+
+[method]
+kind = "flow-matching"
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

@@ -1,0 +1,51 @@
+# 用途 / Task: minimax-h3 · generate-video
+# 命令 / Command: uv run unituner generate-video docs/examples/minimax-h3-generate.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# Explicit FP32 generation; PNG requires sampling.frames=1.
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "/outputs/h3.mp4"
+
+[model]
+family = "minimax-h3"
+variant = "t2va"
+weights = "/models/h3/transformer.safetensors"
+vae = "/models/h3/video.safetensors"
+text_encoder = "/models/h3/text.safetensors"
+
+[model.minimax_h3]
+audio_vae = "/models/h3/audio.safetensors"
+text_config = "/models/h3/text-config"
+# H3 本地 processor 目录；未填时可用该家族默认来源。
+# Local H3 processor directory; otherwise the family default source can be used.
+text_processor = "/models/h3/processor"
+text_device = "cpu"
+
+[inputs]
+prompt = "A quiet street at sunset, with distant traffic and birdsong."
+
+[sampling]
+width = 768
+height = 1344
+frames = 124
+fps = 24
+steps = 30
+seed = 42
+video_shift = 12.0
+audio_shift = 3.0
+visual_condition_clean = 0.999
+audio_condition_clean = 1.0
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

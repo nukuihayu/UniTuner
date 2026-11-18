@@ -1,0 +1,99 @@
+# 用途 / Task: z-image · train
+# 命令 / Command: uv run unituner train docs/examples/data-groups.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "z-image"
+variant = "base"
+weights = "/models/z-image.safetensors"
+vae = "/models/z-image-vae.safetensors"
+text_encoder = "/models/qwen3"
+# Group names are stable identifiers for CLI overrides and checkpoint identity.
+
+[dataset.defaults]
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+# 每张图按每档尺寸生成训练样本；缓存自动使用 1024x1024 等子目录。
+# Each image is cached at every scale in separate 1024x1024, etc. subdirectories.
+resolution = [[1024, 1024], [768, 768], [512, 512]]
+batch_size = 1
+enable_bucket = true
+caption_extension = ".txt"
+# prompt = "a photo of sks person" # Overrides sidecars for every group unless the group sets prompt.
+
+[dataset.groups.portraits]
+source = "/data/portraits"
+cache_directory = "/data/cache/portraits"
+repeats = 3
+
+bucket_no_upscale = false
+# prompt = ""
+
+[dataset.groups.landscapes]
+source = "/data/landscapes"
+cache_directory = "/data/cache/landscapes"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [768, 512]
+batch_size = 2
+repeats = 1
+
+bucket_no_upscale = false
+# prompt = ""
+
+[train]
+parameter_mode = "adapter"
+include_layers = [] # Empty selects every eligible native projection.
+exclude_layers = [] # Example: ["layers.0", "layers.1"]
+learning_rate = 0.0001
+max_updates = 1000
+accumulation_steps = 1
+seed = 42
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+
+[method]
+kind = "flow-matching"
+
+[execution]
+precision = "fp32"
+residency = "resident"
+recompute = "none"
+compile = false
+# attention_activation_offload = false
+
+[output]
+directory = "runs/z-image"
+name = "z-image"
+
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

@@ -1,0 +1,44 @@
+# 用途 / Task: moss-image · generate
+# 命令 / Command: uv run unituner generate docs/examples/moss-generate.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "runs/moss-image/sample.png"
+
+[model]
+family = "moss-image"
+variant = "base"
+weights = "/models/moss-image.safetensors"
+vae = "/models/flux2-vae.safetensors"
+text_encoder = "/models/qwen3.5"
+
+[sampling]
+prompt = "a quiet garden in morning light"
+width = 1024
+height = 1024
+seed = 42
+steps = 50
+guidance = 3.0
+shift = 5.0
+# MOSS 训练时间表对应的采样移位倍率；其他家族不随意设置。
+# Sampling multiplier matching MOSS training schedule shift; do not set for unrelated families.
+training_shift = 1.0
+# MOSS 无条件分支跳过的零起始块列表；需匹配实际模型深度。
+# Zero-based blocks skipped by the MOSS unconditional branch; match actual model depth.
+uncond_skip_layers = [22]
+attention_backend = "torch"
+# negative_prompt = ""
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

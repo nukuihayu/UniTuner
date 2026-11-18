@@ -1,0 +1,51 @@
+# 用途 / Task: wan · cache
+# 命令 / Command: uv run unituner cache docs/examples/wan-cache.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# Regular FP32 cache; train the completed cache with wan-flow.toml.
+
+[model]
+family = "wan"
+version = "2.2"
+variant = "i2v"
+vae = "artifacts/wan-vae.safetensors"
+text_encoder = "artifacts/wan-umt5.safetensors"
+
+# Tokenizer defaults to Wan-AI/Wan2.1-T2V-14B/google/umt5-xxl.
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/wan-tokenizer" # Optional local directory
+# revision = "commit-sha"          # Optional pinned Hub revision
+
+[dataset.groups.main]
+kind = "video"
+source = "data/videos"
+cache_directory = "cache/wan"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [512, 512]
+
+batch_size = 1
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[dataset.groups.main.video]
+target_frames = [81]
+# 视频窗口提取 head/chunk/slide/uniform/full；决定从同一视频生成哪些窗口。
+# Video-window extraction head/chunk/slide/uniform/full; selects windows from each source video.
+extraction = "head"
+# 视频处理帧数上限；Wan 仍须 1+4k，H3 至少 5。
+# Video processing frame limit; Wan still requires 1+4k and H3 at least 5.
+max_frames = 129
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

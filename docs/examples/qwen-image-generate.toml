@@ -1,0 +1,38 @@
+# 用途 / Task: qwen-image · generate
+# 命令 / Command: uv run unituner generate docs/examples/qwen-image-generate.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "output/qwen-image.png"
+
+[model]
+family = "qwen-image"
+variant = "original"
+weights = "artifacts/qwen-image.safetensors"
+vae = "artifacts/qwen-image-vae.safetensors"
+text_encoder = "artifacts/qwen2.5-vl"
+
+[sampling]
+prompt = "A quiet mountain lake at sunrise"
+negative_prompt = ""
+width = 1024
+height = 1024
+seed = 42
+steps = 25
+guidance = 4.0
+attention_backend = "torch"
+# shift = 1.0
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

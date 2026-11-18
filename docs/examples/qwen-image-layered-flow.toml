@@ -1,0 +1,91 @@
+# 用途 / Task: qwen-image · train
+# 命令 / Command: uv run unituner train docs/examples/qwen-image-layered-flow.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "qwen-image"
+variant = "layered"
+weights = "artifacts/qwen-image-layered.safetensors"
+vae = "artifacts/qwen-image-rgba-vae.safetensors"
+text_encoder = "artifacts/qwen2.5-vl"
+
+[dataset.groups.main]
+source = "data/composites"
+cache_directory = "cache/qwen-image-layered"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [1024, 1024]
+batch_size = 1
+
+# Qwen layered 的前景层目录列表，与合成目标按主体对应。
+# Foreground-layer directories for Qwen layered, stem-matched to composite targets.
+layer_sources = ["data/foreground-1", "data/foreground-2"]
+
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[method.qwen_image]
+# Qwen layered 是否移除合成基图监督；仅 layered 流匹配使用。
+# Whether Qwen layered excludes composite/base supervision; only for layered flow training.
+remove_base = true
+
+[train]
+max_updates = 1000
+learning_rate = 0.0001
+seed = 42
+
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[execution]
+precision = "fp32"
+residency = "resident"
+recompute = "block"
+
+compile = false
+# attention_activation_offload = false
+
+[output]
+directory = "runs/qwen-image-layered"
+name = "adapter"
+save_every_updates = 100
+
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[method]
+kind = "flow-matching"
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

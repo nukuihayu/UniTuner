@@ -1,0 +1,51 @@
+# 用途 / Task: qwen-image · restore
+# 命令 / Command: uv run unituner restore docs/examples/qwen-image-restore.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+# 待修复图像文件；输出保留经过方向校正后的输入尺寸。
+# Input restoration image; output preserves its oriented dimensions.
+input = "input/low/image.png"
+# 推理输出文件路径；图像通常为 PNG，视频按对应命令配置。
+# Inference output file path; usually PNG for images, family-specific for video.
+output = "output/qwen-restored.png"
+# 本次生成/修复的提示词；与训练任务保持一致。
+# Prompt for this generation/restoration request; match the training task.
+prompt = ""
+# 修复 encoder adapter 或 REPA 特征编码器路径，按所在表的任务选择。
+# Restoration encoder adapter or REPA feature-encoder path, according to the containing table.
+encoder_weights = "runs/qwen-restoration/weights/model.encoder.safetensors"
+
+# torch 使用原生注意力；kitchen-int8 需要相应运行环境，仅用于支持的推理。
+# torch uses native attention; kitchen-int8 requires the relevant backend and supported inference paths.
+attention_backend = "torch"
+# 修复噪声水平，严格在 (0,1)；显式设置时不同时开启 calibrate。
+# Restoration noise level strictly within (0,1); do not enable calibrate simultaneously.
+# sigma = 0.244
+
+[model]
+family = "qwen-image"
+variant = "original"
+weights = "artifacts/qwen-image.safetensors"
+vae = "artifacts/qwen-image-vae.safetensors"
+text_encoder = "artifacts/qwen2.5-vl"
+
+[adapter]
+weights = "runs/qwen-restoration/weights/model.safetensors"
+
+[adapter.config]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false
+
+[model.text.tokenizer]
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+offline = false

@@ -1,0 +1,83 @@
+# 用途 / Task: flux2 · train
+# 命令 / Command: uv run unituner train docs/examples/flux2-reference-flow.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "flux2"
+version = "klein-4b"
+variant = "base"
+weights = "artifacts/flux2-klein-4b-base.safetensors"
+vae = "artifacts/flux2-vae.safetensors"
+text_encoder = "artifacts/qwen3"
+
+[dataset.groups.main]
+source = "images"
+cache_directory = "cache/flux2-reference"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [1024, 1024]
+batch_size = 1
+
+reference_sources = ["references"]
+
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[train]
+max_updates = 1000
+learning_rate = 0.0001
+
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.adapter]
+algorithm = "lora"
+rank = 16
+alpha = 16.0
+
+[method]
+kind = "flow-matching"
+
+[execution]
+precision = "fp32"
+recompute = "block"
+
+residency = "resident"
+compile = false
+# attention_activation_offload = false
+
+[output]
+directory = "runs/flux2-reference"
+name = "model"
+save_every_updates = 100
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

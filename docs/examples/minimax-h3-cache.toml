@@ -1,0 +1,63 @@
+# 用途 / Task: minimax-h3 · cache
+# 命令 / Command: uv run unituner cache docs/examples/minimax-h3-cache.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "minimax-h3"
+variant = "ref2va"
+vae = "/models/h3/video-vae.safetensors"
+text_encoder = "/models/h3/text.safetensors"
+
+[model.minimax_h3]
+audio_vae = "/models/h3/audio-vae.safetensors"
+text_config = "/models/h3/text-config"
+text_device = "cpu"
+
+# Processor defaults to MiniMaxAI/MiniMax-H3/processor.
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/h3/processor" # Optional local directory
+# revision = "commit-sha"         # Optional pinned Hub revision
+
+[dataset.groups.main]
+kind = "video"
+source = "/data/h3/records.jsonl"
+cache_directory = "/data/h3/cache"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [768, 768]
+batch_size = 1
+
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+
+[dataset.groups.main.video]
+target_frames = [124]
+target_fps = 24.0
+fps_resampling = "timestamps"
+# 视频窗口提取 head/chunk/slide/uniform/full；决定从同一视频生成哪些窗口。
+# Video-window extraction head/chunk/slide/uniform/full; selects windows from each source video.
+extraction = "head"
+# 视频处理帧数上限；Wan 仍须 1+4k，H3 至少 5。
+# Video processing frame limit; Wan still requires 1+4k and H3 at least 5.
+max_frames = 345
+
+[dataset.groups.main.minimax_h3]
+# H3 缓存生成种子，固定缓存随机条件。
+# H3 cache-generation seed for repeatable random conditions.
+cache_seed = 0
+# 允许 H3 实验性时长；常规训练保持 false。
+# Allow experimental H3 durations; keep false for standard recipes.
+allow_experimental_duration = false
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

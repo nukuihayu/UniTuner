@@ -1,0 +1,104 @@
+# 用途 / Task: krea2 · train
+# 命令 / Command: uv run unituner train docs/examples/krea2-restoration.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "krea2"
+variant = "raw"
+weights = "artifacts/krea2.safetensors"
+vae = "artifacts/qwen-image-vae.safetensors"
+text_encoder = "artifacts/qwen3-vl-4b"
+
+[dataset.groups.main]
+kind = "restoration"
+source = "input/high"
+low_quality_source = "input/low"
+cache_directory = "cache/krea2-restoration"
+# [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
+# [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
+resolution = [512, 512]
+batch_size = 1
+
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+horizontal_flip_probability = 0.5
+
+[train]
+parameter_mode = "adapter"
+max_updates = 1000
+learning_rate = 0.0001
+
+weight_decay = 0.01
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.adapter]
+algorithm = "lora"
+rank = 16
+alpha = 16.0
+
+[method]
+kind = "restoration"
+
+[method.restoration]
+encoder_rank = 4
+posterior = "sample"
+midtimestep = 244
+
+calibrate = false
+histogram_bins = 32
+
+[losses]
+lrr = 5.0
+l1 = 0.5
+dv3d = 0.0
+gan = 0.0
+histogram = 0.0
+
+[execution]
+precision = "fp32"
+recompute = "block"
+
+residency = "resident"
+compile = false
+# attention_activation_offload = false
+
+[output]
+directory = "runs/krea2-restoration"
+name = "model"
+save_every_updates = 100
+
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[preview]
+every_updates = 100
+num_images = 1
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false

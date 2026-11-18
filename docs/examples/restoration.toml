@@ -1,0 +1,105 @@
+# 用途 / Task: z-image · train
+# 命令 / Command: uv run unituner train docs/examples/restoration.toml --device cuda
+# 先改模型、数据及输出路径；注释掉的参数为可选项，默认值通常无需填写。
+# Replace model, data and output paths first. Commented options can normally be omitted.
+# 参数教程 / Parameter guide: docs/training/parameters.md · docs/en/training/parameters.md
+
+[model]
+family = "z-image"
+variant = "base"
+weights = "/models/z-image.safetensors"
+vae = "/models/vae.safetensors"
+text_encoder = "/models/qwen3"
+
+[dataset.groups.main]
+kind = "restoration"
+source = "/data/hq"
+low_quality_source = "/data/lq"
+cache_directory = "/data/cache"
+batch_size = 1
+repeats = 1
+enable_bucket = true
+bucket_no_upscale = false
+caption_extension = ".txt"
+# prompt = ""
+horizontal_flip_probability = 0.5
+
+[method]
+kind = "restoration"
+
+[losses]
+# 可选五尺度结构损失，宽高需 >160；示例权重未调优。
+# Optional five-scale structural loss; both dimensions >160, example weight is not tuned.
+# ms_ssim = 0.1
+lrr = 5.0
+dv3d = 3.0
+l1 = 0.5
+gan = 0.5
+histogram = 0.0
+
+[method.restoration]
+midtimestep = 244
+dino_weights = "/models/dinov3-convnext.safetensors"
+
+encoder_rank = 4
+calibrate = false
+histogram_bins = 32
+# posterior = "sample"
+
+[train]
+learning_rate = 5e-5
+weight_decay = 0.01
+
+max_grad_norm = 1.0
+lr_schedule = "constant"
+warmup_updates = 0
+include_layers = []
+exclude_layers = []
+
+[train.adapter]
+algorithm = "lora"
+rank = 32
+alpha = 32.0
+
+[train.optimizer]
+betas = [0.9, 0.999]
+eps = 1e-08
+backend = "auto"
+
+[execution]
+residency = "resident"
+recompute = "none"
+compile = false
+# attention_activation_offload = false
+
+[output]
+save_precision = "fp32"
+# tensorboard = "runs/tensorboard"
+# max_resume_checkpoints = 1
+# max_weight_checkpoints = 0
+# checkpoint_storage = "frozen-reference"
+# log_every_seconds = 60.0
+
+[model.text.tokenizer]
+offline = false
+# source = "/models/tokenizer"
+# revision = "commit-sha"
+
+[runtime]
+# cuda_allow_tf32 = false
+# cudnn_enabled = true
+# cudnn_benchmark = true
+# cudnn_deterministic = false
+
+# 可选的小波频带 MSE；取消注释以启用，恢复训练不使用时间步衰减。
+# Optional wavelet band MSE; uncomment to enable, without timestep fade in restoration.
+# [method.wavelet]
+# weight = 0.5
+# wavelet = "haar"
+# levels = 3
+# ll = 0.1
+# lh = 0.01
+# hl = 0.01
+# hh = 0.05
+# ll_level_threshold = -1
+# normalize_bands = false
