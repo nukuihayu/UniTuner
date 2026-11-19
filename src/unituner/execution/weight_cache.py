@@ -1,6 +1,7 @@
 """Retain distributed frozen regions and stream misses without overwriting graph reads."""
 
 from dataclasses import dataclass, field
+from typing import cast
 
 import torch
 from torch import Tensor
@@ -57,7 +58,8 @@ class H2dCache:
         self._allocation_workspace: int = allocation_workspace_bytes
         self._reserve: int = workspace_bytes + cast_workspace_bytes
         self._first_source: WeightSource | None = None
-        self._forward_signature: tuple[object, ...] | None = None
+        self._calibrated_signatures: dict[int, tuple[object, ...]] = {}
+        self._pending_calibrations: dict[int, tuple[object, ...]] = {}
         self._automatic: bool = retained_bytes is None
         self._capacity: int = workspace_bytes if retained_bytes is None else workspace_bytes + retained_bytes
         self._buffers: list[_Buffer] = []
@@ -129,10 +131,9 @@ class H2dCache:
         if not entry and source is not self._first_source:
             return
         if self._automatic:
-            if signature is not None and signature != self._forward_signature:
+            if signature is not None and signature != self._calibrated_signatures.get(id(source)):
                 # A new expert or bucket has not calibrated its activation peak.
                 # Reclaim idle weight storage before observing that workload.
-                self._forward_signature = signature
                 self._capacity = self._workspace
                 self._plan_residency()
                 self._trim()
@@ -206,7 +207,7 @@ class H2dCache:
                 self._staging.copy(source, destination)
             finally:
                 # Even a partially submitted failed copy must finish before reuse.
-                buffer.loaded = stream.record_event()
+                buffer.loaded = cast(torch.Event, stream.record_event())
                 buffer.readers.append(buffer.loaded)
             buffer.source = source
             self._sources[id(source)] = buffer
@@ -219,13 +220,19 @@ class H2dCache:
         def recycle(ready: torch.Event | None) -> None:
             buffer.users -= 1
             buffer.readers[:] = [event for event in buffer.readers if not event.query()]
-            buffer.readers.append(ready if ready is not None else torch.cuda.current_stream(self.device).record_event())
+            buffer.readers.append(
+                ready if ready is not None else cast(torch.Event, torch.cuda.current_stream(self.device).record_event())
+            )
             self._trim()
 
         return WeightLease(buffer.tensor[: source.nbytes].view(source.dtype), recycle=recycle)
 
-    def observe_backward(self) -> None:
+    def observe_backward(
+        self, *, source: WeightSource | None = None, signature: tuple[object, ...] | None = None
+    ) -> None:
         """Sample once per engine backward, without resetting global allocator peaks."""
+        if self._automatic and source is not None and signature is not None:
+            self._pending_calibrations[id(source)] = signature
         if self._automatic and not self._backward_pending:
             self._backward_pending = True
             after_backward(self._completed_backward)
@@ -242,6 +249,8 @@ class H2dCache:
         # make this conservative. Leave one largest tensor allocation of slack:
         # allocator free fragments are not necessarily one contiguous workspace.
         self._reserve = max(self._reserve, peak - allocated + self._allocation_workspace)
+        self._calibrated_signatures.update(self._pending_calibrations)
+        self._pending_calibrations.clear()
         self._capacity = max(self._workspace, retained + free + reserved - allocated - self._reserve)
         self._plan_residency()
         self._trim()
@@ -266,6 +275,8 @@ class H2dCache:
             self._buffers.clear()
             self._regions.clear()
             self._resident.clear()
+            self._calibrated_signatures.clear()
+            self._pending_calibrations.clear()
             self._closed = True
 
 
@@ -288,9 +299,9 @@ class H2dWeights:
         """Predict missing payloads without acquiring speculative graph lifetimes."""
         return any(not self._cache.contains(source) for source in self._sources)
 
-    def observe_backward(self) -> None:
+    def observe_backward(self, *, signature: tuple[object, ...] | None = None) -> None:
         """Let the shared cache calibrate once after the complete graph finishes."""
-        self._cache.observe_backward()
+        self._cache.observe_backward(source=self._sources[0] if self._sources else None, signature=signature)
 
     def acquire(self, *, speculative: bool = False) -> tuple[WeightLease, ...]:
         """Release partial acquisitions on capacity or transfer failure."""
@@ -308,7 +319,7 @@ class H2dWeights:
     def release(self, leases: tuple[WeightLease, ...]) -> None:
         """Record the last compute-stream read before recycling any GPU storage."""
         if leases:
-            ready = torch.cuda.current_stream(self.device).record_event()
+            ready = cast(torch.Event, torch.cuda.current_stream(self.device).record_event())
             for lease in leases:
                 if lease in self._active:
                     self._active.remove(lease)

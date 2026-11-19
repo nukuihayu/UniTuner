@@ -35,6 +35,11 @@ def test_shared_time_matches_token_time_outputs_and_gradients(routing, padding):
     length = 8 + padding
     observations = []
     hook = model.time_embedding.register_forward_pre_hook(lambda _, args: observations.append(args[0].shape))
+    routed_inputs = []
+    block_hooks = [
+        block.register_forward_pre_hook(lambda _, args: routed_inputs.append((args[1], args[3])))
+        for block in model.blocks
+    ]
 
     def run(explicit):
         model.zero_grad(set_to_none=True)
@@ -44,12 +49,23 @@ def test_shared_time_matches_token_time_outputs_and_gradients(routing, padding):
         with sdpa_kernel(SDPBackend.MATH):
             result = model(latents, token_times, captions, sequence_length=length)[0]
             result.square().mean().backward()
-        return result.detach(), times.grad.clone(), [p.grad.clone() for p in model.parameters()]
+        assert times.grad is not None
+        gradients = []
+        for parameter in model.parameters():
+            assert parameter.grad is not None
+            gradients.append(parameter.grad.clone())
+        return result.detach(), times.grad.clone(), gradients
 
     try:
         shared, token = run(False), run(True)
     finally:
         hook.remove()
+        for block_hook in block_hooks:
+            block_hook.remove()
+    if routing:
+        for left, right in zip(routed_inputs[::2], routed_inputs[1::2], strict=True):
+            assert left[0] is right[0]
+            assert left[1] is right[1]
     assert observations == [torch.Size([1, 1, 16]), torch.Size([1, length, 16])]
     for left, right in zip(shared[:2], token[:2], strict=True):
         torch.testing.assert_close(left, right, atol=1e-6, rtol=2e-4)

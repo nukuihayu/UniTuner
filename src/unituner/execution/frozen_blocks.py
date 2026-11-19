@@ -4,6 +4,7 @@ from collections.abc import Callable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from types import TracebackType
+from typing import cast
 
 import torch
 from torch import Tensor, nn
@@ -248,21 +249,6 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
 
         def staged(*args: P.args, **kwargs: P.kwargs) -> R:
             state = replay_state.get()
-            if state is None and self._cache is not None and self._payloads:
-                entry = forward_entry or self._cache_owned
-                signature = (
-                    (
-                        id(self._payloads[0].source),
-                        *tuple(
-                            (tuple(value.shape), value.dtype)
-                            for value in tree_leaves((args, kwargs))
-                            if isinstance(value, Tensor)
-                        ),
-                    )
-                    if entry
-                    else None
-                )
-                self._cache.prepare_forward(self._payloads[0].source, signature=signature, entry=entry)
             leases = ()
             if self._weights is not None:
                 leases = self._weights.acquire() if prefetch is None else prefetch.acquire(self._weights)
@@ -281,6 +267,19 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
                             self._weights.release(leases)
 
         def installed(*args: P.args, **kwargs: P.kwargs) -> R:
+            signature = None
+            if self._payloads:
+                entry = forward_entry or self._cache_owned
+                if entry:
+                    signature = (
+                        id(self._payloads[0].source),
+                        *tuple(
+                            (tuple(value.shape), value.dtype)
+                            for value in tree_leaves((args, kwargs))
+                            if isinstance(value, Tensor)
+                        ),
+                    )
+                self._cache.prepare_forward(self._payloads[0].source, signature=signature, entry=entry)
             if region.module.training and torch.is_grad_enabled():
                 weights = self._weights
                 if weights is not None:
@@ -312,7 +311,7 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
                         if state not in self._replays:
                             self._replays.append(state)
                         after_backward(completed)
-                        weights.observe_backward()
+                        weights.observe_backward(signature=signature)
                         if prefetch is not None:
                             after_backward(prefetch.cancel)
                         if state.early_hook and self._trainable:
@@ -323,13 +322,19 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
                             )
 
                     def recorded(*args: P.args, **kwargs: P.kwargs) -> R:
-                        return checkpoint(
-                            staged,
-                            *args,
-                            use_reentrant=False,
-                            preserve_rng_state=True,
-                            context_fn=lambda: (AttentionReplay(), _ReplayContext(replay_state, state, enter_replay)),
-                            **kwargs,  # ty: ignore[invalid-argument-type]
+                        return cast(
+                            R,
+                            checkpoint(
+                                staged,
+                                *args,
+                                use_reentrant=False,
+                                preserve_rng_state=True,
+                                context_fn=lambda: (
+                                    AttentionReplay(),
+                                    _ReplayContext(replay_state, state, enter_replay),
+                                ),
+                                **kwargs,  # ty: ignore[invalid-argument-type]
+                            ),
                         )
 
                     if any(isinstance(value, Tensor) and value.requires_grad for value in args):

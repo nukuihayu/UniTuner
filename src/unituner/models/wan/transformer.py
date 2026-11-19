@@ -89,12 +89,15 @@ class WanTransformer(nn.Module):
             embedded.append(
                 tokens
                 if tokens.shape[1] == sequence_length
-                else torch.cat((tokens, tokens.new_zeros(1, sequence_length - tokens.shape[1], config.hidden_size)), dim=1)
+                else torch.cat(
+                    (tokens, tokens.new_zeros(1, sequence_length - tokens.shape[1], config.hidden_size)), dim=1
+                )
             )
             frames = None if frame_indices is None else frame_indices[index]
             rotations.append(rotary_embedding(grid, config.hidden_size // config.num_heads, clip.device, frames))
+            del tokens, clip
         values = embedded[0] if len(embedded) == 1 else torch.cat(embedded)
-        del embedded, tokens, clip
+        del embedded
         # FP32 masters alone do not protect time projections from ambient AMP.
         with torch.autocast(device_type=values.device.type, enabled=False):
             if config.version == "2.1":
@@ -105,11 +108,7 @@ class WanTransformer(nn.Module):
                 # broadcast the singleton token axis through blocks/head.
                 # Explicit BL times retain the per-token path (e.g. RCM).
                 times = timesteps[:, None] if timesteps.ndim == 1 else timesteps
-                features = (
-                    timestep_embedding(times.flatten(), config.timestep_dim)
-                    .unflatten(0, times.shape)
-                    .float()
-                )
+                features = timestep_embedding(times.flatten(), config.timestep_dim).unflatten(0, times.shape).float()
                 time = self.time_embedding(features)
                 modulation = self.time_projection(time).unflatten(2, (6, config.hidden_size))
         context = self.text_embedding(
@@ -130,15 +129,19 @@ class WanTransformer(nn.Module):
             spans=tuple((TargetSpan(0, math.prod(grid)),) for grid in grids),
             device=values.device,
         )
+        selected_frequencies, selected_modulation = frequencies, modulation
+        if route is not None:
+            selected_frequencies = tuple(
+                rotation.index_select(0, route.indices[row, : route.targets[row][0].kept])
+                for row, rotation in enumerate(frequencies)
+            )
+            if modulation.ndim == 4 and modulation.shape[1] != 1:
+                selected_modulation = route.select(modulation)
         for index, block in enumerate(self.blocks):
             if route is not None and route.applies(index):
-                selected_frequencies = tuple(
-                    rotation.index_select(0, route.indices[row, : route.targets[row][0].kept])
-                    for row, rotation in enumerate(frequencies)
-                )
                 updated = block(
                     route.select(values),
-                    route.select(modulation) if modulation.ndim == 4 and modulation.shape[1] != 1 else modulation,
+                    selected_modulation,
                     context,
                     selected_frequencies,
                 )

@@ -299,6 +299,8 @@ def test_new_workload_recalibrates_automatic_cache_without_discarding_live_lease
     try:
         first = owners[0]._sources[0]
         cache.prepare_forward(first, signature=(0, (2, 16)), entry=True)
+        monkeypatch.setattr("unituner.execution.weight_cache.after_backward", lambda callback: None)
+        cache.observe_backward(source=first, signature=(0, (2, 16)))
         cache._completed_backward()
         live = owners[0].acquire()
         for owner in owners[1:]:
@@ -355,7 +357,7 @@ def test_each_expert_entry_recalibrates_for_changed_tensor_shapes(monkeypatch):
 
     monkeypatch.setattr(cache, "prepare_forward", observe)
     try:
-        for expert, batch in [(0, 2), (0, 8), (1, 8), (0, 8)]:
+        for expert, batch in [(0, 2), (0, 8), (1, 8), (0, 8), (1, 8), (0, 2)]:
             value = torch.randn(batch, 16, device=device, requires_grad=True)
             copied = value.detach().clone().requires_grad_()
             expected, actual = references[expert](value), models[expert](copied)
@@ -366,9 +368,69 @@ def test_each_expert_entry_recalibrates_for_changed_tensor_shapes(monkeypatch):
             for left, right in zip(references[expert].parameters(), models[expert].parameters(), strict=True):
                 if left.requires_grad:
                     torch.testing.assert_close(left.grad, right.grad, atol=0, rtol=0)
-        assert len(entries) == 4
-        assert all(capacity == cache._workspace for _, capacity in entries)
+        assert len(entries) == 6
+        assert all(entries[index][1] == cache._workspace for index in (0, 1, 2, 5))
+        assert all(entries[index][1] > cache._workspace for index in (3, 4))
         assert entries[0][0] != entries[1][0]
         assert entries[1][0] != entries[2][0]
+    finally:
+        owner.close()
+
+
+def test_automatic_cache_only_reuses_completed_workloads_and_still_shrinks_under_pressure(monkeypatch):
+    device = torch.device("cuda", torch.cuda.current_device())
+    size = 1024**2
+    cache = H2dCache(device=device, workspace_bytes=size)
+    source = WeightSource((torch.zeros(size // 4),))
+    free = [8 * size]
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda device: (free[0], 16 * size))
+    monkeypatch.setattr(torch.cuda, "memory_allocated", lambda device: 0)
+    monkeypatch.setattr(torch.cuda, "memory_reserved", lambda device: 0)
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda device: 0)
+    try:
+        cache.prepare_forward(source, signature=(1, (2, 16)), entry=True)
+        assert not cache._calibrated_signatures
+        cache._capacity = 4 * size
+        cache.prepare_forward(source, signature=(1, (2, 16)), entry=True)
+        assert cache.statistics().capacity_bytes == size
+        monkeypatch.setattr("unituner.execution.weight_cache.after_backward", lambda callback: None)
+        cache.observe_backward(source=source, signature=(1, (2, 16)))
+        cache._completed_backward()
+        capacity = cache.statistics().capacity_bytes
+        cache.prepare_forward(source, signature=(1, (2, 16)), entry=True)
+        assert cache.statistics().capacity_bytes == capacity
+        free[0] = size
+        cache.prepare_forward(source, signature=(1, (2, 16)), entry=True)
+        assert cache.statistics().capacity_bytes == size
+    finally:
+        cache.close()
+
+
+def test_outstanding_forward_is_not_calibrated_by_another_graphs_backward():
+    from torch import nn
+
+    from unituner.config.execution import ExecutionConfig
+    from unituner.execution.installation import ExecutionInstallation
+    from unituner.execution.regions import ModelRegion, ModelRegions
+
+    device = torch.device("cuda", torch.cuda.current_device())
+    model = nn.Linear(16, 16, device=device)
+    model.weight.requires_grad_(False)
+    owner = ExecutionInstallation(
+        ModelRegions((ModelRegion(model, 0, "visual"),)),
+        ExecutionConfig(residency="frozen-blocks", recompute="block"),
+        device=device,
+    )
+    cache = owner._cache
+    assert cache is not None
+    try:
+        small = model(torch.randn(2, 16, device=device, requires_grad=True))
+        large = model(torch.randn(8, 16, device=device, requires_grad=True))
+        assert not cache._calibrated_signatures
+        small.sum().backward()
+        assert len(cache._calibrated_signatures) == 1
+        assert next(iter(cache._calibrated_signatures.values()))[1] == ((2, 16), torch.float32)
+        large.sum().backward()
+        assert next(iter(cache._calibrated_signatures.values()))[1] == ((8, 16), torch.float32)
     finally:
         owner.close()
