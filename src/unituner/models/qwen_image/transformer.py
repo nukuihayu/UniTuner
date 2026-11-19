@@ -152,7 +152,7 @@ class QwenImageTransformer(nn.Module):
                 context, hidden = updated_context, route.restore(hidden, updated)
             else:
                 context, hidden = block(hidden, context, text_mask, time, *rotary, zero_index)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, hidden[:, :visual_count])
         if self.config.zero_reference_time:
             time = time.chunk(2)[0]

@@ -2,7 +2,9 @@
 
 import json
 import os
+import weakref
 from contextlib import closing
+from importlib import import_module
 
 import numpy as np
 import pytest
@@ -36,7 +38,7 @@ from unituner.training.previews.images import PreviewImages
 
 
 @pytest.mark.parametrize("variant,algorithm", [("original", "lora"), ("edit-2511", "loha"), ("layered", "lokr")])
-def test_qwen_public_generation_is_repeatable_and_publishes_each_layer(tmp_path, variant, algorithm):
+def test_qwen_public_generation_is_repeatable_and_publishes_each_layer(tmp_path, monkeypatch, variant, algorithm):
     previous = torch.get_num_threads()
     torch.set_num_threads(1)
     try:
@@ -177,6 +179,22 @@ def test_qwen_public_generation_is_repeatable_and_publishes_each_layer(tmp_path,
         ):
             identities = [id(parameter) for parameter in model.parameters()]
             flags = [module.training for module in model.modules()]
+            preview_module = import_module("unituner.training.integrations.qwen_image.previews")
+            text_module = import_module("unituner.models.qwen_image.text.encoder")
+            original_load, original_generate = text_module.load_qwen_image_text, preview_module.generate_latents
+            encoder_refs = []
+
+            def track_text(*args, **kwargs):
+                encoder = original_load(*args, **kwargs)
+                encoder_refs.append(weakref.ref(encoder))
+                return encoder
+
+            def check_released(*args, **kwargs):
+                assert encoder_refs and all(reference() is None for reference in encoder_refs)
+                return original_generate(*args, **kwargs)
+
+            monkeypatch.setattr(text_module, "load_qwen_image_text", track_text)
+            monkeypatch.setattr(preview_module, "generate_latents", check_released)
             renderer = PreviewImages(configuration, None)
             renderer(7, model, torch.nn.Identity(), None)
             previews = sorted((tmp_path / "previews").glob("*.png"))

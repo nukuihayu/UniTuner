@@ -2,6 +2,7 @@
 
 from importlib import import_module
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -16,6 +17,11 @@ from unituner.models.qwen_image.inference.conditioning import build_qwen_image_r
 from unituner.models.qwen_image.loading import load_qwen_image_vae
 from unituner.models.qwen_image.transformer import QwenImageTransformer
 from unituner.training.previews.publication import publish_images
+
+if TYPE_CHECKING:
+    from unituner.models.qwen_image.text.encoder import QwenImageTextEncoder
+
+type PreviewCondition = tuple[Caption, Caption | None, tuple[torch.Tensor, ...], torch.Tensor | None]
 
 
 class ImagePreviews:
@@ -62,7 +68,7 @@ class ImagePreviews:
         )
         directory = Path(config.output.directory) / "previews"
 
-        def render(sample: SamplingConfig) -> tuple[torch.Tensor, ...]:
+        def prepare(sample: SamplingConfig, text: "QwenImageTextEncoder") -> PreviewCondition:
             conditions = build_qwen_image_references(
                 vae,
                 tuple(Path(path) for path in sample.reference_images),
@@ -86,13 +92,22 @@ class ImagePreviews:
                 if sample.mask_image is None
                 else read_inpainting_mask(Path(sample.mask_image), (sample.width, sample.height))
             )
+            return positive, negative, conditions.latents, mask
+
+        # Encode current assets before denoising so the large multimodal text
+        # encoder is not kept alive alongside GPU sampling and VAE decoding.
+        prepared = tuple(prepare(sample, text) for sample in preview.samples)
+        del text
+
+        def render(entry: tuple[SamplingConfig, PreviewCondition]) -> tuple[torch.Tensor, ...]:
+            sample, (positive, negative, references, mask) = entry
             latents = generate_latents(
                 model,
                 positive,
                 sample,
                 allow_cpu_frozen=config.execution.offloads_frozen_weights,
                 negative=negative,
-                references=conditions.latents,
+                references=references,
                 inpainting_mask=mask,
                 vae_factor=vae.config.spatial_factor,
             )
@@ -100,5 +115,10 @@ class ImagePreviews:
             return tuple(pixels)
 
         publish_images(
-            preview.samples, render, directory=directory, update=update, rounding="truncate", save=save_image
+            zip(preview.samples, prepared, strict=True),
+            render,
+            directory=directory,
+            update=update,
+            rounding="truncate",
+            save=save_image,
         )

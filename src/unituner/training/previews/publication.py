@@ -36,3 +36,4 @@ def publish_images[Sample](
         for layer, pixels in enumerate(render(sample)):
             suffix = "" if layer == 0 else f".layer-{layer:03d}"
             save(pixels, directory / f"step-{update:08d}-{index:02d}{suffix}.png", rounding=rounding)
+            del pixels

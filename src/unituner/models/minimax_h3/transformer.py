@@ -377,7 +377,7 @@ class MiniMaxH3Transformer(nn.Module):
                 hidden_states = route.restore(hidden_states, updated)
             else:
                 hidden_states = block(hidden_states, timestep_embeddings, timestep_rows.block_segments, rotation_table)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, hidden_states[:, layout.target_video_segment.row_slice])
 
         video_rows, audio_rows = self.final_layer(

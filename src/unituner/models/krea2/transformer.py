@@ -147,7 +147,7 @@ class Krea2Transformer(nn.Module):
                 values = route.restore(values, updated)
             else:
                 values = block(values, modulation, rotary, joint_lengths)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, values[:, :image_count])
         return self.last(values, time)[:, :image_count]
 

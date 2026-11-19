@@ -197,7 +197,7 @@ class ZImageTransformer(nn.Module):
                 unified = route.restore(unified, updated)
             else:
                 unified = block(unified, frequencies, conditioning, attention_mask)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, unified[:, :image_length])
         prediction = self.all_final_layer[key](unified, conditioning)[:, :image_length]
         return (

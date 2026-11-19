@@ -56,6 +56,7 @@ class MiniMaxH3ImagePreviews:
                         images=tuple(Path(path) for path in sample.reference_images),
                     )
                     save_image(pixels[0, :, 0].cpu(), self._path(update, index))
+                    del pixels
             else:
                 if self.dataset is None or self.restoration is None:
                     raise ValueError("H3-Image restoration preview needs indexed pairs")
@@ -78,6 +79,7 @@ class MiniMaxH3ImagePreviews:
                         )
                         generated = method.vae.decode(restored)[:, :, 0]
                     save_image(_comparison(low[0], generated[0], high[0]), self._path(update, index))
+                    del low, high, record, encoded, restored, generated
 
     def _path(self, update: int, index: int) -> Path:
         return Path(self.config.output.directory) / "previews" / f"step-{update:08d}-{index:02d}.png"

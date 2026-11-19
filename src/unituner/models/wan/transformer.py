@@ -145,7 +145,7 @@ class WanTransformer(nn.Module):
                 values = route.restore(values, updated)
             else:
                 values = block(values, modulation, context, frequencies)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 for row, grid in zip(values, grids, strict=True):
                     self.feature_recorder.record(index, row[: math.prod(grid)].unsqueeze(0))
         predictions = self.head(values, time)

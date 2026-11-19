@@ -223,7 +223,7 @@ class MossImageTransformer(nn.Module):
                     )
                 else:
                     hidden = block(hidden, rope, modulation, joint_lengths)
-                if self.feature_recorder is not None:
+                if self.feature_recorder is not None and self.feature_recorder.captures(index):
                     self.feature_recorder.record(index, hidden[:, :image_length])
         hidden = self.final_norm_video(hidden[:, :image_length].to(parameter.dtype))
         hidden = hidden * (1 + head[:, 1, None]) + head[:, 0, None]

@@ -138,7 +138,7 @@ class FluxTransformer(nn.Module):
                 img = route.restore(img, updated)
             else:
                 img, txt = block(img, txt, vec, positions, lengths)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, img[:, :target_length])
         joint = torch.cat((txt, img), dim=1)
         text_length = txt.shape[1]
@@ -154,7 +154,7 @@ class FluxTransformer(nn.Module):
                 joint = joint_route.restore(joint, updated)
             else:
                 joint = block(joint, vec, positions, lengths)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, joint[:, text_length : text_length + target_length])
         return self.final_layer(joint[:, text_length :], vec)
 

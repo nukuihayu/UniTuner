@@ -139,7 +139,7 @@ class Flux3Transformer(nn.Module):
                     hidden[mode] = route.restore(hidden[mode], updated, batched=False)
                 else:
                     hidden[mode] = blocks[depth](hidden[mode], frequencies[mode], packed.bounds[mode], early[mode])
-                if mode == "image" and self.feature_recorder is not None:
+                if mode == "image" and self.feature_recorder is not None and self.feature_recorder.captures(depth):
                     for first, last in packed.bounds["image"]:
                         self.feature_recorder.record(depth, hidden[mode][first:last].unsqueeze(0))
         chunks, positions, modulations = [], [], ([], [], [])
@@ -180,7 +180,7 @@ class Flux3Transformer(nn.Module):
                 joint = joint_route.restore(joint, updated, batched=False)
             else:
                 joint = block(joint, joint_frequencies, tuple(bounds), (shift, scale, gate))
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 for first, last, start in placements:
                     self.feature_recorder.record(index, joint[start : start + last - first].unsqueeze(0))
         images = joint.new_empty(image_shape)

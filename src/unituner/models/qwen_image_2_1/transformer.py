@@ -195,7 +195,7 @@ class QwenImage21Transformer(nn.Module):
                 values = route.restore(values, updated)
             else:
                 values = block(values, modulation, rotary, sequence_segments, target_mask)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(
                     index,
                     torch.stack(

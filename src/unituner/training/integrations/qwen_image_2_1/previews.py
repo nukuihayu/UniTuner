@@ -9,7 +9,7 @@ from unituner.config.training import TrainingConfig
 from unituner.data.media.image import save_image
 from unituner.inference.decoding import decode_on_device
 from unituner.inference.sampling import generate_latents
-from unituner.models.qwen_image_2_1.inference.conditioning import build_qwen_image_21_conditions
+from unituner.models.qwen_image_2_1.inference.conditioning import QwenImage21Conditions, build_qwen_image_21_conditions
 from unituner.models.qwen_image_2_1.loading import load_qwen_image_21_vae
 from unituner.models.qwen_image_2_1.text.encoder import load_qwen_image_21_text
 from unituner.models.qwen_image_2_1.transformer import QwenImage21Transformer
@@ -51,13 +51,16 @@ class ImagePreviews:
         )
         directory = Path(config.output.directory) / "previews"
         device = next(model.parameters()).device
+        prepared = tuple(build_qwen_image_21_conditions(vae, text, sample) for sample in preview.samples)
+        del text
 
-        def render(sample: SamplingConfig) -> tuple[torch.Tensor, ...]:
-            conditions = build_qwen_image_21_conditions(vae, text, sample)
+        def render(entry: tuple[SamplingConfig, QwenImage21Conditions]) -> tuple[torch.Tensor, ...]:
+            sample, conditions = entry
             latents = generate_latents(
                 model,
                 conditions.positive,
                 sample,
+                allow_cpu_frozen=config.execution.offloads_frozen_weights,
                 negative=conditions.negative,
                 references=conditions.references,
                 inpainting_mask=conditions.mask,
@@ -67,5 +70,10 @@ class ImagePreviews:
             return (pixels[0],)
 
         publish_images(
-            preview.samples, render, directory=directory, update=update, rounding="truncate", save=save_image
+            zip(preview.samples, prepared, strict=True),
+            render,
+            directory=directory,
+            update=update,
+            rounding="truncate",
+            save=save_image,
         )

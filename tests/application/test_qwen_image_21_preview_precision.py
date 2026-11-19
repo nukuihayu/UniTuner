@@ -1,5 +1,7 @@
 """Publish real Qwen2.1 PNG previews from mixed precision live training resources."""
 
+import weakref
+
 import pytest
 import torch
 from PIL import Image
@@ -89,8 +91,19 @@ mask_image = "{tmp_path.as_posix()}/mask.png"
         )
         actual_generate = previews.generate_latents
         observed = []
+        encoders = []
+        load_text = previews.load_qwen_image_21_text
+
+        def track_text(*args, **kwargs):
+            text = load_text(*args, **kwargs)
+            encoders.append(weakref.ref(text))
+            return text
+
+        monkeypatch.setattr(previews, "load_qwen_image_21_text", track_text)
 
         def capture(*args, **kwargs):
+            assert encoders and all(reference() is None for reference in encoders)
+            assert kwargs["allow_cpu_frozen"] == config.execution.offloads_frozen_weights
             assert args[2].guidance is None
             assert kwargs["negative"] is None
             latents = actual_generate(*args, **kwargs)

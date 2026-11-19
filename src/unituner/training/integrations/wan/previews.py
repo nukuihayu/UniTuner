@@ -70,3 +70,4 @@ class VideoPreviews:
                     Path(config.output.directory) / "previews" / f"step-{update:08d}-{index:02d}.mp4",
                     fps=sampling.fps,
                 )
+                del pixels, inputs

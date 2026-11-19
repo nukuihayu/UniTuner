@@ -231,7 +231,7 @@ class MiniMaxH3ImageTransformer(MiniMaxH3Transformer):
                 hidden = route.restore(hidden, updated)
             else:
                 hidden = block(hidden, timesteps, segments, rotation)
-            if self.feature_recorder is not None:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, hidden[:, target_start:])
         velocity = self.final_layer(
             hidden[:, -frame.shape[0] :],

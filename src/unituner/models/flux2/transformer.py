@@ -144,7 +144,7 @@ class Flux2Transformer(nn.Module):
                 img = route.restore(img, updated)
             else:
                 img, txt = block(img, txt, positions, (img_first, img_second), (txt_first, txt_second))
-            if self.feature_recorder is not None and self.feature_recorder.active:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 for row, ids in zip(img, x_ids, strict=True):
                     self.feature_recorder.record(index, row[ids[:, 0] == 0].unsqueeze(0))
         joint = torch.cat((txt, img), dim=1)
@@ -156,7 +156,7 @@ class Flux2Transformer(nn.Module):
                 joint = joint_route.restore(joint, updated)
             else:
                 joint = block(joint, positions, single)
-            if self.feature_recorder is not None and self.feature_recorder.active:
+            if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 for row, ids in zip(joint[:, text_length :], x_ids, strict=True):
                     self.feature_recorder.record(index, row[ids[:, 0] == 0].unsqueeze(0))
         return self.final_layer(joint[:, text_length :], vector)

@@ -1,5 +1,6 @@
 """Protect shared publication ordering, caching and adapter serialization contracts."""
 
+import weakref
 from contextlib import closing
 
 import pytest
@@ -18,6 +19,19 @@ from unituner.artifacts.tensors import TensorReader, iter_tensors
 from unituner.training.parameters import ParameterInstallation
 from unituner.training.previews.publication import CaptionCache, publish_images
 from unituner.training.publishing import publish_adapter
+
+
+def test_preview_releases_previous_pixels_before_rendering_next_sample(tmp_path):
+    references = []
+
+    def render(sample):
+        assert all(reference() is None for reference in references)
+        pixels = torch.full((3, 2, 2), float(sample))
+        references.append(weakref.ref(pixels))
+        return (pixels,)
+
+    publish_images(range(3), render, directory=tmp_path, update=1, rounding="nearest", save=lambda *a, **k: None)
+    assert len(references) == 3 and all(reference() is None for reference in references)
 
 
 def test_caption_cache_retries_failure_and_is_per_instance():

@@ -18,9 +18,13 @@ class FeatureRecorder:
         self.active: bool = False
         self.features: dict[int, list[Tensor]] = {}
 
+    def captures(self, index: int) -> bool:
+        """Check selection before callers assemble expensive target-only tensors."""
+        return self.active and index in self.layers
+
     def record(self, index: int, visual: Tensor) -> None:
         """Retain native BLD target tokens without copying or detaching their graph."""
-        if self.active and index in self.layers:
+        if self.captures(index):
             if visual.ndim != 3 or min(visual.shape) < 1:
                 raise ValueError("Feature capture requires nonempty BLD target tokens")
             self.features.setdefault(index, []).append(visual)
