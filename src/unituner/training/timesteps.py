@@ -10,7 +10,11 @@ from unituner.models.catalog import IMAGE_FAMILIES, image_family_spec
 
 def training_sigma_grid(family: str, sampling: str, *, device: torch.device) -> Tensor | None:
     """Return 1000 descending FP32 sigmas; None selects continuous uniform sampling."""
+    from unituner.training.audit import current_audit
+
     if sampling == "uniform":
+        if audit := current_audit():
+            audit.record_noise_grid(family, sampling, None)
         return None
     if family in IMAGE_FAMILIES:
         family = image_family_spec(family).backbone
@@ -41,7 +45,10 @@ def training_sigma_grid(family: str, sampling: str, *, device: torch.device) -> 
     if family in ("qwen-image", "qwen-image-2-1"):
         remainder = 1 - values
         values = 1 - remainder / (remainder[-1] / 0.98)
-    return values.to(device)
+    values = values.to(device)
+    if audit := current_audit():
+        audit.record_noise_grid(family, sampling, values)
+    return values
 
 
 def sample_sigmas(batch_size: int, *, device: torch.device, grid: Tensor | None) -> Tensor:

@@ -105,6 +105,7 @@ residency = "{residency}"
 {f'recompute = "{selected_recompute}"' if selected_recompute is not None else ""}
 attention_activation_offload = {str(attention_offload).lower()}
 [output]
+audit = true
 max_resume_checkpoints = 0
 directory = "{tmp_path.as_posix()}/run"
 name = "model"
@@ -115,6 +116,12 @@ save_every_updates = 1
         device = os.environ.get("UNITUNER_TEST_DEVICE", "cpu")
         assert main_with_local_tokenizers(["cache", str(config), "--device", device]) == 0
         assert main_with_local_tokenizers(["train", str(config), "--device", device]) == 0
+        audit_directory = tmp_path / "run/training-audit"
+        assert json.loads((audit_directory / "manifest.json").read_text())["status"] == "complete"
+        audited_exports = json.loads((audit_directory / "exports.json").read_text())
+        assert any(row["kind"] == "final" for row in audited_exports)
+        if algorithm != "full":
+            assert all(row["status"] == "publisher_keys_match" for row in audited_exports)
         checkpoint = tmp_path / "run/resume/model.state-00000003.safetensors"
         artifact = tmp_path / "run/weights/model.safetensors"
         expected = checkpoint.read_bytes(), artifact.read_bytes()
@@ -145,7 +152,10 @@ save_every_updates = 1
                 assert (
                     metadata["base_model_version"] == "qwen_image_21" and metadata["qwen_image_model_version"] == "2.1"
                 )
-                assert len(keys) == 14 * ({"lora": 3, "loha": 5, "lokr": 4}[algorithm])
+                # Native bindings expose four attention projections per block.
+                target_count = 4 * model.config.num_layers
+                assert len(keys) == target_count * ({"lora": 3, "loha": 5, "lokr": 4}[algorithm])
+                assert json.loads((audit_directory / "manifest.json").read_text())["target_count"] == target_count
                 assert all(torch.isfinite(reader.read(key)).all() for key in keys)
         sample = f"""prompt = "test image"
 negative_prompt = ""

@@ -1,5 +1,7 @@
 # 配置参数与填写手册
 
+训练审计：设置 `[output] audit = true`，详见 [原生训练审计](audit.md)。
+
 [English](../en/training/parameters.md) · [训练教程](README.md)
 
 下表默认值来自当前配置定义。默认值不代表适用于所有模型的推荐配方。`null` 表示省略该字段，TOML 不支持填写 null。表只在对应任务需要时添加；“必填”指添加该表后该字段必填。将 NAME 换成 main 等 ASCII 标识符。
@@ -258,6 +260,7 @@ batch_size = 16
 | --- | --- | --- | --- |
 | `directory` | string | `"runs"` | 产物目录；省略自动建立 runs/<name>_<时间戳>，显式路径会复用。 |
 | `name` | string | `"model"` | 正式权重文件的名称前缀，也是日志及 TensorBoard run 命名的基础。 |
+| `audit` | boolean | `false` | 开启原生训练审计，记录实际选层、采样网格并核对导出；详见 [原生训练审计](audit.md)。 |
 | `log_every_seconds` | number；> 0 | `60.0` | 后台/重定向摘要间隔，默认 60 秒；终端原位刷新，完整指标仍逐步写入文件。 |
 | `save_every_updates` | integer；> 0 | `100` | 每 N 次有效更新同时导出正式权重与独立续训状态；末步也保存。 |
 | `max_resume_checkpoints` | integer；≥ 0 | `1` | 最多保留最近 N 份续训状态；默认 1，0 表示全部。 |

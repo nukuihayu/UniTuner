@@ -65,3 +65,7 @@ def publish_adapter(
         info["network_alpha"] = str(adapter.rank)
         info["unituner.adapter.scaling"] = "alpha/r baked into lora_B; consumer alpha=rank"
     save_tensors(published, path, metadata=info, dtype=dtype)
+    from unituner.training.audit import current_audit
+
+    if audit := current_audit():
+        audit.record_export(path, published.keys())

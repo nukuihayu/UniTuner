@@ -45,7 +45,8 @@ def resume_path(config: TrainingConfig, update: int) -> Path:
 
 def publish_latest_weights(config: TrainingConfig, update: int) -> None:
     """Update latest inference files at each save boundary without rewriting tensor data."""
-    for encoder, expert in ((False, "low"), (True, "low"), (False, "high")):
+    components: tuple[tuple[bool, Literal["low", "high"]], ...] = ((False, "low"), (True, "low"), (False, "high"))
+    for encoder, expert in components:
         if expert == "high" and config.wan_experts is None:
             continue
         source = weights_path(config, update=update, encoder=encoder, expert=expert)
@@ -57,6 +58,10 @@ def publish_latest_weights(config: TrainingConfig, update: int) -> None:
                 os.link(source, temporary)
             except OSError:
                 shutil.copyfile(source, temporary)
+        from unituner.training.audit import current_audit
+
+        if audit := current_audit():
+            audit.record_latest(weights_path(config, encoder=encoder, expert=expert), source)
 
 
 def prune_checkpoints(config: TrainingConfig) -> None:

@@ -24,6 +24,14 @@ from unituner.training.workflows.wan.run import train_wan
 def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
     """Assemble a typed local device and run the shared native training application."""
     config = resolve_training_precision(prepare_training_output(config, resume=resume))
+    from unituner.training.audit import audit_training
+
+    with audit_training(config, resume=resume):
+        return _run(config, device=device, resume=resume)
+
+
+def _run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
+    """Dispatch a resolved native run inside its optional observation scope."""
     status(
         f"[train] Starting {config.model.family}/{config.method.kind} on {device}; precision={config.execution.precision}"
     )

@@ -1,5 +1,7 @@
 # Configuration parameters and filling guide
 
+Set `[output] audit = true` to enable the [native training audit](audit.md).
+
 [简体中文](../../training/parameters.md) · [Training tutorial](README.md)
 
 The tables below list configuration defaults. A default is not a recommendation for every model. `null` means omit the key: TOML has no null literal. Tables are optional unless their task needs them; required means required within that table. Replace NAME with an ASCII identifier such as main.
@@ -258,6 +260,7 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | --- | --- | --- | --- |
 | `directory` | string | `"runs"` | Output directory; omit for runs/<name>_<timestamp>, set an explicit path to reuse it. |
 | `name` | string | `"model"` | Weight filename prefix and the basis for log/TensorBoard run names. |
+| `audit` | boolean | `false` | Enable native target, sampling-grid and export auditing; see [native training audit](audit.md). |
 | `log_every_seconds` | number；> 0 | `60.0` | Noninteractive summary interval, default 60 seconds; terminals refresh in place and files retain every update. |
 | `save_every_updates` | integer；> 0 | `100` | Export weights and independent resume state every N effective updates, plus the final update. |
 | `max_resume_checkpoints` | integer；≥ 0 | `1` | Keep the newest N resume snapshots; default 1, 0 keeps all. |

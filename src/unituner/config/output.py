@@ -15,6 +15,7 @@ class OutputConfig(BaseModel):
         default="runs", min_length=1, description="Omit to use runs/<name>_<timestamp>; explicit paths are reused"
     )
     name: str = Field(default="model", min_length=1)
+    audit: bool = Field(default=False, description="Record actual native targets and verify exports in training-audit")
     log_every_seconds: float = Field(default=60.0, gt=0, description="Noninteractive training summary interval")
     save_every_updates: int = Field(
         default=100, gt=0, description="Save portable weights and a separate resume snapshot every N updates"

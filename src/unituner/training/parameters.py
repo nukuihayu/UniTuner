@@ -172,6 +172,10 @@ class ParameterInstallation:
                 self.plan = ParameterPlan(
                     "adapter", (ParameterGroup("adapter", tuple(self.branches.parameters())),), tuple(targets)
                 )
+            from unituner.training.audit import current_audit
+
+            if audit := current_audit():
+                audit.record_installation(self, model, adapter)
         except BaseException:
             self._owners.close()
             raise
