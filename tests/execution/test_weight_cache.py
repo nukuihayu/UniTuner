@@ -262,3 +262,91 @@ def test_branching_outstanding_graphs_and_repeated_eager_backward(compiled):
     finally:
         for owner in reversed(owners):
             owner.close()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_new_workload_recalibrates_automatic_cache_without_discarding_live_leases(monkeypatch, explicit):
+    device = torch.device("cuda", torch.cuda.current_device())
+    size = 1024**2
+    cache = H2dCache(device=device, workspace_bytes=size, retained_bytes=3 * size if explicit else None)
+    owners = [H2dWeights((WeightSource((torch.full((size // 4,), float(i)),)),), cache) for i in range(3)]
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda device: (8 * size, 16 * size))
+    monkeypatch.setattr(torch.cuda, "memory_allocated", lambda device: 0)
+    monkeypatch.setattr(torch.cuda, "memory_reserved", lambda device: 0)
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda device: 0)
+    try:
+        first = owners[0]._sources[0]
+        cache.prepare_forward(first, signature=(0, (2, 16)), entry=True)
+        cache._completed_backward()
+        live = owners[0].acquire()
+        for owner in owners[1:]:
+            leases = owner.acquire()
+            owner.release(leases)
+        capacity = cache.statistics().capacity_bytes
+        # Same workload retains calibrated storage; a larger bucket or another
+        # expert starts from streaming capacity even while older graphs are live.
+        cache.prepare_forward(first, signature=(0, (2, 16)), entry=True)
+        assert cache.statistics().capacity_bytes == capacity
+        for source, signature in [(first, (0, (8, 16))), (owners[1]._sources[0], (1, (8, 16)))]:
+            cache.prepare_forward(source, signature=signature, entry=True)
+            assert cache.statistics().capacity_bytes == (capacity if explicit else size)
+            torch.testing.assert_close(live[0].tensor.cpu(), torch.zeros(size // 4), atol=0, rtol=0)
+        owners[0].release(live)
+        assert cache.statistics().allocated_bytes <= (capacity if explicit else size)
+    finally:
+        for owner in owners:
+            owner.close()
+        cache.close()
+
+
+def test_each_expert_entry_recalibrates_for_changed_tensor_shapes(monkeypatch):
+    from copy import deepcopy
+
+    from torch import nn
+
+    from unituner.config.execution import ExecutionConfig
+    from unituner.execution.installation import ExecutionInstallation
+    from unituner.execution.regions import ModelRegion, ModelRegions
+
+    device = torch.device("cuda", torch.cuda.current_device())
+    models = [nn.Sequential(nn.Linear(16, 16), nn.SiLU(), nn.Linear(16, 16)).to(device) for _ in range(2)]
+    for model in models:
+        for layer in (model[0], model[2]):
+            layer.weight.requires_grad_(False)
+    references = deepcopy(models)
+    groups = tuple(ModelRegions(tuple(ModelRegion(model[i], i, "visual") for i in (0, 2))) for model in models)
+    owner = ExecutionInstallation(
+        groups[0],
+        ExecutionConfig(residency="frozen-blocks", recompute="block"),
+        device=device,
+        additional_regions=(groups[1],),
+    )
+    cache = owner._cache
+    assert cache is not None
+    entries = []
+    prepare = cache.prepare_forward
+
+    def observe(source, **kwargs):
+        prepare(source, **kwargs)
+        if kwargs.get("entry"):
+            entries.append((kwargs["signature"], cache.statistics().capacity_bytes))
+
+    monkeypatch.setattr(cache, "prepare_forward", observe)
+    try:
+        for expert, batch in [(0, 2), (0, 8), (1, 8), (0, 8)]:
+            value = torch.randn(batch, 16, device=device, requires_grad=True)
+            copied = value.detach().clone().requires_grad_()
+            expected, actual = references[expert](value), models[expert](copied)
+            torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+            expected.sum().backward()
+            actual.sum().backward()
+            torch.testing.assert_close(copied.grad, value.grad, atol=0, rtol=0)
+            for left, right in zip(references[expert].parameters(), models[expert].parameters(), strict=True):
+                if left.requires_grad:
+                    torch.testing.assert_close(left.grad, right.grad, atol=0, rtol=0)
+        assert len(entries) == 4
+        assert all(capacity == cache._workspace for _, capacity in entries)
+        assert entries[0][0] != entries[1][0]
+        assert entries[1][0] != entries[2][0]
+    finally:
+        owner.close()

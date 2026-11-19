@@ -160,6 +160,7 @@ class ExecutionInstallation:
                 )
                 self._owners.callback(self._cache.close)
                 prefetch = WeightPrefetch(device)
+            entry_modules = {id(group.regions[0].module) for group in (regions, *additional_regions) if group.regions}
             for region in all_regions:
                 if compiled:
                     compiler = CompilerInstallation(
@@ -177,6 +178,7 @@ class ExecutionInstallation:
                         use_pinned_memory=config.use_pinned_memory_for_block_swap is True,
                         cache=self._cache,
                         prefetch=prefetch,
+                        forward_entry=id(region.module) in entry_modules,
                     )
                     self._owners.callback(owner.close)
                 elif config.recompute == "block":

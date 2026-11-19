@@ -57,6 +57,7 @@ class H2dCache:
         self._allocation_workspace: int = allocation_workspace_bytes
         self._reserve: int = workspace_bytes + cast_workspace_bytes
         self._first_source: WeightSource | None = None
+        self._forward_signature: tuple[object, ...] | None = None
         self._automatic: bool = retained_bytes is None
         self._capacity: int = workspace_bytes if retained_bytes is None else workspace_bytes + retained_bytes
         self._buffers: list[_Buffer] = []
@@ -119,13 +120,22 @@ class H2dCache:
                 if retained <= self._capacity:
                     break
 
-    def prepare_forward(self, source: WeightSource) -> None:
+    def prepare_forward(
+        self, source: WeightSource, *, signature: tuple[object, ...] | None = None, entry: bool = False
+    ) -> None:
         """Shrink once before a forward; temporary block allocations are not spare cache."""
         if self._first_source is None:
             self._first_source = source
-        if source is not self._first_source:
+        if not entry and source is not self._first_source:
             return
         if self._automatic:
+            if signature is not None and signature != self._forward_signature:
+                # A new expert or bucket has not calibrated its activation peak.
+                # Reclaim idle weight storage before observing that workload.
+                self._forward_signature = signature
+                self._capacity = self._workspace
+                self._plan_residency()
+                self._trim()
             # Shrink before a larger bucket or another process consumes memory;
             # growth is allowed only after a completed backward calibration.
             free, _ = torch.cuda.mem_get_info(self.device)

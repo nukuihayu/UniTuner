@@ -8,6 +8,7 @@ from types import TracebackType
 import torch
 from torch import Tensor, nn
 from torch.func import functional_call
+from torch.utils._pytree import tree_leaves
 from torch.utils.checkpoint import checkpoint
 from torch.utils.hooks import RemovableHandle
 
@@ -172,6 +173,7 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         cache_budget_bytes: int | None = None,
         cache: H2dCache | None = None,
         prefetch: WeightPrefetch | None = None,
+        forward_entry: bool = False,
     ) -> None:
         if device.type != "cuda":
             raise ValueError("Frozen block H2D residency requires CUDA")
@@ -247,7 +249,20 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         def staged(*args: P.args, **kwargs: P.kwargs) -> R:
             state = replay_state.get()
             if state is None and self._cache is not None and self._payloads:
-                self._cache.prepare_forward(self._payloads[0].source)
+                entry = forward_entry or self._cache_owned
+                signature = (
+                    (
+                        id(self._payloads[0].source),
+                        *tuple(
+                            (tuple(value.shape), value.dtype)
+                            for value in tree_leaves((args, kwargs))
+                            if isinstance(value, Tensor)
+                        ),
+                    )
+                    if entry
+                    else None
+                )
+                self._cache.prepare_forward(self._payloads[0].source, signature=signature, entry=entry)
             leases = ()
             if self._weights is not None:
                 leases = self._weights.acquire() if prefetch is None else prefetch.acquire(self._weights)
