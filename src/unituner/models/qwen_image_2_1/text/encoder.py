@@ -99,6 +99,8 @@ class QwenImage21TextEncoder:
             return []
         texts, images, shapes = [], [], []
         for prompt, group in zip(prompts, groups, strict=True):
+            if "<|image_pad|>" in prompt:
+                raise ValueError("Qwen Image2.1 vision token spans must come from reference images")
             markers = " ".join(f"<image{i + 1}><|vision_start|><|image_pad|><|vision_end|>" for i in range(len(group)))
             texts.append(
                 _SYSTEM_PROMPT

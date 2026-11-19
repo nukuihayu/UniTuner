@@ -13,6 +13,13 @@ type AttentionSegment = tuple[int, int, bool]
 type AttentionSegments = tuple[tuple[AttentionSegment, ...], ...]
 
 
+def target_tokens(values: Tensor, offsets: tuple[int, ...], count: int) -> Tensor:
+    """Borrow uniform inference spans; keep training saves compact and independent."""
+    if not torch.is_grad_enabled() and all(offset == offsets[0] for offset in offsets):
+        return values[:, offsets[0] : offsets[0] + count]
+    return torch.stack([values[row, offset : offset + count] for row, offset in enumerate(offsets)])
+
+
 @dataclass(frozen=True, slots=True)
 class JointSequence:
     """Own padded BLD tokens, BL3 IDs, complex rotary phases and target spans.
@@ -100,8 +107,15 @@ def interleave_sequence(
         positions.append(torch.cat(row_ids))
         segments.append(tuple(runs))
     max_length = max(row.shape[0] for row in rows)
-    tokens = torch.stack([F.pad(row, (0, 0, 0, max_length - row.shape[0])) for row in rows])
-    position_ids = torch.stack([F.pad(row, (0, 0, 0, max_length - row.shape[0])) for row in positions])
+
+    def batch_rows(items: list[Tensor]) -> Tensor:
+        padded = [
+            F.pad(row, (0, 0, 0, max_length - row.shape[0])) if row.shape[0] < max_length else row for row in items
+        ]
+        return padded[0].unsqueeze(0) if len(padded) == 1 else torch.stack(padded)
+
+    tokens = batch_rows(rows)
+    position_ids = batch_rows(positions)
     indices = torch.arange(max_length, device=target.device)[None]
     starts = torch.tensor(offsets, device=target.device)[:, None]
     mask = (indices >= starts) & (indices < starts + target.shape[1])

@@ -12,8 +12,14 @@ from unituner.execution.routing import TargetSpan, sample_token_route
 from unituner.models.catalog import ModelFamily
 from unituner.models.components.features import FeatureRecorder
 from unituner.models.qwen_image_2_1.config.model import QwenImage21Config
-from unituner.models.qwen_image_2_1.layers import FinalNorm, QwenImage21Block, TextProjection, TimeEmbedding
-from unituner.models.qwen_image_2_1.sequence import ImageGrid, JointSequence, interleave_sequence
+from unituner.models.qwen_image_2_1.layers import (
+    FinalNorm,
+    QwenImage21Block,
+    TextProjection,
+    TimeEmbedding,
+    prepare_attention,
+)
+from unituner.models.qwen_image_2_1.sequence import ImageGrid, JointSequence, interleave_sequence, target_tokens
 
 
 class QwenImage21Transformer(nn.Module):
@@ -177,37 +183,36 @@ class QwenImage21Transformer(nn.Module):
             spans=tuple((TargetSpan(offset, offset + target.shape[1]),) for offset in target_offsets),
             device=values.device,
         )
+        plan = prepare_attention(sequence_segments, values.device)
+        routed_segments, routed_rotary, routed_mask, routed_plan = sequence_segments, rotary, target_mask, plan
+        if route is not None:
+            routed_segments = tuple(
+                tuple((route.boundary(start, row), route.boundary(stop, row), causal) for start, stop, causal in runs)
+                for row, runs in enumerate(sequence_segments)
+            )
+            routed_rotary, routed_mask = route.select(rotary), route.select(target_mask)
+            routed_plan = prepare_attention(routed_segments, values.device)
         for index, block in enumerate(self.transformer_blocks):
             if route is not None and route.applies(index):
-                segments = tuple(
-                    tuple(
-                        (route.boundary(start, row), route.boundary(stop, row), causal) for start, stop, causal in runs
-                    )
-                    for row, runs in enumerate(sequence_segments)
-                )
                 updated = block(
                     route.select(values),
                     modulation,
-                    route.select(rotary),
-                    segments,
-                    route.select(target_mask),
+                    routed_rotary,
+                    routed_segments,
+                    routed_mask,
+                    routed_plan,
                 )
                 values = route.restore(values, updated)
             else:
-                values = block(values, modulation, rotary, sequence_segments, target_mask)
+                values = block(values, modulation, rotary, sequence_segments, target_mask, plan)
             if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(
                     index,
                     torch.stack(
-                        [
-                            values[row, offset : offset + target.shape[1]]
-                            for row, offset in enumerate(target_offsets)
-                        ]
+                        [values[row, offset : offset + target.shape[1]] for row, offset in enumerate(target_offsets)]
                     ),
                 )
-        targets = torch.stack(
-            [values[index, offset : offset + target.shape[1]] for index, offset in enumerate(target_offsets)]
-        )
+        targets = target_tokens(values, target_offsets, target.shape[1])
         return self.proj_out(self.norm_out(targets, time_features[:-1]))
 
     forward = predict

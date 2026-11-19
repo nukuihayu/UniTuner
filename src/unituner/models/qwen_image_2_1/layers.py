@@ -11,6 +11,19 @@ from torch.nn import functional as F
 from unituner.execution.attention import scaled_dot_product_attention
 from unituner.models.qwen_image_2_1.sequence import AttentionSegments
 
+type AttentionMasks = tuple[Tensor, ...]
+
+
+def prepare_attention(segments: AttentionSegments, device: torch.device) -> AttentionMasks:
+    """Build graph-local visibility masks once for all blocks and their replay."""
+    return tuple(
+        torch.arange(end, device=device)[None] <= torch.arange(start, end, device=device)[:, None]
+        for index, runs in enumerate(segments)
+        if not index or runs != segments[index - 1]
+        for start, end, is_text in runs
+        if is_text and start
+    )
+
 
 class ZeroCenteredRMSNorm(nn.Module):
     """Normalize last-axis variance in FP32 and apply learned (1+weight) scaling."""
@@ -123,7 +136,9 @@ def apply_rotary(values: Tensor, rotary: Tensor) -> Tensor:
     return torch.view_as_real(pairs * rotary[:, :, None]).flatten(-2).to(values.dtype)
 
 
-def segmented_attention(q: Tensor, k: Tensor, v: Tensor, segments: AttentionSegments) -> Tensor:
+def segmented_attention(
+    q: Tensor, k: Tensor, v: Tensor, segments: AttentionSegments, masks: AttentionMasks | None = None
+) -> Tensor:
     """Attend BLHD segments with causal text and full current-image visibility.
 
     Image queries see all keys through their segment end; text queries see keys
@@ -139,14 +154,12 @@ def segmented_attention(q: Tensor, k: Tensor, v: Tensor, segments: AttentionSegm
             groups[-1] = (first, index + 1)
         else:
             groups.append((index, index + 1))
+    prepared = iter(prepare_attention(segments, q.device) if masks is None else masks)
     rows = []
     for first, last in groups:
-        runs = segments[first]
         parts = []
-        for start, end, is_text in runs:
-            mask = None
-            if is_text and start:
-                mask = torch.arange(end, device=q.device)[None] <= torch.arange(start, end, device=q.device)[:, None]
+        for start, end, is_text in segments[first]:
+            mask = next(prepared) if is_text and start else None
             result = (
                 scaled_dot_product_attention(
                     q[first:last, start:end].transpose(1, 2),
@@ -178,13 +191,17 @@ class Attention(nn.Module):
         self.norm_q = RMSNorm(head_dim, eps)
         self.norm_k = RMSNorm(head_dim, eps)
 
-    def attend(self, values: Tensor, rotary: Tensor, segments: AttentionSegments) -> Tensor:
+    def attend(
+        self, values: Tensor, rotary: Tensor, segments: AttentionSegments, masks: AttentionMasks | None = None
+    ) -> Tensor:
         """Return BLD image/text attention with matching Q/K/V autocast dtypes."""
         q = self.norm_q(self.to_q(values).unflatten(-1, (self.heads, -1)))
         k = self.norm_k(self.to_k(values).unflatten(-1, (self.heads, -1)))
         v = self.to_v(values).unflatten(-1, (self.heads, -1))
         return self.to_out[0](
-            segmented_attention(apply_rotary(q.to(v.dtype), rotary), apply_rotary(k.to(v.dtype), rotary), v, segments)
+            segmented_attention(
+                apply_rotary(q.to(v.dtype), rotary), apply_rotary(k.to(v.dtype), rotary), v, segments, masks
+            )
         )
 
     forward = attend
@@ -201,14 +218,20 @@ class QwenImage21Block(nn.Module):
         self.img_mlp = SwiGLU(width, width * mlp_ratio)
 
     def transform(
-        self, values: Tensor, modulation: Tensor, rotary: Tensor, segments: AttentionSegments, target_mask: Tensor
+        self,
+        values: Tensor,
+        modulation: Tensor,
+        rotary: Tensor,
+        segments: AttentionSegments,
+        target_mask: Tensor,
+        masks: AttentionMasks | None = None,
     ) -> Tensor:
         """Transform padded BLD, with B+1 modulation rows and a BL target mask."""
         scale1, gate1, scale2, gate2 = [
             torch.where(target_mask[..., None], part[:-1, None], part[-1:, None])
             for part in modulation.chunk(4, dim=-1)
         ]
-        values = values + gate1.tanh() * self.attn(self.img_norm1(values) * (1 + scale1), rotary, segments)
+        values = values + gate1.tanh() * self.attn(self.img_norm1(values) * (1 + scale1), rotary, segments, masks)
         values = values + gate2.tanh() * self.img_mlp(self.img_norm2(values) * (1 + scale2))
         return values.clamp(-65504, 65504) if values.dtype == torch.float16 else values
 
