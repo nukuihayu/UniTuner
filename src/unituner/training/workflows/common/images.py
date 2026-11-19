@@ -215,7 +215,12 @@ def train(
     base_dtype = training_base_dtype(execution, adapter=config.train.adapter is not None)
     storage = {torch.bfloat16: "BF16", torch.float16: "FP16", torch.float32: "FP32"}[base_dtype]
     status(f"[train] Loading denoiser weights: {config.model.weights} -> {load_device} ({storage} base storage)")
-    model = load_image_model(config.model, device=load_device, dtype=base_dtype)
+    model = load_image_model(
+        config.model,
+        device=load_device,
+        dtype=base_dtype,
+        preserve_quantization_sources=config.train.adapter is not None and execution.quantization != "none",
+    )
     binding = bind_image_model(model)
     status(
         f"[train] Denoiser loaded; preparing base weights (quantization={execution.quantization}, residency={execution.residency})"

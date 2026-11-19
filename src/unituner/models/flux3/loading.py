@@ -44,6 +44,7 @@ def load_flux3(
     version: str | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
+    preserve_quantization_sources: bool = False,
 ) -> Flux3Transformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
@@ -61,5 +62,12 @@ def load_flux3(
         model = Flux3Transformer(config)
     expected, tensors = model.state_dict(), transformer_tensors(path)
     tensors = convert_transformer("flux3", tensors, expected)
-    load_model_state(model, tensors, device=device, dtype=dtype, label="FLUX3")
+    load_model_state(
+        model,
+        tensors,
+        device=device,
+        dtype=dtype,
+        label="FLUX3",
+        quantization_family="flux3" if preserve_quantization_sources else None,
+    )
     return model

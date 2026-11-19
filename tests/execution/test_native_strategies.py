@@ -157,7 +157,7 @@ def _case(family, session, mode="lora") -> tuple[Any, dict[str, Any], Any]:
     "family,pinned,cache_mb",
     [
         *((family, True, 0) for family in FAMILIES),
-        ("flux", False, 0),
+        *((family, False, 0) for family in FAMILIES),
         ("wan", True, 1),
     ],
 )

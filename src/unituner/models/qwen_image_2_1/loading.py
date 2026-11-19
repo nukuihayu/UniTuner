@@ -48,6 +48,7 @@ def load_qwen_image_21(
     version: str | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
+    preserve_quantization_sources: bool = False,
 ) -> QwenImage21Transformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
@@ -65,7 +66,14 @@ def load_qwen_image_21(
         model = QwenImage21Transformer(config)
     expected, tensors = model.state_dict(), transformer_tensors(path)
     tensors = convert_transformer("qwen_image_2_1", tensors, expected)
-    load_model_state(model, tensors, device=device, dtype=dtype, label="Qwen Image2.1")
+    load_model_state(
+        model,
+        tensors,
+        device=device,
+        dtype=dtype,
+        label="Qwen Image2.1",
+        quantization_family="qwen-image-2-1" if preserve_quantization_sources else None,
+    )
     return model
 
 

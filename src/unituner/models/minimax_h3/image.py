@@ -258,6 +258,7 @@ def load_image_transformer(
     pdd_heads: Path | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.bfloat16,
+    preserve_quantization_sources: bool = False,
 ) -> MiniMaxH3ImageTransformer:
     """Load strict native/ComfyUI denoiser weights and the published PDD grid."""
     with pdd_config.open(encoding="utf-8") as stream:
@@ -294,6 +295,7 @@ def load_image_transformer(
         device=device,
         dtype=dtype,
         label="MiniMax-H3-Image",
+        quantization_family="minimax-h3-image" if preserve_quantization_sources else None,
         floating_dtypes={name: value.dtype for name, value in expected.items()},
     )
     head_format = metadata.get(_PDD_FORMAT_KEY, "delta")

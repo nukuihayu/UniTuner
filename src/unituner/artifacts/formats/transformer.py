@@ -14,15 +14,20 @@ from torch import Tensor
 from unituner.models.catalog import backbone_family
 
 
-def dequantize_transformer(tensors: Mapping[str, Tensor]) -> dict[str, Tensor]:
+def dequantize_transformer(
+    tensors: Mapping[str, Tensor], *, projections: Iterable[str] | None = None
+) -> dict[str, Tensor]:
     """Decode packed projections when a different layout requires split/fusion."""
     from unituner.artifacts.quantization import read_weight, tensor_json
 
     result = dict(tensors)
+    selected = None if projections is None else set(projections)
     for key in tuple(tensors):
         if not key.endswith(".comfy_quant"):
             continue
         prefix = key.removesuffix("comfy_quant")
+        if selected is not None and prefix + "weight" not in selected:
+            continue
         if any(prefix + name in result for name in ("input_scale", "pre_quant_scale")):
             raise ValueError("Training layout conversion requires weights without static input scaling")
         config = tensor_json(tensors[key])
@@ -32,6 +37,18 @@ def dequantize_transformer(tensors: Mapping[str, Tensor]) -> dict[str, Tensor]:
         result.pop(key)
         result[prefix + "weight"] = weight.dequantize()
     return result
+
+
+def _pop_external_tensor(source: dict[str, Tensor], key: str) -> Tensor:
+    """Decode only the projection whose rows need fusion or reordering."""
+    prefix = key.removesuffix("weight")
+    if key.endswith(".weight") and prefix + "comfy_quant" in source:
+        local = {name: value for name, value in source.items() if name.startswith(prefix)}
+        decoded = dequantize_transformer(local)
+        for name in local:
+            del source[name]
+        source.update(decoded)
+    return source.pop(key)
 
 
 def strip_transformer_prefix(tensors: Mapping[str, Tensor]) -> dict[str, Tensor]:
@@ -362,7 +379,9 @@ def convert_transformer(
         return source
     if family == "z_image":
         if any(".attention.qkv." in key for key in source):
-            source = dequantize_transformer(source)
+            source = dequantize_transformer(
+                source, projections=(key for key in source if key.endswith(".attention.qkv.weight"))
+            )
         converted: dict[str, Tensor] = {}
         for key, value in source.items():
             for old, new in (("final_layer.", "all_final_layer.2-1."), ("x_embedder.", "all_x_embedder.2-1.")):
@@ -450,7 +469,6 @@ def convert_transformer(
                 raise ValueError(f"Duplicate converted transformer tensor: {target}")
             renamed[target] = value
         return renamed
-    source = dequantize_transformer(source)
     remaining = dict(source)
     converted = {}
     for native, template in expected.items():
@@ -462,7 +480,23 @@ def convert_transformer(
             keys = (({"flux3": _flux3_key, "wan": _wan_key, "krea2": _krea_key}[family])(native),)
         if any(key not in remaining for key in keys):
             continue
-        parts = [remaining.pop(key) for key in keys]
+        reorder = (family == "minimax_h3" and native.endswith(".mlp.fc1.weight")) or (
+            keys[0].startswith("norm_out.linear.") and family in {"flux", "flux2", "flux3"}
+        )
+        if len(keys) == 1 and not reorder and keys[0].endswith(".weight"):
+            prefix = keys[0].removesuffix("weight")
+            if prefix + "comfy_quant" in remaining:
+                # One-to-one renames preserve codes/scales and avoid a full
+                # floating model alongside its packed checkpoint.
+                local = {name: value for name, value in remaining.items() if name.startswith(prefix)}
+                for key, value in local.items():
+                    target = native.removesuffix("weight") + key.removeprefix(prefix)
+                    if target in converted:
+                        raise ValueError(f"Duplicate converted transformer tensor: {target}")
+                    converted[target] = value
+                    del remaining[key]
+                continue
+        parts = [_pop_external_tensor(remaining, key) for key in keys]
         if len(parts) > 1 and any(not part.is_floating_point() for part in parts):
             raise ValueError(f"External fused projection requires floating weights: {native}")
         value = torch.cat(parts, dim=0) if len(parts) > 1 else parts[0]

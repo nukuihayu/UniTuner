@@ -157,6 +157,7 @@ def train_minimax_h3_image(config: TrainingConfig, *, device: torch.device, resu
         pdd_heads=heads,
         device=load_device,
         dtype=training_base_dtype(execution, adapter=adapter is not None),
+        preserve_quantization_sources=adapter is not None and execution.quantization != "none",
     )
     if model.config.text_dim != 5120:
         raise ValueError("H3-Image training requires 5120-wide cached text")

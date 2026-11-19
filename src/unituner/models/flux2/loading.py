@@ -101,6 +101,7 @@ def load_flux2(
     version: str | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
+    preserve_quantization_sources: bool = False,
 ) -> Flux2Transformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
@@ -118,5 +119,12 @@ def load_flux2(
         model = Flux2Transformer(config)
     expected, tensors = model.state_dict(), transformer_tensors(path)
     tensors = convert_transformer("flux2", tensors, expected)
-    load_model_state(model, tensors, device=device, dtype=dtype, label="FLUX.2")
+    load_model_state(
+        model,
+        tensors,
+        device=device,
+        dtype=dtype,
+        label="FLUX.2",
+        quantization_family="flux2" if preserve_quantization_sources else None,
+    )
     return model

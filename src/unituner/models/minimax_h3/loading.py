@@ -43,6 +43,7 @@ def load_minimax_h3(
     version: str | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
+    preserve_quantization_sources: bool = False,
 ) -> MiniMaxH3Transformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
@@ -67,5 +68,6 @@ def load_minimax_h3(
         dtype=dtype,
         label="MiniMaxH3",
         floating_dtypes={name: value.dtype for name, value in expected.items()},
+        quantization_family="minimax-h3" if preserve_quantization_sources else None,
     )
     return model

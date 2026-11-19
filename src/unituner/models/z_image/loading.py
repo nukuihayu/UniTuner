@@ -51,6 +51,7 @@ def load_z_image(
     version: str | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype | None = None,
+    preserve_quantization_sources: bool = False,
 ) -> ZImageTransformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype is not None and not dtype.is_floating_point:
@@ -69,7 +70,15 @@ def load_z_image(
     expected = model.state_dict()
     tensors = transformer_tensors(path)
     tensors = convert_transformer("z_image", tensors, expected)
-    load_model_state(model, tensors, device=device, dtype=dtype, label="Z-Image", check_finite=False)
+    load_model_state(
+        model,
+        tensors,
+        device=device,
+        dtype=dtype,
+        label="Z-Image",
+        check_finite=False,
+        quantization_family="z-image" if preserve_quantization_sources else None,
+    )
     return model
 
 

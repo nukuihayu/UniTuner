@@ -53,6 +53,7 @@ def load_moss_image(
     source_format: Literal["auto", "native", "external"] = "auto",
     prefix: Literal["", "model.diffusion_model.", "diffusion_model."] = "",
     fused_qkv: bool = False,
+    preserve_quantization_sources: bool = False,
 ) -> MossImageTransformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if source_format not in ("auto", "native", "external"):
@@ -85,7 +86,19 @@ def load_moss_image(
         source_format = "external" if fused_qkv or "rope.bands" not in tensors else "native"
     if source_format == "external":
         if fused_qkv:
-            tensors = dequantize_transformer(tensors)
+            tensors = dequantize_transformer(
+                tensors,
+                projections=(
+                    key for key in tensors if key.startswith(prefix + "layers.") and key.endswith(".proj.qkv.weight")
+                ),
+            )
         tensors = convert_transformer_tensors(tensors, config, prefix=prefix, fused_qkv=fused_qkv)
-    load_model_state(model, tensors, device=device, dtype=dtype, label="MOSS")
+    load_model_state(
+        model,
+        tensors,
+        device=device,
+        dtype=dtype,
+        label="MOSS",
+        quantization_family="moss-image" if preserve_quantization_sources else None,
+    )
     return model

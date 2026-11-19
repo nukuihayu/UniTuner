@@ -32,10 +32,14 @@ type ImageModel = (
 )
 
 
-def load_image_model(config: ModelConfig, *, device: torch.device, dtype: torch.dtype) -> ImageModel:
+def load_image_model(
+    config: ModelConfig, *, device: torch.device, dtype: torch.dtype, preserve_quantization_sources: bool = False
+) -> ImageModel:
     """Load the declared family, retaining native variant and version validation."""
     spec = image_family_spec(config.family)
     arguments = {}
+    if preserve_quantization_sources:
+        arguments["preserve_quantization_sources"] = True
     if spec.loader_variant:
         arguments["variant"] = spec.selected_variant(config.variant)
     if spec.loader_version:

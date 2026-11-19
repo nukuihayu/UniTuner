@@ -147,7 +147,10 @@ def test_attention_host_budget_and_release_on_cuda():
         owner.close()
 
 
-@pytest.mark.parametrize("family", ["wan", "qwen-image-2-1", "flux"])
+@pytest.mark.parametrize(
+    "family",
+    ["wan", "qwen-image-2-1", "flux", "flux2", "flux3", "z-image", "moss-image", "qwen-image", "krea2", "minimax-h3"],
+)
 def test_model_adapter_updates_match_with_checkpoint_owned_attention(family):
     from tests.execution.test_native_strategies import _case
     from unituner.training.session import TrainingSession
