@@ -1,5 +1,7 @@
 """Strictly load and publish native Wan UMT5 encoder weights without tokenizer imports."""
 
+import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -30,7 +32,8 @@ def load_wan_t5(
 ) -> WanT5Encoder:
     """Load owned frozen/eval FP32 encoder tensors from native single/sharded safetensors.
 
-    External tensors require explicit topology. Automatically recognize a uniform encoder. prefix, or remove the explicitly
+    External native tensors infer topology from keys/shapes when metadata is absent.
+    Automatically recognize a uniform encoder. prefix, or remove the explicitly
     selected anchored prefix; reject mixed keys and substring aliases.
     Construction on meta preserves RNG. Validate all names/shapes/finite values
     before assigning parameters; no source file is modified or imported.
@@ -40,14 +43,8 @@ def load_wan_t5(
     with TensorReader(path) as reader:
         serialized = reader.metadata().get(_CONFIG_KEY)
     embedded = None if serialized is None else WanT5Config.model_validate_json(serialized)
-    if config is None:
-        if embedded is None:
-            raise ValueError("Wan T5 external weights require explicit topology")
-        config = embedded
-    elif embedded is not None and config != embedded:
+    if config is not None and embedded is not None and config != embedded:
         raise ValueError("Wan T5 explicit topology differs from artifact metadata")
-    with torch.device("meta"):
-        model = WanT5Encoder(config)
     tensors = dict(iter_tensors(path))
     if not prefix and tensors and all(name.startswith("encoder.") for name in tensors):
         prefix = "encoder."
@@ -55,7 +52,39 @@ def load_wan_t5(
         if any(not name.startswith(prefix) for name in tensors):
             raise ValueError("Wan T5 tensors must all use the selected anchored prefix")
         tensors = {name.removeprefix(prefix): value for name, value in tensors.items()}
+    if config is None:
+        config = embedded if embedded is not None else _infer_t5_config(tensors)
+    with torch.device("meta"):
+        model = WanT5Encoder(config)
     dtype = text_dtype(text_config, torch.float32)
     load_text_state(model, tensors, dtype=dtype, label="Wan T5")
     prepare_text_model(model, text_config, family="umt5", device=device)
     return model.eval().requires_grad_(False)
+
+
+def _infer_t5_config(tensors: Mapping[str, torch.Tensor]) -> WanT5Config:
+    """Read native geometry; full loader validation still checks every key and shape."""
+    layers = {int(match[1]) for key in tensors if (match := re.match(r"blocks\.(\d+)\.", key))}
+    if not layers or layers != set(range(max(layers) + 1)):
+        raise ValueError("Wan T5 external topology requires contiguous native blocks")
+    shared = "pos_embedding.embedding.weight" in tensors
+    bias_key = "pos_embedding.embedding.weight" if shared else "blocks.0.pos_embedding.embedding.weight"
+    try:
+        vocab, hidden = tensors["token_embedding.weight"].shape
+        attention, _ = tensors["blocks.0.attn.q.weight"].shape
+        ffn, _ = tensors["blocks.0.ffn.fc1.weight"].shape
+        buckets, heads = tensors[bias_key].shape
+    except (KeyError, ValueError) as error:
+        raise ValueError(
+            "Cannot infer Wan T5 external topology; supply explicit config for non-native weights"
+        ) from error
+    return WanT5Config(
+        vocab_size=vocab,
+        hidden_size=hidden,
+        attention_dim=attention,
+        ffn_dim=ffn,
+        num_heads=heads,
+        num_layers=len(layers),
+        num_buckets=buckets,
+        shared_position_bias=shared,
+    )

@@ -118,3 +118,37 @@ def test_native_t5_visibility_and_precision_boundary(assets):
         model(ids.float())
     with torch.autocast("cpu", dtype=torch.bfloat16), pytest.raises(ValueError, match="autocast disabled"):
         model(ids)
+
+
+@pytest.mark.parametrize("prefix", ["", "encoder."])
+@pytest.mark.parametrize("shared", [False, True])
+def test_external_native_text_without_metadata_infers_topology(tmp_path, prefix, shared):
+    config = WanT5Config(
+        vocab_size=64,
+        hidden_size=32,
+        attention_dim=24,
+        ffn_dim=56,
+        num_heads=4,
+        num_layers=2,
+        shared_position_bias=shared,
+    )
+    original = WanT5Encoder(config)
+    path = tmp_path / "external.safetensors"
+    save_file({prefix + name: value for name, value in original.state_dict().items()}, path)
+    loaded = load_wan_t5(path)
+    assert loaded.config == config
+    for name, value in loaded.state_dict().items():
+        torch.testing.assert_close(value, original.state_dict()[name], atol=0, rtol=0)
+    ids = torch.tensor([[1, 2, 3]])
+    original.eval()
+    torch.testing.assert_close(loaded(ids), original(ids), atol=1e-6, rtol=1e-5)
+
+
+def test_inferred_external_text_keeps_strict_inventory(tmp_path):
+    config = WanT5Config(vocab_size=32, hidden_size=16, attention_dim=16, ffn_dim=24, num_heads=4, num_layers=1)
+    weights = WanT5Encoder(config).state_dict()
+    weights.pop("blocks.0.attn.k.weight")
+    path = tmp_path / "broken-external.safetensors"
+    save_file(weights, path)
+    with pytest.raises(ValueError, match="keys differ"):
+        load_wan_t5(path)
