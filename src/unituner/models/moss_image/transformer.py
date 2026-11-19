@@ -183,6 +183,7 @@ class MossImageTransformer(nn.Module):
         for block in self.text_embedder.blocks:
             text = block(text, rope[:, image_length:], lengths)
         hidden = torch.cat((video, text), 1)
+        del video, text
         modulation, head = self.time_modulation(timesteps, batch_size)
         joint_lengths = tuple(image_length + length for length in lengths)
         reference_count, reference_modulation = 0, None
@@ -191,6 +192,7 @@ class MossImageTransformer(nn.Module):
             reference_count = reference_tokens.shape[1]
             hidden = torch.cat((hidden, reference_tokens), 1)
             rope = torch.cat((rope, reference_positions), 1)
+            del reference_tokens, reference_positions
             reference_modulation, _ = self.time_modulation(timesteps.new_zeros(1), batch_size)
         route = sample_token_route(
             self.token_routing,

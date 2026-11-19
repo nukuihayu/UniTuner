@@ -160,6 +160,8 @@ class Flux3Transformer(nn.Module):
         joint = torch.cat(chunks)
         joint_frequencies = rope_embed(torch.cat(positions)[None], self.config.axes_dim, self.config.theta)
         shift, scale, gate = (torch.cat(group) for group in modulations)
+        image_shape = hidden["image"].shape
+        del chunks, positions, modulations, hidden, early, single, frequencies
         joint_route = (
             None
             if route is None
@@ -181,7 +183,7 @@ class Flux3Transformer(nn.Module):
             if self.feature_recorder is not None:
                 for first, last, start in placements:
                     self.feature_recorder.record(index, joint[start : start + last - first].unsqueeze(0))
-        images = torch.empty_like(hidden["image"])
+        images = joint.new_empty(image_shape)
         for first, last, start in placements:
             images[first:last] = joint[start : start + last - first]
         return self.final_layer["image"](images, vectors["image"])

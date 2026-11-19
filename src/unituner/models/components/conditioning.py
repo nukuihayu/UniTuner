@@ -36,7 +36,15 @@ def batch_captions(rows: Sequence[Tensor]) -> Caption:
     if any(row.shape[1] != first.shape[1] or row.dtype != first.dtype or row.device != first.device for row in rows):
         raise ValueError("Caption widths, dtypes and devices must agree")
     maximum = max(row.shape[0] for row in rows)
-    features = torch.stack([F.pad(row, (0, 0, 0, maximum - row.shape[0])) for row in rows])
+    # Keep the public independent-storage contract without a zero-width pad
+    # copy followed by another stack copy for the usual single-record batch.
+    features = (
+        first.unsqueeze(0).clone()
+        if len(rows) == 1
+        else torch.stack(
+            [row if row.shape[0] == maximum else F.pad(row, (0, 0, 0, maximum - row.shape[0])) for row in rows]
+        )
+    )
     mask = None
     if len(rows) > 1:
         lengths = torch.tensor([row.shape[0] for row in rows], device=first.device)

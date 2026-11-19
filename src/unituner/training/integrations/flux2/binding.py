@@ -14,6 +14,7 @@ from unituner.models.flux2.restoration import restore_latents
 from unituner.models.flux2.transformer import Flux2Transformer
 from unituner.training.contracts import ImageFlowPrediction, StepResult
 from unituner.training.losses.wavelet import WaveletLoss, image_flow_loss
+from unituner.training.workflows.common.batches import batch_latents
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +100,7 @@ class Flux2Binding:
                 target_count=image.target_count,
             )
             rows.append(unpack_image(prediction[0, : image.target_count], height=clean.shape[2], width=clean.shape[3]))
-        return ImageFlowPrediction(torch.stack(rows), noise - clean, sigma)
+        return ImageFlowPrediction(batch_latents(rows), noise - clean, sigma)
 
     def step(self, request: Flux2FlowRequest) -> StepResult:
         """Return FP32 element-mean native flow MSE with the actual sample count."""

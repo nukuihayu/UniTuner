@@ -477,7 +477,7 @@ def train(
                         caption.features,
                         caption.mask,
                         tuple(
-                            torch.stack([record.references[index] for record in records])
+                            batch_latents([record.references[index] for record in records])
                             for index in range(len(records[0].references))
                         ),
                     )

@@ -161,6 +161,9 @@ class QwenImage21Transformer(nn.Module):
             target, text, grids, text_lengths=text_lengths, references=references, image_slots=image_slots
         )
         values = sequence.tokens
+        rotary, sequence_segments = sequence.rotary, sequence.segments
+        target_mask, target_offsets = sequence.target_mask, sequence.target_offsets
+        del sequence
         if values.dtype in (torch.bfloat16, torch.float16):
             times = (timesteps * 1000).to(values.dtype) / 1000
         else:
@@ -171,7 +174,7 @@ class QwenImage21Transformer(nn.Module):
             self.token_routing,
             training=self.training,
             length=values.shape[1],
-            spans=tuple((TargetSpan(offset, offset + target.shape[1]),) for offset in sequence.target_offsets),
+            spans=tuple((TargetSpan(offset, offset + target.shape[1]),) for offset in target_offsets),
             device=values.device,
         )
         for index, block in enumerate(self.transformer_blocks):
@@ -180,30 +183,30 @@ class QwenImage21Transformer(nn.Module):
                     tuple(
                         (route.boundary(start, row), route.boundary(stop, row), causal) for start, stop, causal in runs
                     )
-                    for row, runs in enumerate(sequence.segments)
+                    for row, runs in enumerate(sequence_segments)
                 )
                 updated = block(
                     route.select(values),
                     modulation,
-                    route.select(sequence.rotary),
+                    route.select(rotary),
                     segments,
-                    route.select(sequence.target_mask),
+                    route.select(target_mask),
                 )
                 values = route.restore(values, updated)
             else:
-                values = block(values, modulation, sequence.rotary, sequence.segments, sequence.target_mask)
+                values = block(values, modulation, rotary, sequence_segments, target_mask)
             if self.feature_recorder is not None:
                 self.feature_recorder.record(
                     index,
                     torch.stack(
                         [
                             values[row, offset : offset + target.shape[1]]
-                            for row, offset in enumerate(sequence.target_offsets)
+                            for row, offset in enumerate(target_offsets)
                         ]
                     ),
                 )
         targets = torch.stack(
-            [values[index, offset : offset + target.shape[1]] for index, offset in enumerate(sequence.target_offsets)]
+            [values[index, offset : offset + target.shape[1]] for index, offset in enumerate(target_offsets)]
         )
         return self.proj_out(self.norm_out(targets, time_features[:-1]))
 

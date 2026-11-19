@@ -141,6 +141,8 @@ class FluxTransformer(nn.Module):
             if self.feature_recorder is not None:
                 self.feature_recorder.record(index, img[:, :target_length])
         joint = torch.cat((txt, img), dim=1)
+        text_length = txt.shape[1]
+        del txt, img
         for index, block in enumerate(self.single_blocks, start=len(self.double_blocks)):
             if joint_route is not None and joint_route.applies(index):
                 updated = block(
@@ -153,7 +155,7 @@ class FluxTransformer(nn.Module):
             else:
                 joint = block(joint, vec, positions, lengths)
             if self.feature_recorder is not None:
-                self.feature_recorder.record(index, joint[:, txt.shape[1] : txt.shape[1] + target_length])
-        return self.final_layer(joint[:, txt.shape[1] :], vec)
+                self.feature_recorder.record(index, joint[:, text_length : text_length + target_length])
+        return self.final_layer(joint[:, text_length :], vec)
 
     forward = predict

@@ -148,6 +148,8 @@ class Flux2Transformer(nn.Module):
                 for row, ids in zip(img, x_ids, strict=True):
                     self.feature_recorder.record(index, row[ids[:, 0] == 0].unsqueeze(0))
         joint = torch.cat((txt, img), dim=1)
+        text_length = txt.shape[1]
+        del txt, img
         for index, block in enumerate(self.single_blocks, start=len(self.double_blocks)):
             if joint_route is not None and joint_route.applies(index):
                 updated = block(joint_route.select(joint), joint_route.select(positions, dim=2), single)
@@ -155,8 +157,8 @@ class Flux2Transformer(nn.Module):
             else:
                 joint = block(joint, positions, single)
             if self.feature_recorder is not None and self.feature_recorder.active:
-                for row, ids in zip(joint[:, txt.shape[1] :], x_ids, strict=True):
+                for row, ids in zip(joint[:, text_length :], x_ids, strict=True):
                     self.feature_recorder.record(index, row[ids[:, 0] == 0].unsqueeze(0))
-        return self.final_layer(joint[:, txt.shape[1] :], vector)
+        return self.final_layer(joint[:, text_length :], vector)
 
     forward = predict

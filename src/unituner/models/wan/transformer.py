@@ -87,21 +87,27 @@ class WanTransformer(nn.Module):
                 clip = torch.cat((clip, conditioning[index]), dim=0)
             tokens = self.patch_embedding(clip.unsqueeze(0)).flatten(2).transpose(1, 2)
             embedded.append(
-                torch.cat((tokens, tokens.new_zeros(1, sequence_length - tokens.shape[1], config.hidden_size)), dim=1)
+                tokens
+                if tokens.shape[1] == sequence_length
+                else torch.cat((tokens, tokens.new_zeros(1, sequence_length - tokens.shape[1], config.hidden_size)), dim=1)
             )
             frames = None if frame_indices is None else frame_indices[index]
             rotations.append(rotary_embedding(grid, config.hidden_size // config.num_heads, clip.device, frames))
-        values = torch.cat(embedded)
+        values = embedded[0] if len(embedded) == 1 else torch.cat(embedded)
+        del embedded, tokens, clip
         # FP32 masters alone do not protect time projections from ambient AMP.
         with torch.autocast(device_type=values.device.type, enabled=False):
             if config.version == "2.1":
                 time = self.time_embedding(timestep_embedding(timesteps, config.timestep_dim).float())
                 modulation = self.time_projection(time).unflatten(1, (6, config.hidden_size))
             else:
-                times = timesteps[:, None].expand(-1, sequence_length) if timesteps.ndim == 1 else timesteps
+                # A batch time is shared by every token. Project it once and
+                # broadcast the singleton token axis through blocks/head.
+                # Explicit BL times retain the per-token path (e.g. RCM).
+                times = timesteps[:, None] if timesteps.ndim == 1 else timesteps
                 features = (
                     timestep_embedding(times.flatten(), config.timestep_dim)
-                    .unflatten(0, (len(latents), sequence_length))
+                    .unflatten(0, times.shape)
                     .float()
                 )
                 time = self.time_embedding(features)
@@ -132,7 +138,7 @@ class WanTransformer(nn.Module):
                 )
                 updated = block(
                     route.select(values),
-                    route.select(modulation) if modulation.ndim == 4 else modulation,
+                    route.select(modulation) if modulation.ndim == 4 and modulation.shape[1] != 1 else modulation,
                     context,
                     selected_frequencies,
                 )

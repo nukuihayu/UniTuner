@@ -178,6 +178,7 @@ class ZImageTransformer(nn.Module):
         attention_mask = (
             None if caption_attention_mask is None else F.pad(caption_attention_mask, (tokens.shape[1], 0), value=True)
         )
+        del tokens, captions, image_frequencies, caption_frequencies
         route = sample_token_route(
             self.token_routing,
             training=self.training,

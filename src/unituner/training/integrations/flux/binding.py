@@ -21,6 +21,7 @@ from unituner.models.flux.restoration import restore_latents
 from unituner.models.flux.transformer import FluxTransformer
 from unituner.training.contracts import ImageFlowPrediction, StepResult
 from unituner.training.losses.wavelet import WaveletLoss, image_flow_loss
+from unituner.training.workflows.common.batches import batch_latents
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,10 +70,10 @@ class FluxBinding:
         native channel order. No randomness or cache tensor mutation occurs.
         """
         if latents is None:
-            latents = torch.stack([record.latents for record in records])
+            latents = batch_latents([record.latents for record in records])
         elif latents.shape != noise.shape or latents.shape[0] != len(records):
             raise ValueError("Flux cached latents must match the noise and record batches")
-        captions = torch.stack([record.caption for record in records])
+        captions = batch_latents([record.caption for record in records])
         pooled = []
         controls, positions, masks = [], [], []
         for record in records:
@@ -99,13 +100,13 @@ class FluxBinding:
                 tuple(value.shape[0] for value in controls),
             )
         elif self.model.config.variant == "fill":
-            condition = FluxCondition(torch.stack(controls), fill_mask=torch.stack(masks))
+            condition = FluxCondition(batch_latents(controls), fill_mask=batch_latents(masks))
         vector = (
             torch.full((latents.shape[0],), guidance, device=latents.device, dtype=latents.dtype)
             if self.model.config.guidance_embed
             else None
         )
-        return self.step(FluxFlowRequest(latents, noise, sigma, captions, torch.stack(pooled), vector, condition))
+        return self.step(FluxFlowRequest(latents, noise, sigma, captions, batch_latents(pooled), vector, condition))
 
     def restore(self, low_latents: Tensor, captions: FluxTextFeatures, *, sigma: float) -> Tensor:
         """Restore native latents with the direct mid-timestep Euler method."""

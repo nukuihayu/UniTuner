@@ -12,6 +12,7 @@ from unituner.models.wan.data.cache.storage import WanCacheRecord
 from unituner.models.wan.projections import adapter_projections
 from unituner.models.wan.transformer import WanTransformer
 from unituner.training.contracts import StepResult
+from unituner.training.workflows.common.batches import batch_latents
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +86,7 @@ class WanBinding:
         if not records:
             raise ValueError("Wan cached training requires a nonempty batch")
         if latents is None:
-            latents = torch.stack([record.latents for record in records])
+            latents = batch_latents([record.latents for record in records])
         elif latents.shape != noise.shape or latents.shape[0] != len(records):
             raise ValueError("Wan cached latents must match the noise and record batches")
         images, features, controls, coordinates = [], [], [], []
@@ -110,9 +111,9 @@ class WanBinding:
                 sigma,
                 timesteps,
                 tuple(record.caption for record in records),
-                None if not images else torch.stack(images),
-                None if not features else torch.stack(features),
-                None if not controls else torch.stack(controls),
+                None if not images else batch_latents(images),
+                None if not features else batch_latents(features),
+                None if not controls else batch_latents(controls),
                 None if not coordinates else tuple(coordinates),
             )
         )
@@ -180,7 +181,7 @@ class WanBinding:
             image_features=request.image_features,
             frame_indices=request.frame_indices,
         )
-        return WanFlowPrediction(torch.stack(prediction), noise - clean, request.timesteps, noisy, condition)
+        return WanFlowPrediction(batch_latents(list(prediction)), noise - clean, request.timesteps, noisy, condition)
 
     def step(self, request: WanFlowRequest) -> StepResult:
         """Return FP32 element-mean native flow MSE and actual batch sample count."""
