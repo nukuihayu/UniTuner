@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch
 
+from unituner.artifacts.formats.precision_policy import language_boundaries, protection_reason
 from unituner.artifacts.formats.transformer import convert_transformer
 from unituner.artifacts.tensors import save_tensors
 from unituner.models.components.state_loading import load_model_state
@@ -39,6 +40,7 @@ def load_wan(
     version: str | None = None,
     device: torch.device = _CPU,
     dtype: torch.dtype = torch.float32,
+    preserve_quantization_sources: bool = False,
 ) -> WanTransformer:
     """Load native, Diffusers or ComfyUI weights with validated topology, keys and shapes."""
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
@@ -61,12 +63,20 @@ def load_wan(
         protected = name.startswith(("time_embedding.", "time_projection.")) or name.endswith(".modulation")
         return torch.float32 if protected else dtype
 
+    preserved = set()
+    if preserve_quantization_sources:
+        boundaries = language_boundaries(expected)
+        preserved = {
+            name + ".weight"
+            for name, layer in model.named_modules()
+            if isinstance(layer, torch.nn.Linear) and not protection_reason("wan", name + ".weight", boundaries)
+        }
     load_model_state(
         model,
         tensors,
         device=device,
-        dtype=dtype,
+        dtype=None if preserve_quantization_sources else dtype,
         label="Wan",
-        floating_dtypes={name: storage_dtype(name) for name in expected},
+        floating_dtypes={name: storage_dtype(name) for name in expected if name not in preserved},
     )
     return model

@@ -11,6 +11,7 @@ from unituner.artifacts.formats.quantization import FORMATS, canonical_quantizat
 from unituner.artifacts.quantization import read_weight, tensor_json
 from unituner.artifacts.quantized_loading import load_quantized_model
 from unituner.artifacts.tensors import TensorReader, resolve_shards
+from unituner.artifacts.validation import all_finite
 from unituner.config.text import TextEncodingConfig
 from unituner.models.components.weight_quantization import quantize_model
 from unituner.precision import FLOAT_DTYPES
@@ -160,7 +161,7 @@ def load_text_state(
             if spec is None or spec.calibrated:
                 raise ValueError(f"{key}: requires a calibration-free weight layout")
             weight = read_weight(prefix + "weight", tensors.__getitem__, config, device=torch.device("cpu"))
-            if not torch.isfinite(weight._qdata.float()).all():
+            if not all_finite(weight._qdata):
                 raise ValueError(f"{key}: nonfinite packed weight")
             shapes[prefix + "weight"] = weight.shape
             for name in (*weight.state_dict(prefix + "weight"), key):
@@ -179,8 +180,8 @@ def load_text_state(
                 if (
                     value.shape != topology[key].shape
                     or not value.is_floating_point()
-                    or not torch.isfinite(value).all()
-                    or not torch.isfinite(value.to(dtype)).all()
+                    or not all_finite(value)
+                    or not all_finite(value, dtype=dtype)
                 ):
                     raise ValueError(f"invalid tensor shape/type; values invalid: {key}")
         selected = {selected_prefix + key for key in model.state_dict()}

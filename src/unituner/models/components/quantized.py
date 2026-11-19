@@ -5,6 +5,8 @@ from dataclasses import fields
 import torch
 from torch import Tensor, nn
 
+from unituner.artifacts.validation import all_finite
+
 _CONVROT_ADDRESS_LIMIT = (1 << 31) - 1
 _CONVROT_OUTPUT_LIMIT = 1 << 26
 _CONVROT_SINGLE_CALL_LIMIT = 1 << 28
@@ -158,7 +160,7 @@ class QuantizedLinear(nn.Linear):
                 continue
             suffix = format.tensor_suffix(field.name)
             self._param_storage[field.name] = ("weight_" + suffix, value.dtype)
-        if not torch.isfinite(packed._qdata.float()).all():
+        if not all_finite(packed._qdata):
             raise ValueError("Quantized weight codes must be finite")
         self._storage_names = tuple(key for key in tensors if key not in ("comfy_quant", "bias"))
         for key in self._storage_names:

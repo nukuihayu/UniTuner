@@ -1,7 +1,6 @@
 """Stage immutable CPU block weights for one CUDA invocation and its backward replay."""
 
 from collections.abc import Callable
-from contextlib import nullcontext
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -111,7 +110,7 @@ class _WeightSlice:
 class _WeightPayload:
     """Keep one dtype's packed CPU master and native parameter slices."""
 
-    host: Tensor
+    host: Tensor | None
     source: WeightSource
     weights: tuple[_WeightSlice, ...]
 
@@ -129,17 +128,28 @@ def _pack_weights(parameters: tuple[tuple[str, nn.Parameter], ...], *, pinned: b
             groups.setdefault(parameter.dtype, []).append((name, parameter))
     payloads = []
     for dtype, group in groups.items():
-        host = torch.empty(
-            sum(parameter.numel() for _, parameter in group), device="cpu", dtype=dtype, pin_memory=pinned
+        # CPU-loaded frozen weights can retain their original mmap/storage.
+        # Only explicitly pinned masters need a second packed host allocation.
+        host = (
+            torch.empty(sum(parameter.numel() for _, parameter in group), device="cpu", dtype=dtype, pin_memory=True)
+            if pinned
+            else None
         )
+        chunks = []
         weights = []
         offset = 0
         for name, parameter in group:
             elements = parameter.numel()
-            host[offset : offset + elements].copy_(parameter.detach().reshape(-1))
+            chunk = parameter.detach().reshape(-1).to("cpu")
+            if host is not None:
+                host[offset : offset + elements].copy_(chunk)
+            else:
+                chunks.append(chunk)
             weights.append(_WeightSlice(name, parameter, offset, parameter.shape, parameter.stride()))
             offset += elements
-        payloads.append(_WeightPayload(host, WeightSource((host,)), tuple(weights)))
+        payloads.append(
+            _WeightPayload(host, WeightSource((host,) if host is not None else tuple(chunks)), tuple(weights))
+        )
     return tuple(payloads)
 
 
@@ -211,8 +221,12 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
         replay_state: ContextVar[_ReplayState | None] = ContextVar("frozen_weight_replay", default=None)
         self._replays: list[_ReplayState] = []
         for payload in self._payloads:
-            for weight in payload.weights:
-                weight.parameter.data = payload.host.as_strided(weight.shape, weight.stride, weight.offset)
+            for index, weight in enumerate(payload.weights):
+                weight.parameter.data = (
+                    payload.host.as_strided(weight.shape, weight.stride, weight.offset)
+                    if payload.host is not None
+                    else payload.source.chunks[index].view(weight.shape)
+                )
         for (_, parameter), value in zip(self._strided, strided_host, strict=True):
             parameter.data = value
 
@@ -299,7 +313,7 @@ class FrozenBlockInstallation[R: Tensor | tuple[Tensor, ...], **P]:
                             *args,
                             use_reentrant=False,
                             preserve_rng_state=True,
-                            context_fn=lambda: (nullcontext(), _ReplayContext(replay_state, state, enter_replay)),
+                            context_fn=lambda: (AttentionReplay(), _ReplayContext(replay_state, state, enter_replay)),
                             **kwargs,  # ty: ignore[invalid-argument-type]
                         )
 

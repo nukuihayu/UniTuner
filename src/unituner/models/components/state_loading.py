@@ -6,6 +6,7 @@ import torch
 from torch import Tensor, nn
 
 from unituner.artifacts.quantized_loading import load_quantized_model
+from unituner.artifacts.validation import all_finite
 
 
 def load_model_state(
@@ -36,17 +37,13 @@ def load_model_state(
         if value.shape != expected[name].shape or not value.is_floating_point():
             raise ValueError(f"{label} invalid tensor shape/type; values invalid: {name}")
         if check_finite:
-            if not torch.isfinite(value).all():
+            if not all_finite(value):
                 raise ValueError(f"{label} invalid tensor; values invalid: {name}")
             # An unchanged dtype cannot introduce conversion overflow.
-            if dtype is not None and dtype != value.dtype and not torch.isfinite(value.to(dtype=dtype)).all():
+            if dtype is not None and dtype != value.dtype and not all_finite(value, dtype=dtype):
                 raise ValueError(f"{label} tensor exceeds requested dtype range: {name}")
             storage_dtype = dtype if floating_dtypes is None else floating_dtypes.get(name, dtype)
-            if (
-                storage_dtype is not None
-                and storage_dtype != dtype
-                and not torch.isfinite(value.to(storage_dtype)).all()
-            ):
+            if storage_dtype is not None and storage_dtype != dtype and not all_finite(value, dtype=storage_dtype):
                 raise ValueError(f"{label} tensor exceeds storage dtype range: {name}")
     model.load_state_dict(
         {

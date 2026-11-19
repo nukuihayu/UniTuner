@@ -1,7 +1,6 @@
 """Apply non-reentrant recomputation using explicit invocation regions."""
 
 from collections.abc import Callable
-from contextlib import nullcontext
 
 import torch
 from torch import Tensor
@@ -63,7 +62,7 @@ class RecomputeInstallation[R: Tensor | tuple[Tensor, ...], **P]:
                     *args,
                     use_reentrant=False,
                     preserve_rng_state=True,
-                    context_fn=lambda: (nullcontext(), AttentionReplay()),
+                    context_fn=lambda: (AttentionReplay(), AttentionReplay()),
                     **kwargs,  # ty: ignore[invalid-argument-type]
                 )
             return original(*args, **kwargs)

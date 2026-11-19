@@ -34,8 +34,13 @@ class ExecutionConfig(BaseModel):
         default="inherit", description="VAE and DINO recomputation; inherit follows the main model policy"
     )
     attention_activation_offload: bool = False
+    attention_activation_offload_mb: int = Field(
+        default=1024, gt=0, description="Maximum live pinned attention activations in MiB; fail before exceeding it"
+    )
     residency: Literal["resident", "frozen-blocks", "trainable-blocks"] = "resident"
-    use_pinned_memory_for_block_swap: bool | None = None
+    use_pinned_memory_for_block_swap: bool | None = Field(
+        default=None, description="Pinned CPU masters are opt-in; None uses pageable memory to preserve host headroom"
+    )
     frozen_weight_cache_mb: int | None = Field(
         default=None, ge=0, description="Automatic frozen CUDA cache, or retained MiB plus one current-block workspace"
     )

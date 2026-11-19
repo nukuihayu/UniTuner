@@ -435,3 +435,62 @@ def test_z_image_quantized_comfy_export_can_train(tmp_path):
     convert_weights(legacy, dense, precision="fp32")
     restored = load_z_image(dense)
     torch.testing.assert_close(restored.state_dict()["layers.0.attention.to_q.weight"], q)
+
+
+@pytest.mark.parametrize("precision", ["float8_e4m3fn", "int8_rowwise"])
+def test_wan_diffusers_rename_preserves_packed_storage(tmp_path, monkeypatch, precision):
+    pytest.importorskip("comfy_kitchen")
+    import unituner.artifacts.formats.transformer as formats
+    from unituner.artifacts.quantization import quantize_weight, serialize_weight
+    from unituner.models.components.quantized import QuantizedLinear
+
+    config = WanConfig(hidden_size=48, num_heads=4, num_layers=1, ffn_dim=80, timestep_dim=16, text_dim=32)
+    original = WanTransformer(config)
+    key = "blocks.0.self_attn.q.weight"
+    external_key = formats._wan_key(key)
+    external = {formats._wan_key(name): value for name, value in original.state_dict().items()}
+    packed = quantize_weight(original.state_dict()[key], precision)
+    external.update(serialize_weight(external_key, packed, precision))
+
+    def reject_decode(*args, **kwargs):
+        raise AssertionError("A one-to-one Wan rename must not dequantize the model")
+
+    monkeypatch.setattr(formats, "dequantize_transformer", reject_decode)
+    converted = formats.convert_transformer("wan", external, original.state_dict())
+    assert converted[key].data_ptr() == external[external_key].data_ptr()
+    assert key.removesuffix("weight") + "comfy_quant" in converted
+    path = tmp_path / "diffusers.safetensors"
+    save_tensors(external, path)
+    loaded = load_wan(path, config=config)
+    projection = loaded.blocks[0].self_attn.q
+    assert isinstance(projection, QuantizedLinear)
+    values = torch.randn(2, 48, requires_grad=True)
+    result = projection(values)
+    expected = torch.nn.functional.linear(values, packed.dequantize().float(), original.blocks[0].self_attn.q.bias)
+    torch.testing.assert_close(result, expected, atol=1e-5, rtol=1e-5)
+    result.square().sum().backward()
+    assert torch.isfinite(values.grad).all()
+
+
+@pytest.mark.parametrize("precision", ["float8_e4m3fn", "int8_rowwise"])
+def test_wan_preserves_source_storage_until_each_layer_is_quantized(tmp_path, precision):
+    kitchen = pytest.importorskip("comfy_kitchen")
+    from unituner.config.execution import ExecutionConfig
+    from unituner.execution.installation import prepare_base_weights
+
+    config = WanConfig(hidden_size=48, num_heads=4, num_layers=1, ffn_dim=80, timestep_dim=16, text_dim=32)
+    source = WanTransformer(config).to(dtype=torch.bfloat16)
+    path = tmp_path / "wan-bf16.safetensors"
+    save_wan(source, path)
+    reference = load_wan(path, dtype=torch.float32)
+    optimized = load_wan(path, dtype=torch.float32, preserve_quantization_sources=True)
+    assert optimized.blocks[0].self_attn.q.weight.dtype == torch.bfloat16
+    assert reference.blocks[0].self_attn.q.weight.dtype == torch.float32
+    assert optimized.time_embedding[0].weight.dtype == torch.float32
+    execution = ExecutionConfig(precision="bf16", quantization=precision)
+    with kitchen.use_backend("eager"):
+        prepare_base_weights(reference, execution, family="wan", device=torch.device("cpu"))
+        prepare_base_weights(optimized, execution, family="wan", device=torch.device("cpu"))
+    assert reference.state_dict().keys() == optimized.state_dict().keys()
+    for name, value in reference.state_dict().items():
+        torch.testing.assert_close(optimized.state_dict()[name].float(), value.float(), atol=0, rtol=0)

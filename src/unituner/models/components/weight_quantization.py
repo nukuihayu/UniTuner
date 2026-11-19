@@ -17,6 +17,7 @@ def quantize_model(
     rotation_size: int = DEFAULT_ROTATION_SIZE,
     group_size: int = DEFAULT_GROUP_SIZE,
     device: torch.device | None = None,
+    input_dtype: torch.dtype | None = None,
 ) -> int:
     """Quantize one projection at a time without modifying the source checkpoint.
 
@@ -25,11 +26,15 @@ def quantize_model(
     """
     if precision not in FORMATS:
         raise ValueError("Training quantization requires a known Kitchen format")
-    keys = model.state_dict().keys()
+    keys = tuple(model.state_dict())
     boundaries = language_boundaries(keys)
     pruned_adaln = "adaln_t_table" in keys or "adaln_basis" in keys
     count = 0
-    for name, layer in tuple(model.named_modules()):
+    # Keep names, not a snapshot of modules/state tensors: replaced dense
+    # projections must be collectable before quantizing the next projection.
+    names = tuple(name for name, layer in model.named_modules() if isinstance(layer, nn.Linear))
+    for name in names:
+        layer = model.get_submodule(name)
         if not isinstance(layer, nn.Linear) or protection_reason(
             family, name + ".weight", boundaries, pruned_adaln=pruned_adaln
         ):
@@ -51,7 +56,7 @@ def quantize_model(
         quantization_device = device or layer.weight.device
         with torch.no_grad(), torch.autocast(quantization_device.type, enabled=False):
             weight = quantize_weight(
-                layer.weight.to(device=quantization_device),
+                layer.weight.to(device=quantization_device, dtype=input_dtype),
                 precision,
                 rotation_size=rotation_size,
                 group_size=group_size,
@@ -59,9 +64,10 @@ def quantize_model(
             state = serialize_weight("weight", weight, precision)
             if layer.bias is not None:
                 state["bias"] = layer.bias.detach().to(weight.device)
-            replacement = QuantizedLinear(state, dtype=layer.weight.dtype).to(device=layer.weight.device)
+            replacement = QuantizedLinear(state, dtype=input_dtype or layer.weight.dtype).to(device=layer.weight.device)
         model.set_submodule(name, replacement)
         count += 1
+        del layer, weight, state, replacement
     if not count:
         raise ValueError(f"{family}: no eligible projections for {precision}")
     return count

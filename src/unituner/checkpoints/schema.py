@@ -40,6 +40,7 @@ def build_resume_identity(
         section: {name for name, omitted in defaults.items() if getattr(getattr(config, section), name) in omitted}
         for section, defaults in default_policies.items()
     }
+    fields["execution"].add("attention_activation_offload_mb")
     # Startup validation does not change the numerical training policy.
     fields["train"].update(("skip_dataset_validation", "dataset_validation_workers"))
     if config.model.family != ModelFamily.MINIMAX_H3:

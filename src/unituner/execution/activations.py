@@ -4,6 +4,7 @@ from collections.abc import Callable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from types import TracebackType
+from weakref import finalize
 
 import torch
 from torch import Tensor
@@ -13,7 +14,7 @@ from unituner.execution.regions import ModelRegion
 from unituner.models.components.forward_override import ForwardOverride
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class _SavedActivation:
     host: Tensor
     device: torch.device
@@ -26,7 +27,7 @@ _attention_replay: ContextVar[bool] = ContextVar("attention_replay", default=Fal
 
 
 class AttentionReplay:
-    """Mark reusable checkpoint replay scopes so short-lived saved tensors stay on CUDA."""
+    """Mark checkpoint scopes so native recomputation owns saved attention tensors."""
 
     def __init__(self) -> None:
         self._tokens: list[Token[bool]] = []
@@ -49,7 +50,12 @@ class AttentionActivations:
     no quantization, persistent GPU activation cache or frozen-weight transfer.
     """
 
-    def __init__(self, device: torch.device) -> None:
+    def __init__(self, device: torch.device, *, max_host_bytes: int = 1024**3) -> None:
+        if max_host_bytes <= 0:
+            raise ValueError("Attention host budget must be positive")
+        self._max_host_bytes = max_host_bytes
+        self.active_host_bytes = 0
+        self.peak_host_bytes = 0
         self._stream: torch.cuda.Stream = torch.cuda.Stream(device=device)
         self.offloaded_bytes: int = 0
         self.restored_bytes: int = 0
@@ -67,6 +73,13 @@ class AttentionActivations:
             raise RuntimeError("Attention activation offload is closed")
         span = 1 + sum((size - 1) * stride for size, stride in zip(tensor.shape, tensor.stride(), strict=True))
         source = tensor.detach().as_strided((span,), (1,), tensor.storage_offset())
+        size = span * tensor.element_size()
+        if self.active_host_bytes + size > self._max_host_bytes:
+            raise MemoryError(
+                "Attention activation offload exceeds execution.attention_activation_offload_mb; "
+                "enable block recompute or reduce the training batch/sequence size. "
+                f"Live={self.active_host_bytes}, requested={size}, budget={self._max_host_bytes} bytes"
+            )
         host = torch.empty(span, dtype=tensor.dtype, device="cpu", pin_memory=True)
         self._stream.wait_stream(torch.cuda.current_stream(tensor.device))
         with torch.cuda.stream(self._stream):
@@ -74,7 +87,14 @@ class AttentionActivations:
             host.copy_(source, non_blocking=True)
             ready = self._stream.record_event()
         self.offloaded_bytes += host.nbytes
-        return _SavedActivation(host, tensor.device, tensor.shape, tensor.stride(), ready)
+        packet = _SavedActivation(host, tensor.device, tensor.shape, tensor.stride(), ready)
+        self.active_host_bytes += size
+        self.peak_host_bytes = max(self.peak_host_bytes, self.active_host_bytes)
+        finalize(packet, self._release_host, size)
+        return packet
+
+    def _release_host(self, size: int) -> None:
+        self.active_host_bytes -= size
 
     def unpack(self, packet: Tensor | _SavedActivation) -> Tensor:
         """Restore fresh storage for each read, including retain_graph and repeated backward."""
@@ -115,6 +135,12 @@ def offloaded_attention(
     enable_gqa: bool,
 ) -> Tensor:
     """Keep saved-tensor hooks outside Dynamo while compiling surrounding block computation."""
+    if _attention_replay.get():
+        # Nested saved-tensor hooks would hide SDPA saves from checkpoint,
+        # retaining every block on the host and defeating recomputation.
+        return F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=is_causal, scale=scale, enable_gqa=enable_gqa
+        )
     with torch.autograd.graph.saved_tensors_hooks(owner.pack, owner.unpack):
         return F.scaled_dot_product_attention(
             q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=is_causal, scale=scale, enable_gqa=enable_gqa

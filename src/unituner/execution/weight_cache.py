@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 
 from unituner.execution.weight_lease import PrefetchUnavailable, WeightLease, after_backward
-from unituner.execution.weight_source import WeightSource
+from unituner.execution.weight_source import WeightSource, WeightStaging
 
 
 @dataclass(slots=True, eq=False)
@@ -52,6 +52,7 @@ class H2dCache:
         allocation_workspace_bytes: int = 0,
     ) -> None:
         self.device: torch.device = device
+        self._staging = WeightStaging(device=device)
         self._workspace: int = workspace_bytes
         self._allocation_workspace: int = allocation_workspace_bytes
         self._reserve: int = workspace_bytes + cast_workspace_bytes
@@ -190,10 +191,9 @@ class H2dCache:
             buffer.tensor.record_stream(stream)
             try:
                 destination = buffer.tensor[: source.nbytes].view(source.dtype)
-                offset = 0
-                for chunk in source.chunks:
-                    destination[offset : offset + chunk.numel()].copy_(chunk, non_blocking=chunk.is_pinned())
-                    offset += chunk.numel()
+                # Reuse two bounded pinned windows for pageable/mmap sources;
+                # do not pin or repack the entire model on the host.
+                self._staging.copy(source, destination)
             finally:
                 # Even a partially submitted failed copy must finish before reuse.
                 buffer.loaded = stream.record_event()
@@ -251,6 +251,7 @@ class H2dCache:
         """Finish all CUDA users before dropping the shared weight cache."""
         if not self._closed:
             torch.cuda.synchronize(self.device)
+            self._staging.close()
             self._sources.clear()
             self._buffers.clear()
             self._regions.clear()

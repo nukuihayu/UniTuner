@@ -121,7 +121,9 @@ This policy supports CUDA adapters only. Frozen block weights remain on CPU and 
 
 This mode requires `recompute = "block"` and `recompute_interval = 1`; omitted recomputation settings are filled in automatically. GPU cache capacity adjusts automatically, so start without a manual limit. Verify that the largest training dimensions complete an update; automatic adjustment does not guarantee that arbitrary larger sizes fit.
 
-Usually omit `frozen_weight_cache_mb` and `use_pinned_memory_for_block_swap`. Set the former in MiB only to limit additional retained frozen weights; zero keeps space for the current block. This is not a total VRAM limit: activations and optimizers need memory too. If host memory is tight, set the latter to `false`, accepting potentially slower transfers.
+Usually omit `frozen_weight_cache_mb` and `use_pinned_memory_for_block_swap`. Set the former in MiB only to limit additional retained frozen weights; zero keeps space for the current block. This is not a total VRAM limit: activations and optimizers need memory too. Omitted or false uses pageable host memory. Pinned frozen masters require explicit true and reduce reclaimable system memory.
+
+Wan2.2 experts share one frozen-weight cache budget rather than growing independent caches from the same available VRAM.
 
 
 ## BF16 AMP and publication precision
@@ -176,3 +178,9 @@ Change one policy at a time: record baseline update time and peak memory, enable
 ---
 
 [Documentation](../README.md) · [Parameter reference](parameters.md) · [Troubleshooting](../troubleshooting.md)
+
+
+Checkpointed attention uses native saved-tensor recomputation without separately retaining attention activations on the host. Attention offload still applies to regions without recompute. `attention_activation_offload_mb` limits live pinned attention storage (default 1024 MiB); exceeding it fails with an actionable error. This is not a total host-memory or VRAM limit.
+
+
+Pageable frozen masters retain their original CPU/mmap storage. Transfers use at most two 64 MiB pinned staging windows shared by the cache. Quantization releases replaced dense projections before packing the next layer. Wan prepares the first expert before loading the second and preserves source precision for eligible projections until their FP32 quantization step. One-to-one Diffusers Wan renames preserve packed storage and scales. Finite/range checks use bounded chunks rather than full-projection FP32 temporaries.

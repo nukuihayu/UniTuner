@@ -7,6 +7,7 @@ from torch import Tensor, nn
 
 from unituner.artifacts.formats.quantization import FORMATS
 from unituner.artifacts.quantization import read_weight, tensor_json
+from unituner.artifacts.validation import all_finite
 from unituner.models.components.quantized import QuantizedLinear
 
 
@@ -69,7 +70,7 @@ def load_quantized_model(
             # both row scales and the inverse rotation before casting to compute.
             with use_backend("eager"):
                 dense = weight.dequantize().to(dtype=compute)
-            if not torch.isfinite(dense.float()).all():
+            if not all_finite(dense):
                 raise ValueError(f"Quantized artifact exceeds compute dtype: {key}")
             converted[key] = dense
             continue
@@ -83,14 +84,10 @@ def load_quantized_model(
     for key, value in tensors.items():
         if key in owned:
             continue
-        if (
-            value.shape != expected[key].shape
-            or not value.is_floating_point()
-            or not torch.isfinite(value.float()).all()
-        ):
+        if value.shape != expected[key].shape or not value.is_floating_point() or not all_finite(value):
             raise ValueError(f"Quantized artifact invalid floating tensor: {key}")
         cast = value.to(device=device, dtype=dtype if floating_dtypes is None else floating_dtypes.get(key, dtype))
-        if not torch.isfinite(cast.float()).all():
+        if not all_finite(cast):
             raise ValueError(f"Quantized artifact exceeds compute dtype: {key}")
         converted[key] = cast
     layers = []

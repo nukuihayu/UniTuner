@@ -431,6 +431,25 @@ def convert_transformer(
         external = is_diffusers_transformer(family, source)
     if not external:
         return source
+    if family == "wan":
+        # Wan Diffusers projections are renamed one-to-one. Packed codes and
+        # scales need no decoding: expanding both 14B experts here doubles RAM.
+        names = {_wan_key(native): native for native in expected}
+        prefixes = {
+            external.removesuffix("weight"): native.removesuffix("weight")
+            for external, native in names.items()
+            if external.endswith(".weight")
+        }
+        renamed = {}
+        for key, value in source.items():
+            target = names.get(key)
+            if target is None:
+                prefix = next((prefix for prefix in prefixes if key.startswith(prefix)), None)
+                target = key if prefix is None else prefixes[prefix] + key.removeprefix(prefix)
+            if target in renamed:
+                raise ValueError(f"Duplicate converted transformer tensor: {target}")
+            renamed[target] = value
+        return renamed
     source = dequantize_transformer(source)
     remaining = dict(source)
     converted = {}

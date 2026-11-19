@@ -181,7 +181,10 @@ def train_wan(
         version=config.model.version,
         device=load_device,
         dtype=training_base_dtype(execution, adapter=adapter is not None),
+        preserve_quantization_sources=adapter is not None and execution.quantization != "none",
     )
+    # Finish packing the first expert before loading the second dense base.
+    prepare_base_weights(model, execution, family=config.model.family.value, device=device)
     high_model = (
         None
         if high_settings is None
@@ -191,6 +194,7 @@ def train_wan(
             version=config.model.version,
             device=load_device,
             dtype=training_base_dtype(execution, adapter=adapter is not None),
+            preserve_quantization_sources=adapter is not None and execution.quantization != "none",
         )
     )
     if high_model is not None and high_model.config != model.config:
@@ -205,7 +209,6 @@ def train_wan(
         expected_channels = 48 if manifest.control else 36 if manifest.variant == "i2v" else 16
         if model.config.in_channels != expected_channels or model.config.out_channels != 16:
             raise ValueError("Wan model latent/control input channels differ from cache geometry")
-    prepare_base_weights(model, execution, family=config.model.family.value, device=device)
     if high_model is not None:
         prepare_base_weights(high_model, execution, family=config.model.family.value, device=device)
     if execution.residency == "resident" and load_device != device:
@@ -305,9 +308,16 @@ def train_wan(
                 or state.samples != plan.samples_before(state.microbatches)
             ):
                 raise ValueError("Wan checkpoint cursor differs from the deterministic batch plan")
-        session.own(ExecutionInstallation(binding.regions, execution, device=device))
-        if high_binding is not None:
-            session.own(ExecutionInstallation(high_binding.regions, execution, device=device))
+        # Both experts share one device budget. Independent automatic caches
+        # would each treat the other's temporary free space as retained capacity.
+        session.own(
+            ExecutionInstallation(
+                binding.regions,
+                execution,
+                device=device,
+                additional_regions=() if high_binding is None else (high_binding.regions,),
+            )
+        )
         consumed = state.microbatches
 
         def steps() -> Iterator[StepResult]:

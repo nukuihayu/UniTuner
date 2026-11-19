@@ -81,8 +81,8 @@ def test_native_activation_gradients_three_updates(
                     values[f"loss.{index}"] = result.mean_loss
                 if offload and optimized:
                     assert owner._activations is not None
-                    assert owner._activations.offloaded_bytes > 0
-                    assert owner._activations.restored_bytes > 0
+                    assert owner._activations.offloaded_bytes == 0
+                    assert owner._activations.restored_bytes == 0
             finally:
                 handle.remove()
                 owner.close()

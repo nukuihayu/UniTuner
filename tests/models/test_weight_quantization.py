@@ -175,3 +175,37 @@ def test_existing_base_rejects_mismatched_quantizer_parameters(precision):
         with pytest.raises(ValueError, match="group size differs"):
             quantize_model(model, precision, family="z-image", group_size=32)
     assert all(a is b for a, b in zip(before, layer.parameters(), strict=True))
+
+
+def test_quantization_releases_old_layers_and_state_snapshots(monkeypatch):
+    import weakref
+
+    from unituner.models.components import weight_quantization as implementation
+
+    kitchen = pytest.importorskip("comfy_kitchen")
+    model = nn.Module()
+    model.layers = nn.ModuleList([nn.Linear(64, 32, bias=False) for _ in range(3)])
+    previous_weights = [weakref.ref(layer.weight) for layer in model.layers]
+    state_views = []
+    original_state_dict = model.state_dict
+    original_quantize = implementation.quantize_weight
+    calls = []
+
+    def snapshot(*args, **kwargs):
+        state = original_state_dict(*args, **kwargs)
+        state_views.extend(weakref.ref(value) for value in state.values())
+        return state
+
+    def checked(values, precision, **kwargs):
+        assert all(reference() is None for reference in state_views)
+        for index in range(len(calls)):
+            assert previous_weights[index]() is None
+        calls.append(values.shape)
+        return original_quantize(values, precision, **kwargs)
+
+    monkeypatch.setattr(model, "state_dict", snapshot)
+    monkeypatch.setattr(implementation, "quantize_weight", checked)
+    with kitchen.use_backend("eager"):
+        assert quantize_model(model, "float8_e4m3fn", family="z-image") == 3
+    assert len(calls) == 3
+    assert all(reference() is None for reference in previous_weights)

@@ -40,6 +40,7 @@ def prepare_base_weights(
             rotation_size=config.quantization_rotation_size,
             group_size=config.quantization_group_size,
             device=device,
+            input_dtype=torch.float32,
         )
     if config.convrot_kernel != "eager" or config.convrot_backward != "float":
         from unituner.models.components.quantized import QuantizedLinear
@@ -92,7 +93,15 @@ def validate_training_execution(config: ExecutionConfig, *, device: torch.device
 class ExecutionInstallation:
     """Own recompute/H2D/compile in construction order and close them in reverse order."""
 
-    def __init__(self, regions: ModelRegions, config: ExecutionConfig, *, device: torch.device) -> None:
+    def __init__(
+        self,
+        regions: ModelRegions,
+        config: ExecutionConfig,
+        *,
+        device: torch.device,
+        additional_regions: tuple[ModelRegions, ...] = (),
+    ) -> None:
+        all_regions = tuple(region for group in (regions, *additional_regions) for region in group.regions)
         self._owners: ExitStack = ExitStack()
         self._activations: AttentionActivations | None = None
         prefetch: WeightPrefetch | None = None
@@ -101,7 +110,7 @@ class ExecutionInstallation:
         try:
             allocation_workspace_bytes = (
                 max(
-                    (p.nbytes for region in regions.regions for p in region.module.parameters() if not p.requires_grad),
+                    (p.nbytes for region in all_regions for p in region.module.parameters() if not p.requires_grad),
                     default=0,
                 )
                 if config.offloads_frozen_weights
@@ -110,7 +119,9 @@ class ExecutionInstallation:
             if config.attention_activation_offload:
                 if device.type != "cuda":
                     raise ValueError("Attention activation offload requires CUDA")
-                self._activations = AttentionActivations(device)
+                self._activations = AttentionActivations(
+                    device, max_host_bytes=config.attention_activation_offload_mb * 1024**2
+                )
                 self._owners.callback(self._activations.close)
             if config.residency == "frozen-blocks":
                 self._cache = H2dCache(
@@ -122,7 +133,7 @@ class ExecutionInstallation:
                                 for p in region.module.parameters()
                                 if not p.requires_grad and p.is_contiguous()
                             )
-                            for region in regions.regions
+                            for region in all_regions
                         ),
                         default=0,
                     ),
@@ -136,7 +147,7 @@ class ExecutionInstallation:
                                 and p.is_floating_point()
                                 and p.dtype != (FLOAT_DTYPES[config.precision])
                             )
-                            for region in regions.regions
+                            for region in all_regions
                         ),
                         default=0,
                     )
@@ -149,7 +160,7 @@ class ExecutionInstallation:
                 )
                 self._owners.callback(self._cache.close)
                 prefetch = WeightPrefetch(device)
-            for region in regions.regions:
+            for region in all_regions:
                 if compiled:
                     compiler = CompilerInstallation(
                         region.module,
@@ -163,7 +174,7 @@ class ExecutionInstallation:
                     owner = FrozenBlockInstallation(
                         region,
                         device=device,
-                        use_pinned_memory=config.use_pinned_memory_for_block_swap is not False,
+                        use_pinned_memory=config.use_pinned_memory_for_block_swap is True,
                         cache=self._cache,
                         prefetch=prefetch,
                     )

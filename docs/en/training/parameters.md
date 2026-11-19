@@ -245,6 +245,7 @@ Image/Wan shifted sampling draws uniform indices from a 1000-point FP32 grid. De
 | `recompute_interval` | integer；> 0 | `1` | Block recomputation interval; keep 1 when the offload policy requires every block to be recomputed. |
 | `restoration_recompute` | "inherit", "none", "block" | `"inherit"` | Restoration VAE and DINO recomputation. inherit follows recompute; block keeps auxiliary networks checkpointed independently of recompute_interval while reducing DiT recomputation. |
 | `attention_activation_offload` | boolean | `false` | Offload saved attention activations to host memory at extra transfer and RAM cost. |
+| `attention_activation_offload_mb` | integer | `1024` | Maximum live pinned attention storage in MiB; not a total memory limit. |
 | `residency` | "resident", "frozen-blocks", "trainable-blocks" | `"resident"` | resident keeps weights on device; frozen-blocks manages frozen weights; trainable-blocks is reserved and currently unsupported. |
 | `use_pinned_memory_for_block_swap` | boolean / null | `null` | Pinned host memory for block swapping; omitted selects the policy default and can increase host RAM use. |
 | `frozen_weight_cache_mb` | integer / null | `null` | Frozen-block CUDA cache budget in MiB; omitted means automatic, 0 minimizes retention but still needs workspace. |
