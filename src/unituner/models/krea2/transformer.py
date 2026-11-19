@@ -136,13 +136,15 @@ class Krea2Transformer(nn.Module):
             spans=((TargetSpan(0, image_count),),),
             device=values.device,
         )
+        routed_rotary = rotary if route is None else route.select(rotary, dim=2)
+        routed_lengths = joint_lengths if route is None else tuple(route.boundary(length) for length in joint_lengths)
         for index, block in enumerate(self.blocks):
             if route is not None and route.applies(index):
                 updated = block(
                     route.select(values),
                     modulation,
-                    route.select(rotary, dim=2),
-                    tuple(route.boundary(length) for length in joint_lengths),
+                    routed_rotary,
+                    routed_lengths,
                 )
                 values = route.restore(values, updated)
             else:

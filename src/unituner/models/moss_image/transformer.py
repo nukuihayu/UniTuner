@@ -201,14 +201,16 @@ class MossImageTransformer(nn.Module):
             spans=((TargetSpan(0, image_length),),),
             device=hidden.device,
         )
+        routed_rope = rope if route is None else route.select(rope)
+        routed_lengths = joint_lengths if route is None else tuple(route.boundary(length) for length in joint_lengths)
         for index, block in enumerate(self.layers):
             if index not in skipped:
                 if route is not None and route.applies(index):
                     updated = block(
                         route.select(hidden),
-                        route.select(rope),
+                        routed_rope,
                         modulation,
-                        tuple(route.boundary(length) for length in joint_lengths),
+                        routed_lengths,
                     )
                     hidden = route.restore(hidden, updated)
                 elif reference_count or _reference_kv is not None:

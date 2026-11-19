@@ -187,6 +187,7 @@ class MiniMaxH3ImageTransformer(MiniMaxH3Transformer):
                 reference_rows.shape, generator=torch.Generator("cpu").manual_seed(reference_seed), dtype=torch.float32
             )
             rows.append(0.999 * reference_rows + 0.001 * noise.to(device))
+            del reference_rows, noise
             cursor += 1
         target = MiniMaxH3VideoGeometry(frames=1, height=latents.shape[-2], width=latents.shape[-1])
         frame, _ = _frame_grid(target)
@@ -198,21 +199,21 @@ class MiniMaxH3ImageTransformer(MiniMaxH3Transformer):
 
         with torch.autocast(device_type=device.type, enabled=False):
             image = self.video_patch_proj(torch.cat(rows, dim=1).float()).to(self.dtype)
+        del rows
         text = self.token_refiner(self.condition_proj(text_hidden_states.to(device=device, dtype=self.dtype)))
         hidden = torch.cat((text, image), dim=1)
+        del text, image
         time = 1.0 - sigma
         condition_time = max(time, 0.999)
         unique = sorted({time, condition_time} if references else {time})
         time_index = {value: index for index, value in enumerate(unique)}
         timesteps = self._timestep_embeddings(torch.tensor(unique, device=device), device)
-        tags = torch.cat(
-            (text_token_tags.reshape(-1).to(device), torch.zeros(image.shape[1], dtype=torch.long, device=device))
-        )
-        indices = torch.full((hidden.shape[1],), time_index[time] * 3, dtype=torch.long, device=device)
-        indices[:text_length] += tags[:text_length]
+        indices = torch.full((hidden.shape[1],), time_index[time] * 3, dtype=torch.long, device="cpu")
+        indices[:text_length] += text_token_tags.reshape(-1).to(device="cpu")
         if references:
             indices[text_length : -frame.shape[0]] = time_index[condition_time] * 3
-        segments = _build_modulation_segments(indices.cpu())
+        segments = _build_modulation_segments(indices)
+        del indices
         rotation = self._rotation_table(torch.cat(positions).unsqueeze(0).to(device), hidden.dtype)
         target_start = hidden.shape[1] - frame.shape[0]
         route = sample_token_route(
@@ -222,12 +223,15 @@ class MiniMaxH3ImageTransformer(MiniMaxH3Transformer):
             spans=((TargetSpan(target_start, hidden.shape[1]),),),
             device=device,
         )
+        routed_rotation = rotation if route is None else route.select(rotation)
+        routed_segments = (
+            segments
+            if route is None
+            else tuple((route.boundary(start), route.boundary(stop), time) for start, stop, time in segments)
+        )
         for index, block in enumerate(self.blocks):
             if route is not None and route.applies(index):
-                routed_segments = tuple(
-                    (route.boundary(start), route.boundary(stop), time) for start, stop, time in segments
-                )
-                updated = block(route.select(hidden), timesteps, routed_segments, route.select(rotation))
+                updated = block(route.select(hidden), timesteps, routed_segments, routed_rotation)
                 hidden = route.restore(hidden, updated)
             else:
                 hidden = block(hidden, timesteps, segments, rotation)

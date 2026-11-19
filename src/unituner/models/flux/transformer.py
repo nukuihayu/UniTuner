@@ -126,14 +126,20 @@ class FluxTransformer(nn.Module):
             if route is None
             else route.relocate(img.shape[1] + txt.shape[1], (TargetSpan(txt.shape[1], txt.shape[1] + target_length),))
         )
+        routed_positions = positions if joint_route is None else joint_route.select(positions, dim=2)
+        routed_lengths = (
+            lengths
+            if joint_route is None or lengths is None
+            else tuple(joint_route.boundary(length) for length in lengths)
+        )
         for index, block in enumerate(self.double_blocks):
             if route is not None and joint_route is not None and route.applies(index):
                 updated, txt = block(
                     route.select(img),
                     txt,
                     vec,
-                    joint_route.select(positions, dim=2),
-                    None if lengths is None else tuple(joint_route.boundary(length) for length in lengths),
+                    routed_positions,
+                    routed_lengths,
                 )
                 img = route.restore(img, updated)
             else:
@@ -148,14 +154,14 @@ class FluxTransformer(nn.Module):
                 updated = block(
                     joint_route.select(joint),
                     vec,
-                    joint_route.select(positions, dim=2),
-                    None if lengths is None else tuple(joint_route.boundary(length) for length in lengths),
+                    routed_positions,
+                    routed_lengths,
                 )
                 joint = joint_route.restore(joint, updated)
             else:
                 joint = block(joint, vec, positions, lengths)
             if self.feature_recorder is not None and self.feature_recorder.captures(index):
                 self.feature_recorder.record(index, joint[:, text_length : text_length + target_length])
-        return self.final_layer(joint[:, text_length :], vec)
+        return self.final_layer(joint[:, text_length:], vec)
 
     forward = predict

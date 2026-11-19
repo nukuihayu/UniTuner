@@ -137,17 +137,19 @@ class QwenImageTransformer(nn.Module):
             spans=((TargetSpan(0, visual_count),),),
             device=hidden.device,
         )
+        image_rope, text_rope = rotary
+        routed_rope = image_rope if route is None else route.select(image_rope, dim=0, batched=False)
+        routed_zero_index = zero_index if route is None or zero_index is None else route.boundary(zero_index)
         for index, block in enumerate(self.transformer_blocks):
             if route is not None and route.applies(index):
-                image_rope, text_rope = rotary
                 updated_context, updated = block(
                     route.select(hidden),
                     context,
                     text_mask,
                     time,
-                    route.select(image_rope, dim=0, batched=False),
+                    routed_rope,
                     text_rope,
-                    None if zero_index is None else route.boundary(zero_index),
+                    routed_zero_index,
                 )
                 context, hidden = updated_context, route.restore(hidden, updated)
             else:

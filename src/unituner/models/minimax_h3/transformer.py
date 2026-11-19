@@ -365,15 +365,18 @@ class MiniMaxH3Transformer(nn.Module):
             spans=((TargetSpan(target_segment.start, target_segment.stop),),),
             device=hidden_states.device,
         )
+        routed_rotation = rotation_table if route is None else route.select(rotation_table)
+        routed_segments = (
+            timestep_rows.block_segments
+            if route is None
+            else tuple(
+                (route.boundary(start), route.boundary(stop), time)
+                for start, stop, time in timestep_rows.block_segments
+            )
+        )
         for index, block in enumerate(self.blocks):
             if route is not None and route.applies(index):
-                segments = tuple(
-                    (route.boundary(start), route.boundary(stop), time)
-                    for start, stop, time in timestep_rows.block_segments
-                )
-                updated = block(
-                    route.select(hidden_states), timestep_embeddings, segments, route.select(rotation_table)
-                )
+                updated = block(route.select(hidden_states), timestep_embeddings, routed_segments, routed_rotation)
                 hidden_states = route.restore(hidden_states, updated)
             else:
                 hidden_states = block(hidden_states, timestep_embeddings, timestep_rows.block_segments, rotation_table)

@@ -132,12 +132,13 @@ class Flux2Transformer(nn.Module):
             if route is None
             else route.relocate(img.shape[1] + txt.shape[1], (TargetSpan(txt.shape[1], txt.shape[1] + target_length),))
         )
+        routed_positions = positions if joint_route is None else joint_route.select(positions, dim=2)
         for index, block in enumerate(self.double_blocks):
             if route is not None and joint_route is not None and route.applies(index):
                 updated, txt = block(
                     route.select(img),
                     txt,
-                    joint_route.select(positions, dim=2),
+                    routed_positions,
                     (img_first, img_second),
                     (txt_first, txt_second),
                 )
@@ -152,13 +153,13 @@ class Flux2Transformer(nn.Module):
         del txt, img
         for index, block in enumerate(self.single_blocks, start=len(self.double_blocks)):
             if joint_route is not None and joint_route.applies(index):
-                updated = block(joint_route.select(joint), joint_route.select(positions, dim=2), single)
+                updated = block(joint_route.select(joint), routed_positions, single)
                 joint = joint_route.restore(joint, updated)
             else:
                 joint = block(joint, positions, single)
             if self.feature_recorder is not None and self.feature_recorder.captures(index):
-                for row, ids in zip(joint[:, text_length :], x_ids, strict=True):
+                for row, ids in zip(joint[:, text_length:], x_ids, strict=True):
                     self.feature_recorder.record(index, row[ids[:, 0] == 0].unsqueeze(0))
-        return self.final_layer(joint[:, text_length :], vector)
+        return self.final_layer(joint[:, text_length:], vector)
 
     forward = predict

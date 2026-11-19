@@ -186,13 +186,15 @@ class ZImageTransformer(nn.Module):
             spans=((TargetSpan(0, image_length),),),
             device=unified.device,
         )
+        routed_frequencies = frequencies if route is None else route.select(frequencies)
+        routed_mask = attention_mask if route is None or attention_mask is None else route.select(attention_mask)
         for index, block in enumerate(self.layers):
             if route is not None and route.applies(index):
                 updated = block(
                     route.select(unified),
-                    route.select(frequencies),
+                    routed_frequencies,
                     conditioning,
-                    None if attention_mask is None else route.select(attention_mask),
+                    routed_mask,
                 )
                 unified = route.restore(unified, updated)
             else:
