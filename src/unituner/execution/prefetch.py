@@ -1,5 +1,7 @@
 """Prefetch frozen weight misses within available H2D cache capacity."""
 
+from typing import cast
+
 import torch
 
 from unituner.execution.weight_lease import FrozenWeights, PrefetchUnavailable, WeightLease
@@ -60,7 +62,7 @@ class WeightPrefetch:
             try:
                 with torch.cuda.stream(self._stream):
                     leases = target.acquire(speculative=True)
-                    ready = self._stream.record_event()
+                    ready = cast(torch.Event, self._stream.record_event())
             except (PrefetchUnavailable, torch.OutOfMemoryError) as error:
                 # Demand acquisition reports real OOM; speculative loading
                 # may be cancelled when available memory is insufficient.
@@ -71,10 +73,12 @@ class WeightPrefetch:
             self._pending.append((target, leases, ready))
 
     def cancel(self) -> None:
-        """Finish unused transfers before releasing their immutable leases."""
+        """Order recycling after unused transfers without blocking the host."""
         pending, self._pending = self._pending, []
         for owner, leases, ready in pending:
-            ready.synchronize()
+            # Recycling records this stream's last-use event. Keep the copy in
+            # that dependency chain without blocking the CPU on an unused load.
+            torch.cuda.current_stream(owner.device).wait_event(ready)
             owner.release(leases)
 
     def close(self) -> None:

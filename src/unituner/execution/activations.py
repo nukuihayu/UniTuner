@@ -4,6 +4,7 @@ from collections.abc import Callable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from types import TracebackType
+from typing import cast
 from weakref import finalize
 
 import torch
@@ -21,6 +22,7 @@ class _SavedActivation:
     shape: torch.Size
     stride: tuple[int, ...]
     ready: torch.Event
+    readers: list[torch.Event]
 
 
 _attention_replay: ContextVar[bool] = ContextVar("attention_replay", default=False)
@@ -56,6 +58,8 @@ class AttentionActivations:
         self._max_host_bytes = max_host_bytes
         self.active_host_bytes = 0
         self.peak_host_bytes = 0
+        self._allocated_host_bytes = 0
+        self._idle_host: list[tuple[Tensor, list[torch.Event]]] = []
         self._stream: torch.cuda.Stream = torch.cuda.Stream(device=device)
         self.offloaded_bytes: int = 0
         self.restored_bytes: int = 0
@@ -80,21 +84,52 @@ class AttentionActivations:
                 "enable block recompute or reduce the training batch/sequence size. "
                 f"Live={self.active_host_bytes}, requested={size}, budget={self._max_host_bytes} bytes"
             )
-        host = torch.empty(span, dtype=tensor.dtype, device="cpu", pin_memory=True)
+        host = self._acquire_host(span, tensor.dtype)
         self._stream.wait_stream(torch.cuda.current_stream(tensor.device))
-        with torch.cuda.stream(self._stream):
-            source.record_stream(self._stream)
-            host.copy_(source, non_blocking=True)
-            ready = self._stream.record_event()
+        try:
+            with torch.cuda.stream(self._stream):
+                source.record_stream(self._stream)
+                host.copy_(source, non_blocking=True)
+        except BaseException:
+            self._idle_host.append((host, [cast(torch.Event, self._stream.record_event())]))
+            raise
+        ready = cast(torch.Event, self._stream.record_event())
         self.offloaded_bytes += host.nbytes
-        packet = _SavedActivation(host, tensor.device, tensor.shape, tensor.stride(), ready)
+        readers = [ready]
+        packet = _SavedActivation(host, tensor.device, tensor.shape, tensor.stride(), ready, readers)
         self.active_host_bytes += size
         self.peak_host_bytes = max(self.peak_host_bytes, self.active_host_bytes)
-        finalize(packet, self._release_host, size)
+        finalize(packet, self._release_host, host, readers)
         return packet
 
-    def _release_host(self, size: int) -> None:
-        self.active_host_bytes -= size
+    def _acquire_host(self, span: int, dtype: torch.dtype) -> Tensor:
+        for index, (host, readers) in enumerate(self._idle_host):
+            if host.numel() == span and host.dtype == dtype:
+                self._idle_host.pop(index)
+                for ready in readers:
+                    self._stream.wait_event(ready)
+                return host
+        size = span * dtype.itemsize
+        # Idle storage counts against the same byte limit as live graph packets.
+        # Shape changes may retire buffers, but ordinary reuse never blocks Python.
+        while self._idle_host and self._allocated_host_bytes + size > self._max_host_bytes:
+            host, readers = self._idle_host.pop(0)
+            for ready in readers:
+                ready.synchronize()
+            self._allocated_host_bytes -= host.nbytes
+            del host
+        host = torch.empty(span, dtype=dtype, device="cpu", pin_memory=True)
+        self._allocated_host_bytes += host.nbytes
+        return host
+
+    def _release_host(self, host: Tensor, readers: list[torch.Event]) -> None:
+        self.active_host_bytes -= host.nbytes
+        if self._closed:
+            for ready in readers:
+                ready.synchronize()
+            self._allocated_host_bytes -= host.nbytes
+        else:
+            self._idle_host.append((host, readers))
 
     def unpack(self, packet: Tensor | _SavedActivation) -> Tensor:
         """Restore fresh storage for each read, including retain_graph and repeated backward."""
@@ -104,6 +139,10 @@ class AttentionActivations:
             raise RuntimeError("Attention activation offload closed before backward finished")
         torch.cuda.current_stream(packet.device).wait_event(packet.ready)
         restored = packet.host.to(packet.device, non_blocking=True)
+        # A retained graph can read the same host allocation on several streams.
+        # Reuse must wait for every read, including a packet dropped before backward.
+        packet.readers[:] = [ready for ready in packet.readers if not ready.query()]
+        packet.readers.append(cast(torch.Event, torch.cuda.current_stream(packet.device).record_event()))
         self.restored_bytes += packet.host.nbytes
         return restored.as_strided(packet.shape, packet.stride)
 
@@ -112,6 +151,11 @@ class AttentionActivations:
         if not self._closed:
             self._stream.synchronize()
             self._closed = True
+            while self._idle_host:
+                host, readers = self._idle_host.pop()
+                for ready in readers:
+                    ready.synchronize()
+                self._allocated_host_bytes -= host.nbytes
 
 
 _attention_activations: ContextVar[AttentionActivations | None] = ContextVar("attention_activations", default=None)

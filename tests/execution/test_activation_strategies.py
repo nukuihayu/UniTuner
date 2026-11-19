@@ -1,5 +1,6 @@
 """Qualify native block recompute and saved attention offload across all families."""
 
+import gc
 from copy import deepcopy
 
 import pytest
@@ -13,6 +14,85 @@ from unituner.execution.installation import ExecutionInstallation
 from unituner.training.contracts import RunState
 from unituner.training.engine import update_phase
 from unituner.training.session import TrainingSession
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_activation_pool_reuses_storage_after_reads_on_multiple_streams():
+    device = torch.device("cuda", 0)
+    owner = AttentionActivations(device, max_host_bytes=1024**2)
+    streams = [torch.cuda.Stream(device=device) for _ in range(2)]
+    addresses = []
+    observations = []
+    try:
+        for index in range(12):
+            value = torch.full((256 * 1024,), float(index), device=device, requires_grad=True) * 2
+            packet = owner.pack(value)
+            assert not isinstance(packet, torch.Tensor)
+            addresses.append(packet.host.data_ptr())
+            results = []
+            for stream in streams:
+                with torch.cuda.stream(stream):
+                    results.append(owner.unpack(packet))
+            del packet, value
+            gc.collect()
+            assert owner.active_host_bytes == 0
+            assert owner._allocated_host_bytes == 1024**2
+            observations.append(results)
+        # Do not synchronize the readers between iterations: the next D2H copy
+        # must wait for both H2D streams before overwriting their shared source.
+        for stream in streams:
+            torch.cuda.current_stream(device).wait_stream(stream)
+        for index, results in enumerate(observations):
+            for result in results:
+                torch.testing.assert_close(result, torch.full_like(result, float(index * 2)), atol=0, rtol=0)
+        assert len(set(addresses)) == 1
+    finally:
+        owner.close()
+    assert owner._allocated_host_bytes == 0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_activation_pool_bounds_idle_storage_and_preserves_live_packets():
+    device = torch.device("cuda", 0)
+    owner = AttentionActivations(device, max_host_bytes=1024)
+    try:
+        live = owner.pack(torch.ones(32, device=device, requires_grad=True) * 3)
+        assert not isinstance(live, torch.Tensor)
+        for count in (64, 128, 192, 64):
+            packet = owner.pack(torch.ones(count, device=device, requires_grad=True) * 7)
+            torch.testing.assert_close(owner.unpack(packet), torch.full((count,), 7.0, device=device))
+            del packet
+            gc.collect()
+            assert owner._allocated_host_bytes <= 1024
+            torch.testing.assert_close(owner.unpack(live), torch.full((32,), 3.0, device=device))
+        with pytest.raises(MemoryError, match="budget"):
+            owner.pack(torch.ones(256, device=device, requires_grad=True) * 2)
+        owner.close()
+        assert owner._allocated_host_bytes == live.host.nbytes
+        del live
+        gc.collect()
+        assert owner.active_host_bytes == owner._allocated_host_bytes == 0
+    finally:
+        owner.close()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_activation_pool_recycles_packet_without_backward():
+    owner = AttentionActivations(torch.device("cuda", 0), max_host_bytes=1024)
+    try:
+        packet = owner.pack(torch.ones(256, device="cuda", requires_grad=True) * 5)
+        assert not isinstance(packet, torch.Tensor)
+        address = packet.host.data_ptr()
+        del packet
+        gc.collect()
+        packet = owner.pack(torch.ones(256, device="cuda", requires_grad=True) * 9)
+        assert not isinstance(packet, torch.Tensor)
+        assert packet.host.data_ptr() == address
+        torch.testing.assert_close(owner.unpack(packet), torch.full((256,), 9.0, device="cuda"))
+        del packet
+        gc.collect()
+    finally:
+        owner.close()
 
 
 @pytest.mark.parametrize("family", FAMILIES)

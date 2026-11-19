@@ -1,5 +1,6 @@
 """Exercise actual CUDA cache reuse, speculative pressure and graph-safe retirement."""
 
+from types import SimpleNamespace
 from typing import Literal, cast
 
 import pytest
@@ -7,10 +8,31 @@ import torch
 
 from unituner.execution.prefetch import WeightPrefetch
 from unituner.execution.weight_cache import H2dCache, H2dWeights
-from unituner.execution.weight_lease import PrefetchUnavailable
+from unituner.execution.weight_lease import FrozenWeights, PrefetchUnavailable
 from unituner.execution.weight_source import WeightSource
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+
+
+def test_cancelled_prefetch_orders_recycling_without_host_synchronization(monkeypatch):
+    events = []
+
+    class CopyReady:
+        def synchronize(self):
+            pytest.fail("Cancelling an unused copy must not block the CPU")
+
+    ready = cast(torch.Event, CopyReady())
+    stream = SimpleNamespace(wait_event=lambda event: events.append(("wait", event)))
+    owner = cast(
+        FrozenWeights,
+        SimpleNamespace(device=torch.device("cuda", 0), release=lambda leases: events.append(("release", leases))),
+    )
+    prefetch = WeightPrefetch(owner.device)
+    prefetch._pending.append((owner, (), ready))
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda device: stream)
+    prefetch.cancel()
+    assert events == [("wait", ready), ("release", ())]
+    assert prefetch._pending == []
 
 
 @pytest.mark.parametrize("pinned", [False, True])

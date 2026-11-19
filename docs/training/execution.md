@@ -110,7 +110,7 @@ attention_activation_offload = true
 
 与块重算组合时，重算块内的注意力交给 checkpoint 保存／重算，不再另存整套注意力激活到主机。未重算的块仍使用卸载。
 
-`attention_activation_offload_mb` 限制活跃注意力锁页内存，默认 1024 MiB。超过预算会明确报错，避免继续占满主机；可开启整块重算或缩小 batch／序列。这个预算不包含模型、优化器和其它进程的内存。
+`attention_activation_offload_mb` 限制注意力锁页缓冲区总量（含活跃和空闲缓冲区），默认 1024 MiB。缓冲区在传输依赖满足后复用；活跃张量超过预算会明确报错，可开启整块重算或缩小 batch／序列。这个预算不包含模型、优化器和其它进程的内存。
 
 ## 冻结块卸载
 
