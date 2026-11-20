@@ -8,7 +8,7 @@ from typing import Literal
 
 import torch
 from torch import Tensor, nn
-from transformers import AutoConfig, AutoTokenizer, PreTrainedTokenizerBase, Qwen3VLConfig, Qwen3VLModel
+from transformers import AutoConfig, PreTrainedTokenizerBase, Qwen3VLConfig, Qwen3VLModel
 from transformers.models.qwen3_vl.configuration_qwen3_vl import Qwen3VLTextConfig
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextModel, Qwen3VLTextRotaryEmbedding
 
@@ -24,7 +24,7 @@ from unituner.models.components.text_loading import (
     text_weight_path,
 )
 from unituner.models.krea2.config.features import Krea2TextFeatures
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 _PREFIX = (
     "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, quantity, text, "
@@ -165,9 +165,7 @@ def load_krea2_text(
         raise ValueError("Krea2 text requires local Qwen3-VL config")
     if not isinstance(topology.text_config, Qwen3VLTextConfig):
         raise ValueError("Expected typed language/vision subconfigurations")
-    tokenizer = AutoTokenizer.from_pretrained(
-        str(tokenizer_directory(config, "krea2", directory)), local_files_only=True, trust_remote_code=False
-    )
+    tokenizer = load_frontend(config, "krea2", directory)
     if not isinstance(tokenizer, PreTrainedTokenizerBase):
         raise TypeError("Krea2 text requires a local tokenizer")
     topology._attn_implementation = "sdpa"

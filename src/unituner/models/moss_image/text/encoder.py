@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 from torch import Tensor
-from transformers import AutoConfig, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoConfig, PreTrainedTokenizerBase
 from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5Config, Qwen3_5TextConfig
 from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5TextModel, Qwen3_5TextRotaryEmbedding
 
@@ -19,7 +19,7 @@ from unituner.models.components.text_loading import (
     text_dtype,
     text_weight_path,
 )
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 
 class MossImageTextEncoder:
@@ -119,9 +119,7 @@ def load_moss_image_text(
         raise ValueError("MOSS text requires a local Qwen3.5 language configuration")
     if not isinstance(config, Qwen3_5TextConfig):
         raise ValueError("Expected a typed language configuration")
-    tokenizer = AutoTokenizer.from_pretrained(
-        str(tokenizer_directory(text_config, "moss-image", directory)), local_files_only=True, trust_remote_code=False
-    )
+    tokenizer = load_frontend(text_config, "moss-image", directory)
     if not isinstance(tokenizer, PreTrainedTokenizerBase) or tokenizer.chat_template is None:
         raise ValueError("MOSS text requires a local tokenizer with a chat template")
     config._attn_implementation = "sdpa"

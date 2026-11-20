@@ -7,8 +7,6 @@ import torch
 from torch import Tensor
 from transformers import (
     AutoConfig,
-    AutoProcessor,
-    AutoTokenizer,
     BatchEncoding,
     PixtralProcessor,
     PreTrainedTokenizerBase,
@@ -30,7 +28,7 @@ from unituner.models.components.text_loading import (
     text_dtype,
     text_weight_path,
 )
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 _SYSTEM_MESSAGE = (
     "You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object\n"
@@ -176,11 +174,7 @@ def load_flux2_text(
     if version == "dev":
         if not isinstance(source, Mistral3Config) or not isinstance(source.text_config, MistralConfig):
             raise ValueError("FLUX.2 Dev text requires a local Mistral3 configuration")
-        processor = AutoProcessor.from_pretrained(
-            str(tokenizer_directory(text_config, "flux2", directory, version=version)),
-            local_files_only=True,
-            trust_remote_code=False,
-        )
+        processor = load_frontend(text_config, "flux2", directory, version=version)
         if not isinstance(processor, PixtralProcessor) or not isinstance(processor.tokenizer, PreTrainedTokenizerBase):
             raise ValueError("FLUX.2 Dev requires a local Pixtral processor/tokenizer")
         tokenizer = processor.tokenizer
@@ -197,11 +191,7 @@ def load_flux2_text(
         architectures = tuple(source.architectures or ())
         if architectures not in (("Qwen3Model",), ("Qwen3ForCausalLM",)):
             raise ValueError("FLUX.2 Klein text must declare Qwen3Model or Qwen3ForCausalLM architecture")
-        loaded = AutoTokenizer.from_pretrained(
-            str(tokenizer_directory(text_config, "flux2", directory, version=version)),
-            local_files_only=True,
-            trust_remote_code=False,
-        )
+        loaded = load_frontend(text_config, "flux2", directory, version=version)
         if not isinstance(loaded, PreTrainedTokenizerBase):
             raise ValueError("FLUX.2 Klein requires a local tokenizer")
         tokenizer = loaded

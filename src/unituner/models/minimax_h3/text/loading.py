@@ -24,8 +24,7 @@ from unituner.models.components.text_loading import (
 )
 from unituner.models.minimax_h3.text.encoder import TEXT_LAYERS, MiniMaxH3TextEncoder
 from unituner.models.minimax_h3.text.presentation import TEXT_WIDTH
-from unituner.models.minimax_h3.text.processor import load_text_processor
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 
 def load_text_encoder(
@@ -79,7 +78,7 @@ def load_text_encoder(
         text_config = text_config.model_copy(
             update={"tokenizer": TokenizerSourceConfig(source=str(processor_directory), offline=True)}
         )
-    processor = load_text_processor(tokenizer_directory(text_config, processor_family))
+    processor = load_frontend(text_config, processor_family)
     automatic = source_format == "auto"
     if automatic:
         source_format = qwen_vl_source_format(weights)

@@ -14,11 +14,9 @@ from torch import Tensor
 from torch.nn import functional as F
 from transformers import (
     AutoConfig,
-    AutoProcessor,
     GenerationConfig,
     PreTrainedTokenizerBase,
     Qwen2_5_VLForConditionalGeneration,
-    Qwen2Tokenizer,
     Qwen2VLProcessor,
 )
 from transformers.feature_extraction_utils import BatchFeature
@@ -47,7 +45,7 @@ from unituner.models.components.text_loading import (
 )
 from unituner.models.qwen_image.config.model import QwenImageConfig, QwenImageVariant
 from unituner.models.qwen_image.text.templates import CHINESE_CAPTION_TEMPLATE, ENGLISH_CAPTION_TEMPLATE
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 type QwenImageReference = Image.Image | NDArray[np.uint8] | Tensor
 
@@ -298,17 +296,10 @@ def load_qwen_image_text(
         config.vision_config, Qwen2_5_VLVisionConfig
     ):
         raise ValueError("Expected typed language/vision subconfigurations")
-    processor = AutoProcessor.from_pretrained(
-        str(tokenizer_directory(text_config, "qwen-image", directory, role="processor")),
-        local_files_only=True,
-        trust_remote_code=False,
-    )
+    processor = load_frontend(text_config, "qwen-image", directory, role="processor")
     if not isinstance(processor, Qwen2VLProcessor):
         raise ValueError("Qwen Image text requires a local Qwen2-VL processor")
-    tokenizer = Qwen2Tokenizer.from_pretrained(
-        str(tokenizer_directory(text_config, "qwen-image", directory)),
-        local_files_only=True,
-    )
+    tokenizer = load_frontend(text_config, "qwen-image", directory)
     processor = Qwen2VLProcessor(
         image_processor=processor.image_processor,
         video_processor=processor.video_processor,

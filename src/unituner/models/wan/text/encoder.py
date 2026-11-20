@@ -10,10 +10,10 @@ from typing import Literal
 import ftfy
 import torch
 from torch import Tensor
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerBase
 
 from unituner.config.text import DEFAULT_TEXT_CONFIG, TextEncodingConfig, TokenizerSourceConfig
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 from unituner.models.wan.config.t5 import WanT5Config
 from unituner.models.wan.text.loading import load_wan_t5
 from unituner.models.wan.text.model import WanT5Encoder
@@ -127,8 +127,7 @@ def load_wan_text(
         text_config = text_config.model_copy(
             update={"tokenizer": TokenizerSourceConfig(source=str(tokenizer_path), offline=True)}
         )
-    tokenizer_path = tokenizer_directory(text_config, "wan")
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, local_files_only=True, trust_remote_code=False)
+    tokenizer = load_frontend(text_config, "wan")
     if not isinstance(tokenizer, PreTrainedTokenizerBase):
         raise TypeError("Wan requires a Hugging Face text tokenizer")
     if tokenizer.padding_side != "right":

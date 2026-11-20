@@ -12,7 +12,6 @@ from PIL import Image
 from torch import Tensor, nn
 from transformers import (
     AutoConfig,
-    AutoProcessor,
     PreTrainedTokenizerBase,
     Qwen3VLConfig,
     Qwen3VLModel,
@@ -38,7 +37,7 @@ from unituner.models.components.text_loading import (
 )
 from unituner.models.qwen_image_2_1.conditioning import QwenImage21TextFeatures
 from unituner.models.qwen_image_2_1.data.encoding import ImageInput
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 _SYSTEM_PROMPT = "<|im_start|>system\nComprehend and analyze the provided prompt.<|im_end|>\n"
 
@@ -218,11 +217,7 @@ def load_qwen_image_21_text(
         config.vision_config, Qwen3VLVisionConfig
     ):
         raise ValueError("Expected typed language/vision subconfigurations")
-    processor = AutoProcessor.from_pretrained(
-        str(tokenizer_directory(text_config, "qwen-image-2-1", directory)),
-        local_files_only=True,
-        trust_remote_code=False,
-    )
+    processor = load_frontend(text_config, "qwen-image-2-1", directory)
     if not isinstance(processor, Qwen3VLProcessor):
         raise ValueError("Qwen Image2.1 text requires local Qwen3-VL processor")
     config._attn_implementation = "sdpa"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 from torch import Tensor
-from transformers import AutoConfig, AutoProcessor, PreTrainedTokenizerBase
+from transformers import AutoConfig, PreTrainedTokenizerBase
 from transformers.models.qwen3_vl.configuration_qwen3_vl import Qwen3VLConfig, Qwen3VLTextConfig
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextModel, Qwen3VLTextRotaryEmbedding
 from transformers.models.qwen3_vl.processing_qwen3_vl import Qwen3VLProcessor
@@ -23,7 +23,7 @@ from unituner.models.components.text_loading import (
     text_weight_path,
 )
 from unituner.models.flux3.conditioning import Flux3Tokens, text_tokens
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 _OUTPUT_LAYERS = (4, 8, 12, 16, 20, 24, 28, 32)
 
@@ -137,9 +137,7 @@ def load_flux3_text(
         raise ValueError("Expected a typed language configuration")
     if config.num_hidden_layers < _OUTPUT_LAYERS[-1]:
         raise ValueError("FLUX3 text requires at least 32 Qwen3-VL language layers")
-    processor = AutoProcessor.from_pretrained(
-        str(tokenizer_directory(text_config, "flux3", directory)), local_files_only=True, trust_remote_code=False
-    )
+    processor = load_frontend(text_config, "flux3", directory)
     if not isinstance(processor, Qwen3VLProcessor) or not isinstance(processor.tokenizer, PreTrainedTokenizerBase):
         raise ValueError("FLUX3 text requires a local Qwen3-VL processor and tokenizer")
     if processor.chat_template is None:

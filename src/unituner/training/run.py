@@ -24,9 +24,15 @@ from unituner.training.workflows.wan.run import train_wan
 def run(config: TrainingConfig, *, device: str, resume: Path | None) -> int:
     """Assemble a typed local device and run the shared native training application."""
     config = resolve_training_precision(prepare_training_output(config, resume=resume))
+    from contextlib import nullcontext
+
+    from unituner.models.text_frontends import preview_text_assets
     from unituner.training.audit import audit_training
 
-    with audit_training(config, resume=resume):
+    assets = (
+        preview_text_assets(config.model) if config.preview and config.method.kind != "restoration" else nullcontext()
+    )
+    with audit_training(config, resume=resume), assets:
         return _run(config, device=device, resume=resume)
 
 

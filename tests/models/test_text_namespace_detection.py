@@ -43,7 +43,7 @@ def test_h3_auto_layout_validates_full_or_truncated_inventory(tmp_path, monkeypa
         monkeypatch.setattr(module, "TEXT_WIDTH", 16)
         monkeypatch.setattr(module, "TEXT_LAYERS", 2)
     processor = AutoProcessor.from_pretrained(tmp_path, local_files_only=True)
-    monkeypatch.setattr(loading, "load_text_processor", lambda _: processor)
+    monkeypatch.setattr("unituner.models.minimax_h3.text.processor.load_text_processor", lambda _: processor)
     values = {}
     for key, value in iter_tensors(tmp_path / "model.safetensors"):
         if key == "lm_head.weight" and not head:

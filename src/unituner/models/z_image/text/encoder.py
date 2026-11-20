@@ -21,7 +21,7 @@ from unituner.models.components.text_loading import (
     text_dtype,
     text_weight_path,
 )
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 
 class ZImageTextEncoder:
@@ -109,9 +109,7 @@ def load_z_image_text(
     dtype = text_dtype(text_config, dtype)
     if dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError("Z-Image text loading supports FP32, FP16 and BF16")
-    tokenizer = Qwen2Tokenizer.from_pretrained(
-        str(tokenizer_directory(text_config, "z-image", directory)), local_files_only=True
-    )
+    tokenizer = load_frontend(text_config, "z-image", directory)
     config = Qwen3Config.from_pretrained(str(text_config_path(directory, "z-image")), local_files_only=True)
     config._attn_implementation = "sdpa"
     with torch.device("meta"):

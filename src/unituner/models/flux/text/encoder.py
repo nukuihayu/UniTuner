@@ -19,7 +19,7 @@ from unituner.models.components.text_loading import (
     text_weight_path,
 )
 from unituner.models.flux.conditioning import FluxTextFeatures
-from unituner.models.text_assets import tokenizer_directory
+from unituner.models.text_frontends import load_frontend
 
 _WHITESPACE = re.compile(r"\s+")
 
@@ -168,12 +168,8 @@ def load_flux_text(
     )
     if not isinstance(t5_config, T5Config) or not isinstance(clip_config, CLIPTextConfig):
         raise ValueError("FLUX text requires local T5 and CLIP text-only configurations")
-    t5_tokenizer = T5Tokenizer.from_pretrained(
-        str(tokenizer_directory(text_config, "flux", t5_directory)), local_files_only=True
-    )
-    clip_tokenizer = CLIPTokenizer.from_pretrained(
-        str(tokenizer_directory(text_config, "flux", clip_directory, role="clip_tokenizer")), local_files_only=True
-    )
+    t5_tokenizer = load_frontend(text_config, "flux", t5_directory)
+    clip_tokenizer = load_frontend(text_config, "flux", clip_directory, role="clip_tokenizer")
     if (
         t5_tokenizer.padding_side != "right"
         or clip_tokenizer.padding_side != "right"
