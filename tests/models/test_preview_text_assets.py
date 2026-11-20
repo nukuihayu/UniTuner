@@ -23,7 +23,7 @@ def test_preflight_reuses_every_role_and_releases_on_failure(tmp_path, monkeypat
 
     monkeypatch.setattr(assets, "_read_frontend", read)
     directory = None if family in ("wan", "minimax-h3", "minimax-h3-image") else Path(model.text_encoder)
-    roles = ["tokenizer"] + ({"flux": ["clip_tokenizer"], "qwen-image": ["processor"]}.get(family, []))
+    roles = ["tokenizer", *{"flux": ["clip_tokenizer"], "qwen-image": ["processor"]}.get(family, [])]
     with pytest.raises(RuntimeError, match="render failed"), assets.preview_text_assets(model):
         assert reads == roles
         for role in roles:
