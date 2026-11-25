@@ -9,10 +9,16 @@ import numpy as np
 
 from unituner.data.degradation.config import BlurConfig
 from unituner.data.degradation.pipeline import _SMALL_KERNEL, Pixels, _sinc_kernel, mixed_blur_kernel
+from unituner.data.degradation.resize import resize_centered, scaled_shape
 
-_RESIZE = (cv2.INTER_LINEAR, cv2.INTER_AREA, cv2.INTER_CUBIC)
+_RESIZE = ("bilinear", "area", "bicubic")
 _RESIZE_PROBABILITIES = (0.3333, 0.3333, 0.3334)
 _PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow")
+
+
+def sample_training_stage(rng: np.random.Generator) -> str:
+    """Convert the official 45:17 frame counts to single-image stage weights."""
+    return "stage1_causal" if rng.random() < 45 / (45 + 17) else "stage2_pixel"
 
 
 def _mpeg(image: Pixels, codec: str, crf: float, preset: str, sigma: float) -> Pixels:
@@ -101,9 +107,9 @@ def degrade_fastvr(image: Pixels, rng: np.random.Generator, trace: list[dict] | 
                 factor = rng.uniform(0.5 if stage == 1 else 0.3, 1)
             else:
                 factor = 1
-            size = tuple(max(2, int(dimension * factor) // 2 * 2) for dimension in pixels.shape[:2])
-        mode = int(rng.choice(_RESIZE, p=_RESIZE_PROBABILITIES))
-        result = cv2.resize(pixels, size[::-1], interpolation=mode)
+            size = scaled_shape(pixels.shape[:2], factor, multiple=2)
+        mode = str(rng.choice(_RESIZE, p=_RESIZE_PROBABILITIES))
+        result = resize_centered(pixels, size, mode)
         return record("delivery_resize" if stage == 3 else "resize", result, stage)
 
     def noise(pixels: Pixels, stage: int) -> Pixels:

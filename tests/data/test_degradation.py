@@ -444,7 +444,44 @@ def test_fastvr_spatial_rotation_is_aligned_and_deterministic():
         assert low.shape == high.shape and torch.isfinite(low).all()
         assert trace[0]["recipe"] == "fastvr_single_frame"
         assert trace[0]["scale"] == 1 and trace[0]["target"] == [33, 35]
+        assert trace[0]["training_stage"] in ("stage1_causal", "stage2_pixel")
         codecs.update(event.get("codec") for event in trace)
         if {"libx264", "libx265", "jpeg"} <= codecs:
             break
     assert {"libx264", "libx265", "jpeg"} <= codecs
+
+
+@pytest.mark.parametrize("mode", ["area", "bilinear", "bicubic"])
+@pytest.mark.parametrize("shape", [(61, 60), (119, 60), (33, 97)])
+def test_upstream_resize_has_no_directional_grid_bias(mode, shape):
+    from unituner.data.degradation.resize import resize_centered
+
+    image = np.random.default_rng(27).random((101, 99, 3), dtype=np.float32)
+    result = resize_centered(image, shape, mode)
+    mirrored = resize_centered(image[::-1, ::-1], shape, mode)[::-1, ::-1]
+    assert result.shape == (*shape, 3)
+    np.testing.assert_allclose(result, mirrored, rtol=0, atol=2e-5)
+    upstream = _resize(image, *shape, np.random.default_rng(0), mode=mode, upstream=True)
+    np.testing.assert_array_equal(upstream, result)
+
+
+def test_area_resize_uses_fractional_pixel_overlap():
+    from unituner.data.degradation.resize import resize_centered, scaled_shape
+
+    gradient = np.array([[[0.0], [0.0], [1.0], [0.0], [1.0]]], dtype=np.float32)
+    expected = np.array([[[0.2], [0.6]]], dtype=np.float32)
+    np.testing.assert_allclose(resize_centered(gradient, (1, 2), "area"), expected, atol=1e-7)
+    assert scaled_shape((101, 99), 0.613) == (62, 61)
+    assert scaled_shape((101, 99), 0.613, multiple=2) == (62, 60)
+
+
+def test_fastvr_stage_sampling_uses_frame_count_weights():
+    from unittest.mock import Mock
+
+    from unituner.data.degradation.fastvr import sample_training_stage
+
+    threshold = 45 / 62
+    rng = Mock()
+    rng.random.side_effect = [np.nextafter(threshold, 0), threshold]
+    assert sample_training_stage(rng) == "stage1_causal"
+    assert sample_training_stage(rng) == "stage2_pixel"

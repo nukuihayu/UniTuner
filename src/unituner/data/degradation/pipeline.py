@@ -20,6 +20,7 @@ from unituner.data.degradation.config import (
     StageConfig,
 )
 from unituner.data.degradation.diffjpeg import diffjpeg
+from unituner.data.degradation.resize import resize_centered, scaled_shape
 
 type Pixels = NDArray[np.float32]
 
@@ -165,7 +166,6 @@ def _resize(
     mode: str | None = None,
     second_stage: bool = False,
     upstream: bool = False,
-    scale_factor: float | None = None,
 ) -> Pixels:
     """Resize on the integer grid so repeated half-pixel mappings compose."""
     available = (
@@ -178,12 +178,14 @@ def _resize(
         raise ValueError(f"Unsupported OMGSR resize mode: {selected}")
     if selected not in available:
         raise ValueError("Area and nearest resize are restricted to the second stage")
+    size = (max(1, height), max(1, width))
+    if upstream:
+        return resize_centered(image, size, selected)
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)[None]
     return (
         F.interpolate(
             value,
-            size=(max(1, height), max(1, width)) if scale_factor is None else None,
-            scale_factor=scale_factor,
+            size=size,
             mode=selected,
             align_corners=False if selected in ("bilinear", "bicubic") else None,
             antialias=False,
@@ -309,7 +311,7 @@ def degrade_pair(
     ):
         raise ValueError("Degradation requires CPU float32 CHW RGB [0,1], dimensions >=32")
     rng = np.random.default_rng(seed)
-    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(13)]
+    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(14)]
     image = high.detach().permute(1, 2, 0).numpy().copy()
     height, width = image.shape[:2]
     recipe = None
@@ -319,7 +321,9 @@ def degrade_pair(
         recipe_rng = np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))
         recipe = _sample_recipe(height, width, recipe_rng)
         if recipe is _Recipe.FASTVR:
-            from unituner.data.degradation.fastvr import degrade_fastvr
+            from unituner.data.degradation.fastvr import degrade_fastvr, sample_training_stage
+
+            training_stage = sample_training_stage(streams[13])
 
             if trace is not None:
                 trace.append(
@@ -327,6 +331,7 @@ def degrade_pair(
                         "op": "source",
                         "shape": [height, width],
                         "recipe": recipe.value,
+                        "training_stage": training_stage,
                         "scale": 1.0,
                         "target": [height, width],
                     }
@@ -342,7 +347,10 @@ def degrade_pair(
             first_kernel = second_kernel = _SMALL_KERNEL
     else:
         scale = _sample_scale(settings.scale, streams[12])
-    target = (max(1, int(height / scale)), max(1, int(width / scale)))
+    if recipe is not None:
+        target = (max(1, height // int(scale)), max(1, width // int(scale)))
+    else:
+        target = (max(1, int(height / scale)), max(1, int(width / scale)))
 
     def record(op: str, value: Pixels, **params) -> None:
         if trace is not None:
@@ -370,8 +378,12 @@ def degrade_pair(
     image = blur(image, first, 1, first_kernel)
     resize_rng, noise_rng, codec_rng = streams[1:4]
     factor = _resize_scale(first, resize_rng)
-    requested = (max(1, int(height * factor)), max(1, int(width * factor)))
-    image = _resize(image, *requested, resize_rng, upstream=upstream, scale_factor=factor if upstream else None)
+    requested = (
+        scaled_shape((height, width), factor)
+        if upstream
+        else (max(1, int(height * factor)), max(1, int(width * factor)))
+    )
+    image = _resize(image, *requested, resize_rng, upstream=upstream)
     record("resize", image, stage=1, factor=factor, requested_shape=list(requested))
     image = add_noise(image, first.noise, noise_rng, trace=trace)
     image = _compress(image, first.compression, codec_rng, trace)
@@ -381,8 +393,11 @@ def degrade_pair(
         if streams[4].random() < second.blur_probability:
             image = blur(image, second, 2, second_kernel)
         factor = _resize_scale(second, resize_rng)
-        base = (height / scale, width / scale) if upstream else target
-        requested = (max(1, int(base[0] * factor)), max(1, int(base[1] * factor)))
+        requested = (
+            scaled_shape(target, factor)
+            if upstream
+            else (max(1, int(target[0] * factor)), max(1, int(target[1] * factor)))
+        )
         image = _resize(image, *requested, resize_rng, second_stage=True, upstream=upstream)
         record("resize", image, stage=2, factor=factor, requested_shape=list(requested))
         image = add_noise(image, second.noise, noise_rng, trace=trace)

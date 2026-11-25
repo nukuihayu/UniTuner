@@ -126,7 +126,8 @@ def index_restoration_pairs(
         )
         try:
             for _ in progress(
-                high_files, "[train] Indexing restoration pairs" if skip_validation else "[train] Validating restoration pairs"
+                high_files,
+                "[train] Indexing restoration pairs" if skip_validation else "[train] Validating restoration pairs",
             ):
                 pair, record = next(results)
                 pairs.append(pair)
@@ -140,6 +141,11 @@ def index_restoration_pairs(
         context={
             "schema": "restoration-images-random-delivery-3" if synthetic else "restoration-images-2",
             "degradation": None if degradation is None else degradation.model_dump(mode="json"),
+            **(
+                {"upstream_degradation_revision": 2}
+                if degradation is not None and degradation.upstream_rotation
+                else {}
+            ),
         },
     )
     return tuple(pairs), digest
