@@ -95,23 +95,23 @@ def test_scale_parameter_is_strictly_bounded(scale):
         DegradationConfig(scale=scale)
 
 
-@pytest.mark.parametrize("mode", ["area", "bilinear", "bicubic", "nearest"])
-def test_resize_uses_phase_stable_integer_grid(mode):
+@pytest.mark.parametrize("mode", ["bilinear", "bicubic"])
+def test_resize_matches_half_pixel_reference(mode):
     source = np.random.default_rng(3).random((101, 99, 3), dtype=np.float32)
     target = (61, 60)
     actual = _resize(source, *target, np.random.default_rng(0), mode=mode, second_stage=True)
     reference = (
-        F.interpolate(
-            torch.from_numpy(source).permute(2, 0, 1)[None],
-            size=target,
-            mode=mode,
-            align_corners=False if mode in ("bilinear", "bicubic") else None,
-            antialias=False,
-        )[0]
+        F.interpolate(torch.from_numpy(source).permute(2, 0, 1)[None], size=target, mode=mode, align_corners=False)[0]
         .permute(1, 2, 0)
         .numpy()
     )
-    np.testing.assert_array_equal(actual, reference)
+    np.testing.assert_allclose(actual, reference, rtol=0, atol=2e-5)
+
+
+def test_nearest_resize_uses_pixel_centers_and_averages_exact_ties():
+    source = np.array([[[0.0], [1.0], [3.0], [6.0]]], dtype=np.float32)
+    actual = _resize(source, 1, 3, np.random.default_rng(0), mode="nearest", second_stage=True)
+    np.testing.assert_array_equal(actual, np.array([[[0.0], [2.0], [6.0]]], dtype=np.float32))
 
 
 def test_phase_fix_differs_from_float_scale_factor_on_odd_grids():
@@ -236,9 +236,12 @@ def test_second_stage_can_undershoot_native_lq_with_integer_phase_stable_size():
     assert undershot
 
 
-def test_1024_four_x_point_eight_case_uses_204_before_returning_to_256():
-    target = int(1024 / 4)
-    assert int(target * 0.8) == 204
+def test_1024_four_x_point_eight_case_rounds_to_nearest_integer_before_delivery(monkeypatch):
+    monkeypatch.setattr("unituner.data.degradation.pipeline._resize_scale", lambda *_: 0.8)
+    trace = []
+    degrade_image(torch.full((3, 1024, 1024), 0.5), DegradationConfig(scale=4), 1, trace=trace)
+    assert [event["shape"] for event in trace if event["op"] == "resize"] == [[819, 819], [205, 205]]
+    assert next(event for event in trace if event["op"] == "native_lq")["shape"] == [256, 256]
 
 
 @pytest.mark.parametrize("gaussian", [False, True])
@@ -451,18 +454,54 @@ def test_fastvr_spatial_rotation_is_aligned_and_deterministic():
     assert {"libx264", "libx265", "jpeg"} <= codecs
 
 
-@pytest.mark.parametrize("mode", ["area", "bilinear", "bicubic"])
-@pytest.mark.parametrize("shape", [(61, 60), (119, 60), (33, 97)])
-def test_upstream_resize_has_no_directional_grid_bias(mode, shape):
+@pytest.mark.parametrize("mode", ["area", "bilinear", "bicubic", "nearest"])
+@pytest.mark.parametrize(
+    "source_shape,shape", [((101, 100), (60, 61)), ((1024, 1001), (131, 412)), ((31, 32), (62, 65))]
+)
+def test_resize_has_no_directional_grid_bias(mode, source_shape, shape):
     from unituner.data.degradation.resize import resize_centered
 
-    image = np.random.default_rng(27).random((101, 99, 3), dtype=np.float32)
+    image = np.random.default_rng(27).random((*source_shape, 3), dtype=np.float32)
     result = resize_centered(image, shape, mode)
-    mirrored = resize_centered(image[::-1, ::-1], shape, mode)[::-1, ::-1]
     assert result.shape == (*shape, 3)
-    np.testing.assert_allclose(result, mirrored, rtol=0, atol=2e-5)
-    upstream = _resize(image, *shape, np.random.default_rng(0), mode=mode, upstream=True)
-    np.testing.assert_array_equal(upstream, result)
+    np.testing.assert_allclose(result, resize_centered(image[::-1], shape, mode)[::-1], rtol=0, atol=1e-7)
+    np.testing.assert_allclose(result, resize_centered(image[:, ::-1], shape, mode)[:, ::-1], rtol=0, atol=1e-7)
+    legacy = _resize(image, *shape, np.random.default_rng(0), mode=mode, second_stage=True)
+    np.testing.assert_array_equal(legacy, result)
+    if mode != "nearest":
+        upstream = _resize(image, *shape, np.random.default_rng(0), mode=mode, upstream=True)
+        np.testing.assert_array_equal(upstream, result)
+
+
+@pytest.mark.parametrize("mode", ["area", "bilinear", "bicubic", "nearest"])
+def test_resize_chain_preserves_center_across_odd_and_even_grids(mode):
+    from unituner.data.degradation.resize import resize_centered
+
+    impulse = np.zeros((35, 34, 1), dtype=np.float32)
+    impulse[16:19, 15:19] = 1
+    value = impulse
+    for shape in ((22, 21), (31, 37), (35, 34)):
+        value = resize_centered(value, shape, mode)
+        assert value.max() > 0
+        np.testing.assert_allclose(value, value[::-1], rtol=0, atol=1e-7)
+        np.testing.assert_allclose(value, value[:, ::-1], rtol=0, atol=1e-7)
+
+
+@pytest.mark.parametrize("codec", ["diffjpeg", "libx264", "libx265"])
+@pytest.mark.parametrize("shape", [(64, 80), (65, 81)])
+def test_compression_preserves_near_center_color_landmark(codec, shape):
+    from unituner.data.degradation.diffjpeg import diffjpeg
+    from unituner.data.degradation.fastvr import _mpeg
+
+    y, x = np.indices(shape)
+    cy, cx = (np.array(shape) - 1) / 2
+    spot = np.exp(-((x - cx) ** 2 + (y - cy) ** 2) / 50).astype(np.float32)
+    image = spot[..., None] * np.array([1, 0, 0], dtype=np.float32)
+    result = diffjpeg(image, 95) if codec == "diffjpeg" else _mpeg(image * 255, codec, 14, "fast", 0.2) / 255
+    assert result.shape == image.shape
+    weights = np.maximum(result[..., 0] - 0.15, 0)
+    center = [(weights * coordinate).sum() / weights.sum() for coordinate in (y, x)]
+    np.testing.assert_allclose(center, (cy, cx), rtol=0, atol=0.25)
 
 
 def test_area_resize_uses_fractional_pixel_overlap():

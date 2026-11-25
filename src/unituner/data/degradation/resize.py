@@ -30,6 +30,20 @@ def _area_axis(image: torch.Tensor, length: int, axis: int) -> torch.Tensor:
     return (edges.diff(dim=-1) * (length / width)).movedim(-1, axis)
 
 
+def _nearest_axis(image: torch.Tensor, length: int, axis: int) -> torch.Tensor:
+    """Use the nearest pixel center, averaging exact ties to retain reflection symmetry."""
+    width = image.shape[axis]
+    if width == length:
+        return image
+    # The source edge coordinate is (j + 0.5) * width / length.
+    # An integer edge coordinate is exactly halfway between two pixel centers.
+    numerator = (2 * torch.arange(length, device=image.device) + 1) * width
+    index, remainder = numerator // (2 * length), numerator % (2 * length)
+    right = image.index_select(axis, index)
+    left = image.index_select(axis, index - (remainder == 0).long())
+    return (left + right) * 0.5
+
+
 def resize_centered[T: (np.float32, np.uint8)](image: NDArray[T], shape: tuple[int, int], mode: str) -> NDArray[T]:
     """Resample with common pixel centers and exact integer output dimensions."""
     if image.shape[:2] == shape:
@@ -37,8 +51,10 @@ def resize_centered[T: (np.float32, np.uint8)](image: NDArray[T], shape: tuple[i
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)[None]
     if mode == "area":
         output = _area_axis(_area_axis(value.double(), shape[1], -1), shape[0], -2)
+    elif mode == "nearest":
+        output = _nearest_axis(_nearest_axis(value.float(), shape[1], -1), shape[0], -2)
     else:
-        output = F.interpolate(value.float(), size=shape, mode=mode, align_corners=False, antialias=False)
+        output = F.interpolate(value.double(), size=shape, mode=mode, align_corners=False, antialias=False)
     if value.dtype == torch.uint8:
         output = output.round().clamp(0, 255)
     return output.to(value.dtype)[0].permute(1, 2, 0).contiguous().numpy()

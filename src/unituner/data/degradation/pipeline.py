@@ -178,21 +178,7 @@ def _resize(
         raise ValueError(f"Unsupported OMGSR resize mode: {selected}")
     if selected not in available:
         raise ValueError("Area and nearest resize are restricted to the second stage")
-    size = (max(1, height), max(1, width))
-    if upstream:
-        return resize_centered(image, size, selected)
-    value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)[None]
-    return (
-        F.interpolate(
-            value,
-            size=size,
-            mode=selected,
-            align_corners=False if selected in ("bilinear", "bicubic") else None,
-            antialias=False,
-        )[0]
-        .permute(1, 2, 0)
-        .numpy()
-    )
+    return resize_centered(image, (max(1, height), max(1, width)), selected)
 
 
 def _resize_scale(stage: StageConfig, rng: np.random.Generator) -> float:
@@ -378,11 +364,7 @@ def degrade_pair(
     image = blur(image, first, 1, first_kernel)
     resize_rng, noise_rng, codec_rng = streams[1:4]
     factor = _resize_scale(first, resize_rng)
-    requested = (
-        scaled_shape((height, width), factor)
-        if upstream
-        else (max(1, int(height * factor)), max(1, int(width * factor)))
-    )
+    requested = scaled_shape((height, width), factor)
     image = _resize(image, *requested, resize_rng, upstream=upstream)
     record("resize", image, stage=1, factor=factor, requested_shape=list(requested))
     image = add_noise(image, first.noise, noise_rng, trace=trace)
@@ -393,11 +375,7 @@ def degrade_pair(
         if streams[4].random() < second.blur_probability:
             image = blur(image, second, 2, second_kernel)
         factor = _resize_scale(second, resize_rng)
-        requested = (
-            scaled_shape(target, factor)
-            if upstream
-            else (max(1, int(target[0] * factor)), max(1, int(target[1] * factor)))
-        )
+        requested = scaled_shape(target, factor)
         image = _resize(image, *requested, resize_rng, second_stage=True, upstream=upstream)
         record("resize", image, stage=2, factor=factor, requested_shape=list(requested))
         image = add_noise(image, second.noise, noise_rng, trace=trace)

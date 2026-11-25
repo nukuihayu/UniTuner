@@ -141,11 +141,7 @@ def index_restoration_pairs(
         context={
             "schema": "restoration-images-random-delivery-3" if synthetic else "restoration-images-2",
             "degradation": None if degradation is None else degradation.model_dump(mode="json"),
-            **(
-                {"upstream_degradation_revision": 2}
-                if degradation is not None and degradation.upstream_rotation
-                else {}
-            ),
+            **({"degradation_revision": 3} if synthetic else {}),
         },
     )
     return tuple(pairs), digest

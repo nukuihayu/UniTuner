@@ -107,7 +107,7 @@ def degrade_fastvr(image: Pixels, rng: np.random.Generator, trace: list[dict] | 
                 factor = rng.uniform(0.5 if stage == 1 else 0.3, 1)
             else:
                 factor = 1
-            size = scaled_shape(pixels.shape[:2], factor, multiple=2)
+            size = pixels.shape[:2] if factor == 1 else scaled_shape(pixels.shape[:2], factor, multiple=2)
         mode = str(rng.choice(_RESIZE, p=_RESIZE_PROBABILITIES))
         result = resize_centered(pixels, size, mode)
         return record("delivery_resize" if stage == 3 else "resize", result, stage)
