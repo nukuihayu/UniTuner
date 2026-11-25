@@ -22,8 +22,8 @@ source = "/data/hq"
 cache_directory = "/data/cache"
 # [宽, 高] 像素；分桶开启时作为目标面积基准，实际尺寸随宽高比变化。
 # [width, height] in pixels; with buckets enabled this sets target area, not one fixed crop size.
-# 从原图裁出 1536 切片后按连续倍率退化；不把整张图缩成切片。
-# Crop 1536 pixels before degradation with continuously sampled factors.
+# 从原图裁出 1536 切片，再应用抽到的上游退化配方。
+# Crop 1536 pixels before applying the selected upstream recipe.
 resolution = [1536,1536]
 batch_size = 1
 repeats = 1
@@ -37,9 +37,9 @@ horizontal_flip_probability = 0.5
 # 启用该组的合成退化；真实 LQ 配对任务不添加此表。
 # Enable synthetic degradation for this group; omit this table for real paired LQ data.
 enabled = true
-# 固定 4x 最终倍率；也可填写 [4.0, 8.0] 连续采样。
-# Fixed 4x final scale; use [4.0, 8.0] for continuous sampling.
-scale = 4.0
+# 由抽到的上游配方决定退化倍率。
+# The selected upstream recipe determines the degradation scale.
+upstream_rotation = true
 
 [method]
 kind = "restoration"

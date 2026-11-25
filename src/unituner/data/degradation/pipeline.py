@@ -312,7 +312,6 @@ def degrade_pair(
     streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(13)]
     image = high.detach().permute(1, 2, 0).numpy().copy()
     height, width = image.shape[:2]
-    scale = _sample_scale(settings.scale, streams[12])
     recipe = None
     first, second = settings.first, settings.second
     first_kernel = second_kernel = _WIDE_KERNEL
@@ -323,7 +322,15 @@ def degrade_pair(
             from unituner.data.degradation.fastvr import degrade_fastvr
 
             if trace is not None:
-                trace.append({"op": "source", "shape": [height, width], "recipe": recipe.value})
+                trace.append(
+                    {
+                        "op": "source",
+                        "shape": [height, width],
+                        "recipe": recipe.value,
+                        "scale": 1.0,
+                        "target": [height, width],
+                    }
+                )
             low = degrade_fastvr(image, recipe_rng, trace)
             return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
         first, second = _upstream_stages(recipe)
@@ -333,6 +340,8 @@ def degrade_pair(
             first_kernel, second_kernel = _GTA_FIRST_KERNEL, _GTA_SECOND_KERNEL
         elif not large_omgsr:
             first_kernel = second_kernel = _SMALL_KERNEL
+    else:
+        scale = _sample_scale(settings.scale, streams[12])
     target = (max(1, int(height / scale)), max(1, int(width / scale)))
 
     def record(op: str, value: Pixels, **params) -> None:

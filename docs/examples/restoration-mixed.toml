@@ -45,9 +45,9 @@ horizontal_flip_probability = 0.5
 # 启用该组的合成退化；真实 LQ 配对任务不添加此表。
 # Enable synthetic degradation for this group; omit this table for real paired LQ data.
 enabled = true
-# 固定 4x 最终倍率；也可填写 [4.0, 8.0] 连续采样。
-# Fixed 4x final scale; use [4.0, 8.0] for continuous sampling.
-scale = 4.0
+# 由抽到的上游配方决定退化倍率。
+# The selected upstream recipe determines the degradation scale.
+upstream_rotation = true
 
 [method]
 kind = "restoration"

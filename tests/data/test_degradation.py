@@ -394,8 +394,12 @@ def test_upstream_rotation_deduplicates_512_profiles():
     assert DegradationConfig(upstream_rotation=True).model_dump()["upstream_rotation"] is True
 
 
-def test_upstream_rotation_reproducible_recipes_and_gtasr_gate():
-    config = DegradationConfig(enabled=True, upstream_rotation=True)
+def test_upstream_rotation_reproducible_recipes_and_gtasr_gate(monkeypatch):
+    def fail_if_legacy_scale_is_sampled(*args):
+        pytest.fail("Upstream recipes must use their own scale")
+
+    monkeypatch.setattr("unituner.data.degradation.pipeline._sample_scale", fail_if_legacy_scale_is_sampled)
+    config = DegradationConfig(enabled=True, upstream_rotation=True, scale=(11.0, 12.0))
     high = torch.linspace(0, 1, 3 * 32 * 32).reshape(3, 32, 32)
     observed = set()
     for seed in range(64):
@@ -439,6 +443,7 @@ def test_fastvr_spatial_rotation_is_aligned_and_deterministic():
         assert torch.equal(low, repeat) and torch.equal(target, high)
         assert low.shape == high.shape and torch.isfinite(low).all()
         assert trace[0]["recipe"] == "fastvr_single_frame"
+        assert trace[0]["scale"] == 1 and trace[0]["target"] == [33, 35]
         codecs.update(event.get("codec") for event in trace)
         if {"libx264", "libx265", "jpeg"} <= codecs:
             break
