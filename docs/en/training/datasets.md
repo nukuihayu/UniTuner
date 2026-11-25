@@ -178,6 +178,9 @@ The default degradation uses [OMGSR](https://github.com/wuer5/OMGSR/tree/main/da
 4. Equal-probability native [resize+sinc] → compression or compression → [resize+sinc].
 5. Resize to HQ with a random area/bilinear/bicubic mode, then clip and quantize to 8-bit. Nearest participates only in downscaling, never upscaling or same-size resize.
 
+
+Set `upstream_rotation = true` under a synthetic group's `degradation` table to sample uniformly per image from the published AdaBridge-SR / DNF-SR / OMGSR (merged), ODTSR and GTASR recipes. The merged recipe uses 4× at 512×512 and 8× otherwise. At 512×512 it also absorbs ODTSR, so the two remaining distinct recipes are equally likely. Recipe parameters replace the legacy `scale`, per-stage, and color settings for that group. Changing the recipe changes the training distribution and resume identity.
+
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true

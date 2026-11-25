@@ -143,6 +143,7 @@ class DegradationConfig(DistributionConfig, frozen=True):
 
     enabled: bool = False
     scale: Scale = 4.0
+    upstream_rotation: bool = Field(default=False, exclude_if=lambda value: not value)
     first: StageConfig = Field(default_factory=StageConfig)
     second: SecondStageConfig = Field(default_factory=SecondStageConfig)
     final_sinc_probability: Probability = 0.8

@@ -22,9 +22,11 @@ from unituner.data.degradation.config import (
 from unituner.data.degradation.pipeline import (
     _compress,
     _kernel_profile,
+    _Recipe,
     _resize,
     _resize_modes_for_shape,
     _resize_scale,
+    _sample_recipe,
     _sample_scale,
     add_noise,
     degrade_image,
@@ -379,3 +381,41 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
         torch.testing.assert_close(high, expected_high * 2 - 1, atol=0, rtol=0)
         torch.testing.assert_close(low, expected_low * 2 - 1, atol=0, rtol=0)
     assert torch.equal(before, torch.get_rng_state())
+
+
+def test_upstream_rotation_deduplicates_512_profiles():
+    def recipes_at(size):
+        rng = np.random.default_rng(123)
+        return {_sample_recipe(size, size, rng) for _ in range(64)}
+
+    assert recipes_at(512) == {_Recipe.OMGSR, _Recipe.GTASR}
+    assert recipes_at(1024) == set(_Recipe)
+    assert "upstream_rotation" not in DegradationConfig().model_dump()
+    assert DegradationConfig(upstream_rotation=True).model_dump()["upstream_rotation"] is True
+
+
+def test_upstream_rotation_reproducible_recipes_and_gtasr_gate():
+    config = DegradationConfig(enabled=True, upstream_rotation=True)
+    high = torch.linspace(0, 1, 3 * 32 * 32).reshape(3, 32, 32)
+    observed = set()
+    for seed in range(64):
+        rng = np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))
+        recipe = _sample_recipe(32, 32, rng)
+        gate = recipe is not _Recipe.GTASR or rng.random() < 0.5
+        if (recipe, gate) in observed:
+            continue
+        observed.add((recipe, gate))
+        trace = []
+        low, target = degrade_pair(high, config, seed, trace=trace)
+        repeat, _ = degrade_pair(high, config, seed)
+        assert torch.equal(low, repeat) and torch.equal(target, high)
+        assert low.shape == high.shape and torch.isfinite(low).all()
+        assert trace[0]["recipe"] == recipe.value
+        assert trace[0]["scale"] == (8 if recipe is _Recipe.OMGSR else 4)
+        assert sum(item["op"] == "noise" for item in trace) == 1 + gate
+        codecs = [item for item in trace if item["op"] == "compression"]
+        assert len(codecs) == 2
+        assert all(item["codec"] == "diffjpeg" for item in codecs)
+        if recipe is _Recipe.GTASR:
+            assert all(30 <= item["quality"] <= 95 for item in codecs)
+    assert observed == {(_Recipe.OMGSR, True), (_Recipe.ODTSR, True), (_Recipe.GTASR, True), (_Recipe.GTASR, False)}

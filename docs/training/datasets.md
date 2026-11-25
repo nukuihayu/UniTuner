@@ -178,6 +178,9 @@ skip_dataset_validation = true
 4. 等概率选择原生 LQ [resize+sinc] → 压缩或压缩 → [resize+sinc]。
 5. 使用 area/bilinear/bicubic 随机模式回 HQ，最后裁剪和 8-bit 量化；nearest 仅参与缩小，不用于放大或同尺寸 resize。
 
+
+在合成组的 `degradation` 表中设置 `upstream_rotation = true` 后，每张图按种子等概率抽取公开的 AdaBridge-SR / DNF-SR / OMGSR（合并）、ODTSR 和 GTASR 配方。合并配方在 512×512 使用 4×，其他尺寸使用 8×。在 512×512 它与 ODTSR 重合，合并后仅在两套不同配方间等概率抽取。轮切配方替代该组原有的 `scale`、分阶段与颜色参数。切换会改变训练分布与续训身份。
+
 ```toml
 [dataset.groups.synthetic.degradation]
 enabled = true
