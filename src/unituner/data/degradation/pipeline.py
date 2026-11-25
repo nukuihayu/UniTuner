@@ -37,13 +37,14 @@ _GTA_SECOND_KERNEL = (tuple(range(3, 15, 2)), 15, 13)
 
 class _Recipe(Enum):
     OMGSR = "adabridge_dnf_omgsr"
-    ODTSR = "odtsr"
+    ODTSR = "odtsr"  # Exact public pixel-degradation recipe also used by FiDeSR.
     GTASR = "gtasr"
+    FASTVR = "fastvr_single_frame"
 
 
 def _sample_recipe(height: int, width: int, rng: np.random.Generator) -> _Recipe:
     # The merged family and ODTSR are identical at 512. Count that rule once.
-    recipes = (_Recipe.OMGSR, _Recipe.GTASR) if (height, width) == (512, 512) else tuple(_Recipe)
+    recipes = (_Recipe.OMGSR, _Recipe.GTASR, _Recipe.FASTVR) if (height, width) == (512, 512) else tuple(_Recipe)
     return recipes[int(rng.integers(len(recipes)))]
 
 
@@ -318,6 +319,13 @@ def degrade_pair(
     if settings.upstream_rotation:
         recipe_rng = np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))
         recipe = _sample_recipe(height, width, recipe_rng)
+        if recipe is _Recipe.FASTVR:
+            from unituner.data.degradation.fastvr import degrade_fastvr
+
+            if trace is not None:
+                trace.append({"op": "source", "shape": [height, width], "recipe": recipe.value})
+            low = degrade_fastvr(image, recipe_rng, trace)
+            return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
         first, second = _upstream_stages(recipe)
         large_omgsr = recipe is _Recipe.OMGSR and (height, width) != (512, 512)
         scale = 8.0 if large_omgsr else 4.0

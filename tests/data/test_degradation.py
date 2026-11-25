@@ -388,7 +388,7 @@ def test_upstream_rotation_deduplicates_512_profiles():
         rng = np.random.default_rng(123)
         return {_sample_recipe(size, size, rng) for _ in range(64)}
 
-    assert recipes_at(512) == {_Recipe.OMGSR, _Recipe.GTASR}
+    assert recipes_at(512) == {_Recipe.OMGSR, _Recipe.GTASR, _Recipe.FASTVR}
     assert recipes_at(1024) == set(_Recipe)
     assert "upstream_rotation" not in DegradationConfig().model_dump()
     assert DegradationConfig(upstream_rotation=True).model_dump()["upstream_rotation"] is True
@@ -401,6 +401,8 @@ def test_upstream_rotation_reproducible_recipes_and_gtasr_gate():
     for seed in range(64):
         rng = np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))
         recipe = _sample_recipe(32, 32, rng)
+        if recipe is _Recipe.FASTVR:
+            continue
         gate = recipe is not _Recipe.GTASR or rng.random() < 0.5
         if (recipe, gate) in observed:
             continue
@@ -419,3 +421,25 @@ def test_upstream_rotation_reproducible_recipes_and_gtasr_gate():
         if recipe is _Recipe.GTASR:
             assert all(30 <= item["quality"] <= 95 for item in codecs)
     assert observed == {(_Recipe.OMGSR, True), (_Recipe.ODTSR, True), (_Recipe.GTASR, True), (_Recipe.GTASR, False)}
+
+
+def test_fastvr_spatial_rotation_is_aligned_and_deterministic():
+    high = torch.linspace(0, 1, 3 * 33 * 35).reshape(3, 33, 35)
+    seeds = (
+        seed
+        for seed in range(64)
+        if _sample_recipe(33, 35, np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))) is _Recipe.FASTVR
+    )
+    config = DegradationConfig(enabled=True, upstream_rotation=True)
+    codecs = set()
+    for seed in seeds:
+        trace = []
+        low, target = degrade_pair(high, config, seed, trace=trace)
+        repeat, _ = degrade_pair(high, config, seed)
+        assert torch.equal(low, repeat) and torch.equal(target, high)
+        assert low.shape == high.shape and torch.isfinite(low).all()
+        assert trace[0]["recipe"] == "fastvr_single_frame"
+        codecs.update(event.get("codec") for event in trace)
+        if {"libx264", "libx265", "jpeg"} <= codecs:
+            break
+    assert {"libx264", "libx265", "jpeg"} <= codecs
