@@ -34,7 +34,7 @@ from unituner.logging import set_context
 from unituner.models.catalog import IMAGE_FAMILIES, image_family_spec
 from unituner.models.components.conditioning import batch_captions
 from unituner.models.flux.transformer import FluxTransformer
-from unituner.models.image import ImageModel, load_image_model, validate_model_selection
+from unituner.models.image import ImageModel, image_adapter_targets, load_image_model, validate_model_selection
 from unituner.models.qwen_image_2_1.data.cache.storage import QwenImage21CacheRecord, read_qwen_image_21_record
 from unituner.precision import FLOAT_DTYPES
 from unituner.progress import Progress, status
@@ -48,6 +48,7 @@ from unituner.training.integrations.image_publication import publish_image_model
 from unituner.training.integrations.krea2.binding import Krea2Binding, Krea2FlowRequest
 from unituner.training.integrations.qwen_image.binding import QwenImageBinding
 from unituner.training.integrations.qwen_image_2_1.binding import QwenImage21Binding
+from unituner.training.integrations.z_image.binding import ZImageBinding
 from unituner.training.losses.wavelet import WaveletLoss
 from unituner.training.methods.restoration import RestorationMethod
 from unituner.training.objectives import align_steps, install_objectives
@@ -245,6 +246,12 @@ def train(
             model, binding.regions, config.method, session=session, targets=representation_targets, device=device
         )
         status("[train] Installing trainable parameters/adapters")
+        targets = None
+        if config.train.adapter is not None:
+            if isinstance(binding, ZImageBinding) and config.train.include_layers:
+                targets = image_adapter_targets(model)
+            else:
+                targets = binding.adapter_targets()
         installation = session.own(
             ParameterInstallation(
                 model,
@@ -253,7 +260,7 @@ def train(
                 adapter_dtype=torch.float32,
                 include_layers=config.train.include_layers,
                 exclude_layers=config.train.exclude_layers,
-                targets=binding.adapter_targets() if config.train.adapter is not None else None,
+                targets=targets,
             )
         )
         if config.execution.offloads_frozen_weights:

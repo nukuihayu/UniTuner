@@ -179,7 +179,9 @@ skip_dataset_validation = true
 5. 使用 area/bilinear/bicubic 随机模式回 HQ，最后裁剪和 8-bit 量化；nearest 仅参与缩小，不用于放大或同尺寸 resize。
 
 
-在合成组的 `degradation` 表中设置 `upstream_rotation = true` 后，每张图按种子等概率抽取公开的 AdaBridge-SR / DNF-SR / OMGSR（合并）、ODTSR / FiDeSR（合并）、GTASR 和 FastVR 单帧配方。合并配方在 512×512 使用 4×，其他尺寸使用 8×。在 512×512 它与 ODTSR / FiDeSR 重合，合并后在三套不同配方间等概率抽取。FastVR 保留空间退化与 H.264 / H.265 I 帧压缩，末端回到原图尺寸。单图按官方帧数权重 45:17 抽取训练阶段并记录到 trace，两个阶段共用空间退化参数。轮切各档按实际整数输出网格的像素中心执行缩放，面积插值使用精确像素覆盖。轮切配方替代该组原有的 `scale`、分阶段与颜色参数。切换会改变训练分布与续训身份。
+在合成组的 `degradation` 表中设置 `upstream_rotation = true` 后，默认使用合并的 AdaBridge-SR / DNF-SR / OMGSR 配方。在 512×512 使用 4×，其他尺寸使用 8×。所有缩放按实际整数输出网格的像素中心对齐，面积插值使用精确像素覆盖。该配方替代组原有的 `scale`、分阶段与颜色参数。切换会改变训练分布与续训身份。
+
+可为合成数据组增加 `[dataset.groups.<组名>.degradation.extreme]`，启用参考 BSRGAN 的高倍率配方。`probability = 0.15` 指该组 15% 的样本使用此配方，其余沿用组原有退化。`scale = 16`、`intermediate_scale = 4` 时，1024×1024 先经过 256×256，再交付 64×64，最后居中双三次回到 1024×1024。`shuffle_probability` 控制模糊、RGB 相关高斯噪声、实际 JPEG 和第一次缩放的顺序扰动。最终降采样在这些操作全部完成后执行。`blur_sigma`、`gaussian_sigma`、`rgb_correlation`、`jpeg_quality` 和 `resize_mode` 可独立配置。该配方及其参数会进入续训数据身份。
 
 ```toml
 [dataset.groups.synthetic.degradation]

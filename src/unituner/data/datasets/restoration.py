@@ -135,13 +135,14 @@ def index_restoration_pairs(
         finally:
             results.close()
 
+    revision = 7 if degradation is not None and degradation.upstream_rotation else 3
     digest = canonical_sequence_sha256(
         records(),
         field="entries",
         context={
             "schema": "restoration-images-random-delivery-3" if synthetic else "restoration-images-2",
             "degradation": None if degradation is None else degradation.model_dump(mode="json"),
-            **({"degradation_revision": 3} if synthetic else {}),
+            **({"degradation_revision": revision} if synthetic else {}),
         },
     )
     return tuple(pairs), digest

@@ -28,3 +28,8 @@ def adapter_projections(model: ZImageTransformer) -> dict[str, nn.Linear]:
         targets[f"{prefix}.feed_forward.w2"] = block.feed_forward.w2
         targets[f"{prefix}.feed_forward.w3"] = block.feed_forward.w3
     return targets
+
+
+def explicit_adapter_projections(model: ZImageTransformer) -> dict[str, nn.Linear]:
+    """Expose native linear paths for explicit training selection and adapter loading."""
+    return {name: module for name, module in model.named_modules() if isinstance(module, nn.Linear)}

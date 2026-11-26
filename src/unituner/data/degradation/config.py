@@ -1,6 +1,6 @@
 """Strict immutable OMGSR-F-1024 degradation parameters."""
 
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -138,12 +138,39 @@ class SecondStageConfig(StageConfig, frozen=True):
     compression: SecondCompressionConfig = Field(default_factory=SecondCompressionConfig)
 
 
+class ExtremeDegradationConfig(DistributionConfig, frozen=True):
+    """Two centered downsampling passes with BSRGAN-inspired order and noise."""
+
+    probability: Probability = 0.15
+    scale: Annotated[int, Field(ge=2, le=16)] = 16
+    intermediate_scale: Annotated[int, Field(ge=1, le=16)] = 4
+    shuffle_probability: Probability = 0.75
+    blur_sigma: Range = (0.2, 2.5)
+    gaussian_sigma: Range = (1.0, 12.0)
+    rgb_correlation: Annotated[tuple[float, float], AfterValidator(_range)] = (0.2, 0.8)
+    jpeg_quality: Range = (40.0, 95.0)
+    resize_mode: Literal["area", "bicubic"] = "area"
+
+    @model_validator(mode="after")
+    def validate_parameters(self) -> Self:
+        if self.intermediate_scale >= self.scale:
+            raise ValueError("Intermediate scale must be smaller than the delivery scale")
+        if not 0 < self.blur_sigma[0] <= self.blur_sigma[1] <= 10:
+            raise ValueError("Blur sigma must lie within (0,10]")
+        if self.rgb_correlation[1] > 1:
+            raise ValueError("RGB correlation must lie in [0,1]")
+        if not 1 <= self.jpeg_quality[0] <= self.jpeg_quality[1] <= 100:
+            raise ValueError("JPEG quality must lie within [1,100]")
+        return self
+
+
 class DegradationConfig(DistributionConfig, frozen=True):
     """OMGSR-F-1024 degradation with a fixed or continuously sampled scale."""
 
     enabled: bool = False
     scale: Scale = 4.0
     upstream_rotation: bool = Field(default=False, exclude_if=lambda value: not value)
+    extreme: ExtremeDegradationConfig | None = Field(default=None, exclude_if=lambda value: value is None)
     first: StageConfig = Field(default_factory=StageConfig)
     second: SecondStageConfig = Field(default_factory=SecondStageConfig)
     final_sinc_probability: Probability = 0.8

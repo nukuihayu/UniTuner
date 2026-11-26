@@ -80,7 +80,7 @@ IMAGE_SPECS = MappingProxyType(
                 loader="unituner.models.z_image.loading:load_z_image",
                 saver="unituner.models.z_image.loading:save_z_image",
                 binding="unituner.training.integrations.z_image.binding:ZImageBinding",
-                projections="unituner.models.z_image.projections:adapter_projections",
+                projections="unituner.models.z_image.projections:explicit_adapter_projections",
                 generation=_SHARED_GENERATION,
                 preview=_SHARED_PREVIEW,
                 adapter_base="z_image",
@@ -241,12 +241,18 @@ TRAINING_PROVIDERS = MappingProxyType(
 
 def image_generation_provider(family: ModelFamily) -> str:
     """Select the model-owned generator without importing numerical backends."""
-    return IMAGE_APPLICATIONS[family]["generate"] if family in IMAGE_APPLICATIONS else image_family_spec(family).generation
+    return (
+        IMAGE_APPLICATIONS[family]["generate"] if family in IMAGE_APPLICATIONS else image_family_spec(family).generation
+    )
 
 
 def image_restoration_provider(family: ModelFamily) -> str:
     """Use the shared restorer unless the model owns a different latent protocol."""
-    return IMAGE_APPLICATIONS[family]["restore"] if family in IMAGE_APPLICATIONS else "unituner.inference.restoration.run:run"
+    return (
+        IMAGE_APPLICATIONS[family]["restore"]
+        if family in IMAGE_APPLICATIONS
+        else "unituner.inference.restoration.run:run"
+    )
 
 
 def image_family_spec(family: ModelFamily | str) -> ImageFamilySpec:

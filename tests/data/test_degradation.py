@@ -22,11 +22,9 @@ from unituner.data.degradation.config import (
 from unituner.data.degradation.pipeline import (
     _compress,
     _kernel_profile,
-    _Recipe,
     _resize,
     _resize_modes_for_shape,
     _resize_scale,
-    _sample_recipe,
     _sample_scale,
     add_noise,
     degrade_image,
@@ -386,72 +384,27 @@ def test_calibration_tiles_cover_edges_and_degrade_after_crop(tmp_path, shape, s
     assert torch.equal(before, torch.get_rng_state())
 
 
-def test_upstream_rotation_deduplicates_512_profiles():
-    def recipes_at(size):
-        rng = np.random.default_rng(123)
-        return {_sample_recipe(size, size, rng) for _ in range(64)}
-
-    assert recipes_at(512) == {_Recipe.OMGSR, _Recipe.GTASR, _Recipe.FASTVR}
-    assert recipes_at(1024) == set(_Recipe)
-    assert "upstream_rotation" not in DegradationConfig().model_dump()
-    assert DegradationConfig(upstream_rotation=True).model_dump()["upstream_rotation"] is True
-
-
-def test_upstream_rotation_reproducible_recipes_and_gtasr_gate(monkeypatch):
+@pytest.mark.parametrize("size, scale", [(512, 4), (1024, 8)])
+def test_upstream_rotation_uses_only_merged_omgsr_recipe(monkeypatch, size, scale):
     def fail_if_legacy_scale_is_sampled(*args):
-        pytest.fail("Upstream recipes must use their own scale")
+        raise AssertionError("Upstream recipes must use their own scale")
 
     monkeypatch.setattr("unituner.data.degradation.pipeline._sample_scale", fail_if_legacy_scale_is_sampled)
+    assert "upstream_rotation" not in DegradationConfig().model_dump()
     config = DegradationConfig(enabled=True, upstream_rotation=True, scale=(11.0, 12.0))
-    high = torch.linspace(0, 1, 3 * 32 * 32).reshape(3, 32, 32)
-    observed = set()
-    for seed in range(64):
-        rng = np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))
-        recipe = _sample_recipe(32, 32, rng)
-        if recipe is _Recipe.FASTVR:
-            continue
-        gate = recipe is not _Recipe.GTASR or rng.random() < 0.5
-        if (recipe, gate) in observed:
-            continue
-        observed.add((recipe, gate))
+    high = torch.linspace(0, 1, 3 * size * size).reshape(3, size, size)
+    for seed in (0, 1, 5):
         trace = []
         low, target = degrade_pair(high, config, seed, trace=trace)
         repeat, _ = degrade_pair(high, config, seed)
         assert torch.equal(low, repeat) and torch.equal(target, high)
         assert low.shape == high.shape and torch.isfinite(low).all()
-        assert trace[0]["recipe"] == recipe.value
-        assert trace[0]["scale"] == (8 if recipe is _Recipe.OMGSR else 4)
-        assert sum(item["op"] == "noise" for item in trace) == 1 + gate
-        codecs = [item for item in trace if item["op"] == "compression"]
-        assert len(codecs) == 2
-        assert all(item["codec"] == "diffjpeg" for item in codecs)
-        if recipe is _Recipe.GTASR:
-            assert all(30 <= item["quality"] <= 95 for item in codecs)
-    assert observed == {(_Recipe.OMGSR, True), (_Recipe.ODTSR, True), (_Recipe.GTASR, True), (_Recipe.GTASR, False)}
-
-
-def test_fastvr_spatial_rotation_is_aligned_and_deterministic():
-    high = torch.linspace(0, 1, 3 * 33 * 35).reshape(3, 33, 35)
-    seeds = (
-        seed
-        for seed in range(64)
-        if _sample_recipe(33, 35, np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))) is _Recipe.FASTVR
-    )
-    config = DegradationConfig(enabled=True, upstream_rotation=True)
-    codecs = set()
-    for seed in seeds:
-        trace = []
-        low, target = degrade_pair(high, config, seed, trace=trace)
-        repeat, _ = degrade_pair(high, config, seed)
-        assert torch.equal(low, repeat) and torch.equal(target, high)
-        assert low.shape == high.shape and torch.isfinite(low).all()
-        assert trace[0]["recipe"] == "fastvr_single_frame"
-        assert trace[0]["scale"] == 1 and trace[0]["target"] == [33, 35]
-        assert trace[0]["training_stage"] in ("stage1_causal", "stage2_pixel")
-        codecs.update(event.get("codec") for event in trace)
-        if {"libx264", "libx265", "jpeg"} <= codecs:
-            break
-    assert {"libx264", "libx265", "jpeg"} <= codecs
+        assert trace[0]["recipe"] == "adabridge_dnf_omgsr"
+        assert trace[0]["scale"] == scale
+        assert next(item for item in trace if item["op"] == "native_lq")["shape"] == [128, 128]
+        assert sum(item["op"] == "noise" for item in trace) == 2
+        assert next(item["mode"] for item in trace if item["op"] == "alignment") in ("bilinear", "bicubic")
+        assert [item["codec"] for item in trace if item["op"] == "compression"] == ["diffjpeg", "diffjpeg"]
 
 
 @pytest.mark.parametrize("mode", ["area", "bilinear", "bicubic", "nearest"])
@@ -487,17 +440,15 @@ def test_resize_chain_preserves_center_across_odd_and_even_grids(mode):
         np.testing.assert_allclose(value, value[:, ::-1], rtol=0, atol=1e-7)
 
 
-@pytest.mark.parametrize("codec", ["diffjpeg", "libx264", "libx265"])
 @pytest.mark.parametrize("shape", [(64, 80), (65, 81)])
-def test_compression_preserves_near_center_color_landmark(codec, shape):
+def test_compression_preserves_near_center_color_landmark(shape):
     from unituner.data.degradation.diffjpeg import diffjpeg
-    from unituner.data.degradation.fastvr import _mpeg
 
     y, x = np.indices(shape)
     cy, cx = (np.array(shape) - 1) / 2
     spot = np.exp(-((x - cx) ** 2 + (y - cy) ** 2) / 50).astype(np.float32)
     image = spot[..., None] * np.array([1, 0, 0], dtype=np.float32)
-    result = diffjpeg(image, 95) if codec == "diffjpeg" else _mpeg(image * 255, codec, 14, "fast", 0.2) / 255
+    result = diffjpeg(image, 95)
     assert result.shape == image.shape
     weights = np.maximum(result[..., 0] - 0.15, 0)
     center = [(weights * coordinate).sum() / weights.sum() for coordinate in (y, x)]
@@ -514,13 +465,38 @@ def test_area_resize_uses_fractional_pixel_overlap():
     assert scaled_shape((101, 99), 0.613, multiple=2) == (62, 60)
 
 
-def test_fastvr_stage_sampling_uses_frame_count_weights():
-    from unittest.mock import Mock
+@pytest.mark.parametrize("scale", [12, 16])
+def test_extreme_degradation_preserves_integer_native_grid_and_alignment(scale):
+    from unituner.data.degradation.config import ExtremeDegradationConfig
 
-    from unituner.data.degradation.fastvr import sample_training_stage
+    high = torch.rand((3, 1024, 1024), generator=torch.Generator().manual_seed(42))
+    settings = DegradationConfig(upstream_rotation=True, extreme=ExtremeDegradationConfig(probability=1.0, scale=scale))
+    orders = set()
+    for seed in range(5):
+        trace = []
+        low, target = degrade_pair(high, settings, seed, trace=trace)
+        assert low.shape == high.shape and torch.equal(target, high)
+        assert torch.equal(low, degrade_pair(high, settings, seed)[0])
+        operations = tuple(event["op"] for event in trace)
+        orders.add(operations)
+        assert set(operations[1:5]) == {"blur", "intermediate_resize", "noise", "compression"}
+        assert operations[5:] == ("delivery_resize", "native_lq", "alignment")
+        assert all(event["shape"] in ([1024, 1024], [256, 256]) for event in trace[1:5])
+        assert next(event for event in trace if event["op"] == "intermediate_resize")["shape"] == [256, 256]
+        assert trace[0]["recipe"] == "extreme_bsrgan"
+        assert trace[-2:] == [
+            {"op": "native_lq", "shape": [1024 // scale, 1024 // scale]},
+            {"op": "alignment", "shape": [1024, 1024], "mode": "bicubic"},
+        ]
+    assert len(orders) > 1
 
-    threshold = 45 / 62
-    rng = Mock()
-    rng.random.side_effect = [np.nextafter(threshold, 0), threshold]
-    assert sample_training_stage(rng) == "stage1_causal"
-    assert sample_training_stage(rng) == "stage2_pixel"
+
+def test_extreme_probability_zero_preserves_existing_rotation():
+    from unituner.data.degradation.config import ExtremeDegradationConfig
+
+    high = torch.rand((3, 33, 35), generator=torch.Generator().manual_seed(42))
+    regular = DegradationConfig(upstream_rotation=True)
+    disabled = DegradationConfig(upstream_rotation=True, extreme=ExtremeDegradationConfig(probability=0.0))
+    assert "extreme" not in regular.model_dump()
+    for seed in range(10):
+        assert torch.equal(degrade_pair(high, regular, seed)[0], degrade_pair(high, disabled, seed)[0])

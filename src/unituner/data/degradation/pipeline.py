@@ -1,7 +1,6 @@
 """OMGSR-F-1024 two-stage degradation with phase-stable interpolation."""
 
 import math
-from enum import Enum
 
 import cv2
 import numpy as np
@@ -14,6 +13,7 @@ from unituner.data.degradation.config import (
     BlurConfig,
     CompressionConfig,
     DegradationConfig,
+    ExtremeDegradationConfig,
     NoiseConfig,
     Scale,
     SecondStageConfig,
@@ -32,45 +32,29 @@ _KERNEL_MID = 25
 _REAL_ESRGAN_RESIZE_MODES = ("area", "bilinear", "bicubic")
 _WIDE_KERNEL = (_KERNEL_SIZES, _KERNEL_MAX, _KERNEL_MID)
 _SMALL_KERNEL = (tuple(range(7, 22, 2)), 21, 13)
-_GTA_FIRST_KERNEL = (tuple(range(3, 21, 2)), 21, 13)
-_GTA_SECOND_KERNEL = (tuple(range(3, 15, 2)), 15, 13)
 
 
-class _Recipe(Enum):
-    OMGSR = "adabridge_dnf_omgsr"
-    ODTSR = "odtsr"  # Exact public pixel-degradation recipe also used by FiDeSR.
-    GTASR = "gtasr"
-    FASTVR = "fastvr_single_frame"
+_UPSTREAM_RECIPE = "adabridge_dnf_omgsr"
 
 
-def _sample_recipe(height: int, width: int, rng: np.random.Generator) -> _Recipe:
-    # The merged family and ODTSR are identical at 512. Count that rule once.
-    recipes = (_Recipe.OMGSR, _Recipe.GTASR, _Recipe.FASTVR) if (height, width) == (512, 512) else tuple(_Recipe)
-    return recipes[int(rng.integers(len(recipes)))]
-
-
-def _upstream_stages(recipe: _Recipe) -> tuple[StageConfig, StageConfig]:
+def _upstream_stages() -> tuple[StageConfig, StageConfig]:
     first = StageConfig()
     second = SecondStageConfig(resize_range=(0.6, 1.2))
-    if recipe is _Recipe.GTASR:
-        first = StageConfig(resize_range=(0.15, 1.5))
-        second = SecondStageConfig(resize_range=(0.3, 1.2), blur_probability=0.8)
-    for index, stage in enumerate((first, second)):
-        noise = stage.noise.model_copy(update={"gaussian_probability": 0.5, "iso_probability": 0.0})
-        compression = stage.compression.model_copy(update={"jpeg_probability": 1.0})
-        if recipe is _Recipe.GTASR:
-            noise = noise.model_copy(
-                update={
-                    "gaussian_sigma": (1.0, 30.0 if index == 0 else 25.0),
-                    "poisson_scale": (0.05, 3.0 if index == 0 else 2.5),
-                }
-            )
-            compression = compression.model_copy(update={"jpeg_quality": (30.0, 95.0)})
-        if index == 0:
-            first = stage.model_copy(update={"noise": noise, "compression": compression})
-        else:
-            second = stage.model_copy(update={"noise": noise, "compression": compression})
-    return first, second
+    updates = {"gaussian_probability": 0.5, "iso_probability": 0.0}
+    return (
+        first.model_copy(
+            update={
+                "noise": first.noise.model_copy(update=updates),
+                "compression": first.compression.model_copy(update={"jpeg_probability": 1.0}),
+            }
+        ),
+        second.model_copy(
+            update={
+                "noise": second.noise.model_copy(update=updates),
+                "compression": second.compression.model_copy(update={"jpeg_probability": 1.0}),
+            }
+        ),
+    )
 
 
 def _kernel_profile() -> tuple[tuple[int, ...], int, int]:
@@ -276,6 +260,60 @@ def _compress(
     return result
 
 
+def _degrade_extreme(image: Pixels, settings: ExtremeDegradationConfig, seed: int, trace: list[dict] | None) -> Pixels:
+    """Shuffle corruptions before the final downsample to the native LQ grid."""
+    shape = image.shape[:2]
+    intermediate = tuple(max(1, size // settings.intermediate_scale) for size in shape)
+    native = tuple(max(1, size // settings.scale) for size in shape)
+    order_rng, blur_rng, noise_rng, jpeg_rng = [
+        np.random.default_rng(child) for child in np.random.SeedSequence([seed, 0x4558]).spawn(4)
+    ]
+    operations = ["blur", "intermediate_resize", "noise", "compression"]
+    if order_rng.random() < settings.shuffle_probability:
+        order_rng.shuffle(operations)
+    operations.append("delivery_resize")
+
+    def record(op: str, **parameters) -> None:
+        if trace is not None:
+            trace.append({"op": op, "shape": list(image.shape[:2]), **parameters})
+
+    record("source", recipe="extreme_bsrgan", scale=settings.scale, target=list(native))
+    for operation in operations:
+        if operation in ("intermediate_resize", "delivery_resize"):
+            grid = intermediate if operation == "intermediate_resize" else native
+            image = resize_centered(image, grid, settings.resize_mode).clip(0, 1)
+            record(operation, mode=settings.resize_mode)
+        elif operation == "blur":
+            sigma = _sample(settings.blur_sigma, blur_rng)
+            side = 2 * math.ceil(3 * sigma) + 1
+            axis = cv2.getGaussianKernel(side, sigma)
+            image = _filter(image, (axis @ axis.T).astype(np.float32)).clip(0, 1)
+            record(operation, sigma=sigma)
+        elif operation == "noise":
+            sigma = _sample(settings.gaussian_sigma, noise_rng)
+            correlation = _sample(settings.rgb_correlation, noise_rng)
+            common = noise_rng.standard_normal((*image.shape[:2], 1), dtype=np.float32)
+            independent = noise_rng.standard_normal(image.shape, dtype=np.float32)
+            noise = math.sqrt(correlation) * common + math.sqrt(1 - correlation) * independent
+            image = (image + noise * (sigma / 255)).clip(0, 1)
+            record(operation, kind="correlated_gaussian", sigma=sigma, correlation=correlation)
+        else:
+            quality = round(_sample(settings.jpeg_quality, jpeg_rng))
+            bgr = np.ascontiguousarray((image[..., ::-1] * 255).round().astype(np.uint8))
+            success, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            if not success:
+                raise RuntimeError("OpenCV failed to encode JPEG degradation")
+            decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+            if decoded is None:
+                raise RuntimeError("OpenCV failed to decode JPEG degradation")
+            image = (decoded[..., ::-1].astype(np.float32) / 255).copy()
+            record(operation, codec="jpeg", quality=quality)
+    record("native_lq")
+    image = resize_centered(image, shape, "bicubic").clip(0, 1)
+    record("alignment", mode="bicubic")
+    return image
+
+
 @torch.autocast("cpu", enabled=False)
 def degrade_pair(
     high: torch.Tensor,
@@ -296,44 +334,30 @@ def degrade_pair(
         or high.max() > 1
     ):
         raise ValueError("Degradation requires CPU float32 CHW RGB [0,1], dimensions >=32")
+    extreme = settings.extreme
+    if (
+        extreme is not None
+        and np.random.default_rng(np.random.SeedSequence([seed, 0x4550])).random() < extreme.probability
+    ):
+        image = high.detach().permute(1, 2, 0).numpy()
+        low = _degrade_extreme(image, extreme, seed, trace)
+        low = (low * 255).round() / 255
+        return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
     rng = np.random.default_rng(seed)
-    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(14)]
+    streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(13)]
     image = high.detach().permute(1, 2, 0).numpy().copy()
     height, width = image.shape[:2]
-    recipe = None
-    first, second = settings.first, settings.second
-    first_kernel = second_kernel = _WIDE_KERNEL
-    if settings.upstream_rotation:
-        recipe_rng = np.random.default_rng(np.random.SeedSequence([seed, 0x5352]))
-        recipe = _sample_recipe(height, width, recipe_rng)
-        if recipe is _Recipe.FASTVR:
-            from unituner.data.degradation.fastvr import degrade_fastvr, sample_training_stage
-
-            training_stage = sample_training_stage(streams[13])
-
-            if trace is not None:
-                trace.append(
-                    {
-                        "op": "source",
-                        "shape": [height, width],
-                        "recipe": recipe.value,
-                        "training_stage": training_stage,
-                        "scale": 1.0,
-                        "target": [height, width],
-                    }
-                )
-            low = degrade_fastvr(image, recipe_rng, trace)
-            return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
-        first, second = _upstream_stages(recipe)
-        large_omgsr = recipe is _Recipe.OMGSR and (height, width) != (512, 512)
-        scale = 8.0 if large_omgsr else 4.0
-        if recipe is _Recipe.GTASR:
-            first_kernel, second_kernel = _GTA_FIRST_KERNEL, _GTA_SECOND_KERNEL
-        elif not large_omgsr:
-            first_kernel = second_kernel = _SMALL_KERNEL
+    upstream = settings.upstream_rotation
+    if upstream:
+        first, second = _upstream_stages()
+        small_grid = (height, width) == (512, 512)
+        scale = 4.0 if small_grid else 8.0
+        kernel_profile = _SMALL_KERNEL if small_grid else _WIDE_KERNEL
     else:
+        first, second = settings.first, settings.second
         scale = _sample_scale(settings.scale, streams[12])
-    if recipe is not None:
+        kernel_profile = _WIDE_KERNEL
+    if upstream:
         target = (max(1, height // int(scale)), max(1, width // int(scale)))
     else:
         target = (max(1, int(height / scale)), max(1, int(width / scale)))
@@ -342,8 +366,8 @@ def degrade_pair(
         if trace is not None:
             trace.append({"op": op, "shape": list(value.shape[:2]), **params})
 
-    if recipe is not None:
-        record("source", image, scale=scale, target=list(target), recipe=recipe.value)
+    if upstream:
+        record("source", image, scale=scale, target=list(target), recipe=_UPSTREAM_RECIPE)
     elif isinstance(settings.scale, tuple):
         record("source", image, scale=scale, scale_range=list(settings.scale), target=list(target))
     else:
@@ -360,8 +384,7 @@ def degrade_pair(
         record("stage_sinc" if is_sinc else "blur", value, stage=index, kernel=kernel.tolist())
         return _filter(value, kernel)
 
-    upstream = recipe is not None
-    image = blur(image, first, 1, first_kernel)
+    image = blur(image, first, 1, kernel_profile)
     resize_rng, noise_rng, codec_rng = streams[1:4]
     factor = _resize_scale(first, resize_rng)
     requested = scaled_shape((height, width), factor)
@@ -371,18 +394,19 @@ def degrade_pair(
     image = _compress(image, first.compression, codec_rng, trace)
 
     resize_rng, noise_rng, codec_rng = streams[5:8]
-    if recipe is not _Recipe.GTASR or recipe_rng.random() < 0.5:
-        if streams[4].random() < second.blur_probability:
-            image = blur(image, second, 2, second_kernel)
-        factor = _resize_scale(second, resize_rng)
-        requested = scaled_shape(target, factor)
-        image = _resize(image, *requested, resize_rng, second_stage=True, upstream=upstream)
-        record("resize", image, stage=2, factor=factor, requested_shape=list(requested))
-        image = add_noise(image, second.noise, noise_rng, trace=trace)
+    if streams[4].random() < second.blur_probability:
+        image = blur(image, second, 2, kernel_profile)
+    factor = _resize_scale(second, resize_rng)
+    requested = scaled_shape(target, factor)
+    image = _resize(image, *requested, resize_rng, second_stage=True, upstream=upstream)
+    record("resize", image, stage=2, factor=factor, requested_shape=list(requested))
+    image = add_noise(image, second.noise, noise_rng, trace=trace)
 
     sinc_rng = streams[8]
     final_sinc_probability = 0.8 if upstream else settings.final_sinc_probability
-    final_kernel = _sinc_kernel(sinc_rng, profile=second_kernel) if sinc_rng.random() < final_sinc_probability else None
+    final_kernel = (
+        _sinc_kernel(sinc_rng, profile=kernel_profile) if sinc_rng.random() < final_sinc_probability else None
+    )
 
     def delivery(value: Pixels) -> Pixels:
         value = _resize(value, *target, streams[9], upstream=upstream)
@@ -415,12 +439,9 @@ def degrade_pair(
                 case 3:
                     value = image_ops.adjust_hue(value, float(rng.uniform(*settings.hue)))
     image = value.permute(1, 2, 0).contiguous().numpy()
-    if recipe is _Recipe.GTASR:
-        image = (image * 255).round().clip(0, 255) / 255
-    image = _resize(
-        image, height, width, streams[11], upstream=upstream, mode="bicubic" if recipe is _Recipe.GTASR else None
-    )
-    record("alignment", image)
+    alignment_mode = str(streams[11].choice(_RESIZE_MODES))
+    image = _resize(image, height, width, streams[11], mode=alignment_mode, upstream=upstream)
+    record("alignment", image, mode=alignment_mode)
     value = torch.from_numpy(np.ascontiguousarray(image)).permute(2, 0, 1)
     value = (value * 255).round().clamp(0, 255) / 255
     record("quantize", value.permute(1, 2, 0).numpy())
