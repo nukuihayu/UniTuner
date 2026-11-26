@@ -525,3 +525,50 @@ def test_both_configured_scales_use_shuffled_bsrgan(probability, scale, native):
         assert trace[-1]["mode"] == "bicubic"
         orders.add(tuple(item["op"] for item in trace[1:5]))
     assert len(orders) > 1
+
+
+@pytest.mark.parametrize("global_probability, mode", [(0.0, "local"), (1.0, "global")])
+@pytest.mark.parametrize("size, scale", [((1024, 1024), 8), ((103, 99), 12)])
+def test_bsrgan_plus_order_final_jpeg_and_unchanged_target(global_probability, mode, size, scale):
+    from unituner.data.degradation.config import BSRGANPlusConfig, ExtremeDegradationConfig
+
+    options = BSRGANPlusConfig(
+        global_shuffle_probability=global_probability,
+        poisson_probability=1.0,
+        speckle_probability=1.0,
+        isp_probability=1.0,
+    )
+    settings = DegradationConfig(extreme=ExtremeDegradationConfig(probability=1.0, scale=scale, plus=options))
+    high = torch.rand((3, *size), generator=torch.Generator().manual_seed(42))
+    trace = []
+    low, target = degrade_pair(high, settings, 13, trace=trace)
+    assert low.shape == high.shape and torch.isfinite(low).all() and torch.equal(target, high)
+    assert torch.equal(low, degrade_pair(high, settings, 13)[0])
+    assert trace[0]["recipe"] == "bsrgan_plus" and trace[0]["shuffle"] == mode
+    assert [event["op"] for event in trace[-4:]] == ["delivery_resize", "compression", "native_lq", "alignment"]
+    assert trace[-3]["final"] and trace[-3]["codec"] == "jpeg"
+    assert all(event["shape"] == [axis // scale for axis in size] for event in trace[-4:-1])
+    assert trace[-1]["mode"] == "bicubic"
+    for stage in (1, 2):
+        events = [event for event in trace[1:-4] if event["stage"] == stage]
+        assert {event["kind"] for event in events if event["op"] == "noise"} == {
+            "gaussian",
+            "poisson",
+            "speckle",
+            "isp",
+        }
+        assert {event["op"] for event in events} == (
+            {"blur", "resize", "noise", "compression"} if stage == 1 else {"blur", "resize", "noise"}
+        )
+    if mode == "local":
+        assert [event["op"] for event in trace[1:-4]] == [
+            "blur",
+            "resize",
+            *["noise"] * 4,
+            "compression",
+            "blur",
+            "resize",
+            *["noise"] * 4,
+        ]
+    else:
+        assert [event["stage"] for event in trace[1:-4]] != [1] * 7 + [2] * 6

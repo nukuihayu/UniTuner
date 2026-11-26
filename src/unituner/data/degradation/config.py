@@ -138,6 +138,15 @@ class SecondStageConfig(StageConfig, frozen=True):
     compression: SecondCompressionConfig = Field(default_factory=SecondCompressionConfig)
 
 
+class BSRGANPlusConfig(DistributionConfig, frozen=True):
+    """KAIR-style operation mixing and optional per-stage noise."""
+
+    global_shuffle_probability: Probability = 0.5
+    poisson_probability: Probability = 0.1
+    speckle_probability: Probability = 0.1
+    isp_probability: Probability = 0.1
+
+
 class ExtremeDegradationConfig(DistributionConfig, frozen=True):
     """Two centered downsampling passes with BSRGAN-inspired order and noise."""
 
@@ -148,6 +157,7 @@ class ExtremeDegradationConfig(DistributionConfig, frozen=True):
     )
     intermediate_scale: Annotated[int, Field(ge=1, le=16)] = 4
     shuffle_probability: Probability = 0.75
+    plus: BSRGANPlusConfig | None = Field(default=None, exclude_if=lambda value: value is None)
     blur_sigma: Range = (0.2, 2.5)
     gaussian_sigma: Range = (1.0, 12.0)
     rgb_correlation: Annotated[tuple[float, float], AfterValidator(_range)] = (0.2, 0.8)

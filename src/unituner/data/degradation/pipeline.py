@@ -260,6 +260,18 @@ def _compress(
     return result
 
 
+def _jpeg(image: Pixels, quality: int) -> Pixels:
+    """Round-trip RGB through an actual JPEG bitstream."""
+    bgr = np.ascontiguousarray((image[..., ::-1] * 255).round().astype(np.uint8))
+    success, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    if not success:
+        raise RuntimeError("OpenCV failed to encode JPEG degradation")
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if decoded is None:
+        raise RuntimeError("OpenCV failed to decode JPEG degradation")
+    return (decoded[..., ::-1].astype(np.float32) / 255).copy()
+
+
 def _degrade_extreme(
     image: Pixels, settings: ExtremeDegradationConfig, scale: int, seed: int, trace: list[dict] | None
 ) -> Pixels:
@@ -301,15 +313,104 @@ def _degrade_extreme(
             record(operation, kind="correlated_gaussian", sigma=sigma, correlation=correlation)
         else:
             quality = round(_sample(settings.jpeg_quality, jpeg_rng))
-            bgr = np.ascontiguousarray((image[..., ::-1] * 255).round().astype(np.uint8))
-            success, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            if not success:
-                raise RuntimeError("OpenCV failed to encode JPEG degradation")
-            decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-            if decoded is None:
-                raise RuntimeError("OpenCV failed to decode JPEG degradation")
-            image = (decoded[..., ::-1].astype(np.float32) / 255).copy()
+            image = _jpeg(image, quality)
             record(operation, codec="jpeg", quality=quality)
+    record("native_lq")
+    image = resize_centered(image, shape, "bicubic").clip(0, 1)
+    record("alignment", mode="bicubic")
+    return image
+
+
+def _linear_camera_noise(image: Pixels, rng: np.random.Generator) -> Pixels:
+    """Apply shot and read noise in a linear sensor approximation."""
+    linear = np.where(image <= 0.04045, image / 12.92, ((image + 0.055) / 1.055) ** 2.4)
+    gain = np.array([rng.uniform(1, 1.8), 1.0, rng.uniform(1, 1.8)], dtype=np.float32)
+    sensor = linear / gain
+    shot = float(rng.uniform(0.0005, 0.006))
+    read = float(rng.uniform(0.00001, 0.0002))
+    noise = rng.standard_normal(image.shape, dtype=np.float32) * np.sqrt(sensor * shot + read)
+    rendered = ((sensor + noise) * gain).clip(0, 1)
+    return np.where(rendered <= 0.0031308, 12.92 * rendered, 1.055 * rendered ** (1 / 2.4) - 0.055)
+
+
+def _degrade_bsrgan_plus(
+    image: Pixels, settings: ExtremeDegradationConfig, scale: int, seed: int, trace: list[dict] | None
+) -> Pixels:
+    """Run two KAIR-inspired stages followed by delivery resize and JPEG."""
+    plus = settings.plus
+    assert plus is not None
+    shape = image.shape[:2]
+    native = tuple(max(1, size // scale) for size in shape)
+    minimum_grid = tuple(min(size, math.ceil(target * 1.25)) for size, target in zip(shape, native, strict=True))
+    streams = [np.random.default_rng(child) for child in np.random.SeedSequence([seed, 0x504C]).spawn(15)]
+    order_rng, delivery_rng, *operation_rngs = streams
+    noise_kinds = ("gaussian", "poisson", "speckle", "isp")
+    stage1 = [(1, op) for op in ("blur", "resize", *noise_kinds, "jpeg")]
+    stage2 = [(2, op) for op in ("blur", "resize", *noise_kinds)]
+    global_shuffle = order_rng.random() < plus.global_shuffle_probability
+    if global_shuffle:
+        operations = stage1 + stage2
+        order_rng.shuffle(operations)
+    else:
+        operations = stage1[:2] + [stage1[2 + i] for i in order_rng.permutation(4)] + stage1[6:] + stage2[:2]
+        operations += [stage2[2 + i] for i in order_rng.permutation(4)]
+    rngs = dict(zip(stage1 + stage2, operation_rngs, strict=True))
+
+    def record(op: str, **parameters) -> None:
+        if trace is not None:
+            trace.append({"op": op, "shape": list(image.shape[:2]), **parameters})
+
+    record(
+        "source",
+        recipe="bsrgan_plus",
+        scale=scale,
+        target=list(native),
+        shuffle="global" if global_shuffle else "local",
+    )
+    optional = {"poisson": plus.poisson_probability, "speckle": plus.speckle_probability, "isp": plus.isp_probability}
+    for stage, op in operations:
+        rng = rngs[stage, op]
+        if op in optional and rng.random() >= optional[op]:
+            continue
+        if op == "blur":
+            sigma = _sample(settings.blur_sigma, rng)
+            axis = cv2.getGaussianKernel(2 * math.ceil(3 * sigma) + 1, sigma)
+            image = cv2.sepFilter2D(image, -1, axis, axis, borderType=cv2.BORDER_REFLECT_101).clip(0, 1)
+            record(op, stage=stage, sigma=sigma)
+        elif op == "resize":
+            factor = float(rng.uniform(0.7, 1.3)) / math.sqrt(settings.intermediate_scale)
+            grid = tuple(
+                max(size, minimum)
+                for size, minimum in zip(scaled_shape(image.shape[:2], factor), minimum_grid, strict=True)
+            )
+            mode = str(rng.choice(_REAL_ESRGAN_RESIZE_MODES))
+            image = resize_centered(image, grid, mode).clip(0, 1)
+            record(op, stage=stage, mode=mode)
+        elif op == "jpeg":
+            quality = round(_sample(settings.jpeg_quality, rng))
+            image = _jpeg(image, quality)
+            record("compression", stage=stage, codec="jpeg", quality=quality)
+        else:
+            if op == "gaussian":
+                sigma = _sample(settings.gaussian_sigma, rng) / 255
+                rho = _sample(settings.rgb_correlation, rng)
+                common = rng.standard_normal((*image.shape[:2], 1), dtype=np.float32)
+                independent = rng.standard_normal(image.shape, dtype=np.float32)
+                image = (image + sigma * (math.sqrt(rho) * common + math.sqrt(1 - rho) * independent)).clip(0, 1)
+            elif op == "poisson":
+                levels = float(rng.uniform(128, 1024))
+                image = (rng.poisson(image * levels).astype(np.float32) / levels).clip(0, 1)
+            elif op == "speckle":
+                sigma = float(rng.uniform(0.01, 0.06))
+                image = (image * (1 + rng.standard_normal(image.shape, dtype=np.float32) * sigma)).clip(0, 1)
+            else:
+                image = _linear_camera_noise(image, rng)
+            record("noise", stage=stage, kind=op)
+    image = resize_centered(image, native, settings.resize_mode).clip(0, 1)
+    record("delivery_resize", mode=settings.resize_mode)
+    quality = round(_sample(settings.jpeg_quality, delivery_rng))
+    image = _jpeg(image, quality)
+    record("compression", codec="jpeg", quality=quality, final=True)
     record("native_lq")
     image = resize_centered(image, shape, "bicubic").clip(0, 1)
     record("alignment", mode="bicubic")
@@ -342,7 +443,8 @@ def degrade_pair(
         extreme_scale = extreme.scale if scale_rng.random() < extreme.probability else extreme.secondary_scale
         if extreme_scale is not None:
             image = high.detach().permute(1, 2, 0).numpy()
-            low = _degrade_extreme(image, extreme, extreme_scale, seed, trace)
+            degrade = _degrade_bsrgan_plus if extreme.plus is not None else _degrade_extreme
+            low = degrade(image, extreme, extreme_scale, seed, trace)
             low = (low * 255).round() / 255
             return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
     rng = np.random.default_rng(seed)
