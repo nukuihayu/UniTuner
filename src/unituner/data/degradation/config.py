@@ -143,6 +143,9 @@ class ExtremeDegradationConfig(DistributionConfig, frozen=True):
 
     probability: Probability = 0.15
     scale: Annotated[int, Field(ge=2, le=16)] = 16
+    secondary_scale: Annotated[int, Field(ge=2, le=16)] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     intermediate_scale: Annotated[int, Field(ge=1, le=16)] = 4
     shuffle_probability: Probability = 0.75
     blur_sigma: Range = (0.2, 2.5)
@@ -155,6 +158,8 @@ class ExtremeDegradationConfig(DistributionConfig, frozen=True):
     def validate_parameters(self) -> Self:
         if self.intermediate_scale >= self.scale:
             raise ValueError("Intermediate scale must be smaller than the delivery scale")
+        if self.secondary_scale is not None and self.intermediate_scale >= self.secondary_scale:
+            raise ValueError("Intermediate scale must be smaller than the secondary delivery scale")
         if not 0 < self.blur_sigma[0] <= self.blur_sigma[1] <= 10:
             raise ValueError("Blur sigma must lie within (0,10]")
         if self.rgb_correlation[1] > 1:

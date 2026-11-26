@@ -260,11 +260,13 @@ def _compress(
     return result
 
 
-def _degrade_extreme(image: Pixels, settings: ExtremeDegradationConfig, seed: int, trace: list[dict] | None) -> Pixels:
+def _degrade_extreme(
+    image: Pixels, settings: ExtremeDegradationConfig, scale: int, seed: int, trace: list[dict] | None
+) -> Pixels:
     """Shuffle corruptions before the final downsample to the native LQ grid."""
     shape = image.shape[:2]
     intermediate = tuple(max(1, size // settings.intermediate_scale) for size in shape)
-    native = tuple(max(1, size // settings.scale) for size in shape)
+    native = tuple(max(1, size // scale) for size in shape)
     order_rng, blur_rng, noise_rng, jpeg_rng = [
         np.random.default_rng(child) for child in np.random.SeedSequence([seed, 0x4558]).spawn(4)
     ]
@@ -277,7 +279,7 @@ def _degrade_extreme(image: Pixels, settings: ExtremeDegradationConfig, seed: in
         if trace is not None:
             trace.append({"op": op, "shape": list(image.shape[:2]), **parameters})
 
-    record("source", recipe="extreme_bsrgan", scale=settings.scale, target=list(native))
+    record("source", recipe="extreme_bsrgan", scale=scale, target=list(native))
     for operation in operations:
         if operation in ("intermediate_resize", "delivery_resize"):
             grid = intermediate if operation == "intermediate_resize" else native
@@ -335,14 +337,14 @@ def degrade_pair(
     ):
         raise ValueError("Degradation requires CPU float32 CHW RGB [0,1], dimensions >=32")
     extreme = settings.extreme
-    if (
-        extreme is not None
-        and np.random.default_rng(np.random.SeedSequence([seed, 0x4550])).random() < extreme.probability
-    ):
-        image = high.detach().permute(1, 2, 0).numpy()
-        low = _degrade_extreme(image, extreme, seed, trace)
-        low = (low * 255).round() / 255
-        return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
+    if extreme is not None:
+        scale_rng = np.random.default_rng(np.random.SeedSequence([seed, 0x4550]))
+        extreme_scale = extreme.scale if scale_rng.random() < extreme.probability else extreme.secondary_scale
+        if extreme_scale is not None:
+            image = high.detach().permute(1, 2, 0).numpy()
+            low = _degrade_extreme(image, extreme, extreme_scale, seed, trace)
+            low = (low * 255).round() / 255
+            return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
     rng = np.random.default_rng(seed)
     streams = [np.random.default_rng(child) for child in np.random.SeedSequence(seed).spawn(13)]
     image = high.detach().permute(1, 2, 0).numpy().copy()

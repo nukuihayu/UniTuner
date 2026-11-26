@@ -500,3 +500,28 @@ def test_extreme_probability_zero_preserves_existing_rotation():
     assert "extreme" not in regular.model_dump()
     for seed in range(10):
         assert torch.equal(degrade_pair(high, regular, seed)[0], degrade_pair(high, disabled, seed)[0])
+
+
+@pytest.mark.parametrize("probability, scale, native", [(0.0, 8, 128), (1.0, 12, 85)])
+def test_both_configured_scales_use_shuffled_bsrgan(probability, scale, native):
+    from unituner.data.degradation.config import ExtremeDegradationConfig
+
+    high = torch.zeros(3, 1024, 1024)
+    settings = DegradationConfig(
+        upstream_rotation=True,
+        extreme=ExtremeDegradationConfig(probability=probability, scale=12, secondary_scale=8, shuffle_probability=1.0),
+    )
+    orders = set()
+    for seed in (0, 1, 2):
+        trace = []
+        low, target = degrade_pair(high, settings, seed, trace=trace)
+        assert low.shape == high.shape and torch.equal(target, high)
+        assert trace[0]["recipe"] == "extreme_bsrgan" and trace[0]["scale"] == scale
+        assert [(item["op"], item["shape"]) for item in trace[-3:]] == [
+            ("delivery_resize", [native, native]),
+            ("native_lq", [native, native]),
+            ("alignment", [1024, 1024]),
+        ]
+        assert trace[-1]["mode"] == "bicubic"
+        orders.add(tuple(item["op"] for item in trace[1:5]))
+    assert len(orders) > 1

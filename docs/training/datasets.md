@@ -181,7 +181,7 @@ skip_dataset_validation = true
 
 在合成组的 `degradation` 表中设置 `upstream_rotation = true` 后，默认使用合并的 AdaBridge-SR / DNF-SR / OMGSR 配方。在 512×512 使用 4×，其他尺寸使用 8×。所有缩放按实际整数输出网格的像素中心对齐，面积插值使用精确像素覆盖。该配方替代组原有的 `scale`、分阶段与颜色参数。切换会改变训练分布与续训身份。
 
-可为合成数据组增加 `[dataset.groups.<组名>.degradation.extreme]`，启用参考 BSRGAN 的高倍率配方。`probability = 0.15` 指该组 15% 的样本使用此配方，其余沿用组原有退化。`scale = 16`、`intermediate_scale = 4` 时，1024×1024 先经过 256×256，再交付 64×64，最后居中双三次回到 1024×1024。`shuffle_probability` 控制模糊、RGB 相关高斯噪声、实际 JPEG 和第一次缩放的顺序扰动。最终降采样在这些操作全部完成后执行。`blur_sigma`、`gaussian_sigma`、`rgb_correlation`、`jpeg_quality` 和 `resize_mode` 可独立配置。该配方及其参数会进入续训数据身份。
+可为合成数据组增加 `[dataset.groups.<组名>.degradation.extreme]`，启用参考 BSRGAN 的高倍率配方。`probability = 0.15` 指该组 15% 的样本使用此配方，其余沿用组原有退化。`scale = 16`、`intermediate_scale = 4` 时，1024×1024 先经过 256×256，再交付 64×64，最后居中双三次回到 1024×1024。`shuffle_probability` 控制模糊、RGB 相关高斯噪声、实际 JPEG 和第一次缩放的顺序扰动。最终降采样在这些操作全部完成后执行。`blur_sigma`、`gaussian_sigma`、`rgb_correlation`、`jpeg_quality` 和 `resize_mode` 可独立配置。该配方及其参数会进入续训数据身份。 配置 `secondary_scale` 后，剩余样本也采用同一 BSRGAN 风格流程。例如 `scale = 12`、`secondary_scale = 8`、`probability = 0.5` 等概率抽取两档。
 
 ```toml
 [dataset.groups.synthetic.degradation]
