@@ -12,7 +12,12 @@ from torch import Tensor
 
 from unituner.data.datasets.restoration import AlignedImagePair
 from unituner.data.degradation.config import DegradationConfig, ExtremeDegradationConfig
-from unituner.data.degradation.pipeline import degrade_bsrgan_plus_native, degrade_pair, select_extreme_scale
+from unituner.data.degradation.pipeline import (
+    degrade_bsrgan_plus_native,
+    degrade_pair,
+    select_bsrgan_plus_alignment_mode,
+    select_extreme_scale,
+)
 from unituner.data.degradation.resize import resize_centered
 
 
@@ -105,7 +110,8 @@ def _read_bsrgan_plus_patch(
     top = int(torch.randint(native.shape[0] - low_height + 1, (), generator=generator))
     left = int(torch.randint(native.shape[1] - low_width + 1, (), generator=generator))
     native_crop = native[top : top + low_height, left : left + low_width]
-    aligned = resize_centered(native_crop, (low_height * scale, low_width * scale), "bicubic")
+    mode = select_bsrgan_plus_alignment_mode(seed)
+    aligned = resize_centered(native_crop, (low_height * scale, low_width * scale), mode)
     low_pixels = aligned[:height, :width].clip(0, 1)
     low_pixels = (low_pixels * 255).round() / 255
     high_top, high_left = top * scale, left * scale

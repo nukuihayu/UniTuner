@@ -433,6 +433,12 @@ def degrade_bsrgan_plus_native(
     return image
 
 
+def select_bsrgan_plus_alignment_mode(seed: int) -> str:
+    """Sample the final centered upsampling mode independently of native degradation."""
+    rng = np.random.default_rng(np.random.SeedSequence([seed, 0x414C]))
+    return str(rng.choice(_RESIZE_MODES))
+
+
 def select_extreme_scale(settings: ExtremeDegradationConfig, seed: int) -> int | None:
     """Select the native delivery scale using the recipe's dedicated random stream."""
     rng = np.random.default_rng(np.random.SeedSequence([seed, 0x4550]))
@@ -468,9 +474,10 @@ def degrade_pair(
                 low = _degrade_extreme(image, extreme, extreme_scale, seed, trace)
             else:
                 low = degrade_bsrgan_plus_native(image, extreme, extreme_scale, seed, trace)
-                low = resize_centered(low, image.shape[:2], "bicubic").clip(0, 1)
+                mode = select_bsrgan_plus_alignment_mode(seed)
+                low = resize_centered(low, image.shape[:2], mode).clip(0, 1)
                 if trace is not None:
-                    trace.append({"op": "alignment", "shape": list(low.shape[:2]), "mode": "bicubic"})
+                    trace.append({"op": "alignment", "shape": list(low.shape[:2]), "mode": mode})
             low = (low * 255).round() / 255
             return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
     rng = np.random.default_rng(seed)

@@ -583,14 +583,17 @@ def test_bsrgan_plus_delivery_modes_and_quality_bounds():
     settings = DegradationConfig(extreme=ExtremeDegradationConfig(probability=1.0, scale=8, plus=BSRGANPlusConfig()))
     high = torch.full((3, 64, 64), 0.5)
     modes = set()
+    alignment_modes = set()
     for seed in range(24):
         trace = []
         degrade_pair(high, settings, seed, trace=trace)
         modes.add(trace[-3]["mode"])
+        alignment_modes.add(trace[-1]["mode"])
         assert all(50 <= event["quality"] <= 90 for event in trace if event["op"] == "compression")
         levels = [event["sigma"] for event in trace if event.get("kind") == "gaussian"]
         assert len(levels) == 2 and all(2 <= level <= 25 for level in levels)
     assert modes == {"bilinear", "bicubic", "area"}
+    assert alignment_modes == {"bilinear", "bicubic"}
 
 
 @pytest.mark.parametrize("scale", [4, 8])
@@ -613,7 +616,7 @@ def test_bsrgan_plus_intermediate_resize_uses_current_integer_grid(scale):
         assert trace[-4]["shape"] == trace[-5]["shape"] and trace[-4]["final"]
         assert all(actual >= floor for actual, floor in zip(trace[-4]["shape"], minimum, strict=True))
         assert trace[-3]["shape"] == native
-        assert trace[-1]["shape"] == [96, 112] and trace[-1]["mode"] == "bicubic"
+        assert trace[-1]["shape"] == [96, 112] and trace[-1]["mode"] in {"bilinear", "bicubic"}
         for i, event in enumerate(trace[:-4]):
             if event["op"] == "blur":
                 pixels_per_native = min(size / target for size, target in zip(event["shape"], native, strict=True))
@@ -632,7 +635,8 @@ def test_bsrgan_plus_intermediate_resize_uses_current_integer_grid(scale):
 
 
 @pytest.mark.parametrize("flip_probability", [0.0, 1.0])
-def test_random_plus_patch_crops_after_full_image_jpeg(tmp_path, flip_probability):
+@pytest.mark.parametrize("seed, mode", [(22, "bicubic"), (23, "bilinear")])
+def test_random_plus_patch_crops_after_full_image_jpeg(tmp_path, flip_probability, seed, mode):
     from PIL import Image
 
     from unituner.data.degradation.config import BSRGANPlusConfig, ExtremeDegradationConfig
@@ -645,7 +649,6 @@ def test_random_plus_patch_crops_after_full_image_jpeg(tmp_path, flip_probabilit
     Image.fromarray(pixels).save(path)
     extreme = ExtremeDegradationConfig(probability=1.0, scale=8, plus=BSRGANPlusConfig())
     settings = DegradationConfig(enabled=True, extreme=extreme)
-    seed = 22
     low, high = read_aligned_images(
         None, path, resolution=(64, 48), seed=seed, flip_probability=flip_probability, degradation=settings
     )
@@ -657,7 +660,7 @@ def test_random_plus_patch_crops_after_full_image_jpeg(tmp_path, flip_probabilit
     top = int(torch.randint(8, (), generator=generator))
     left = int(torch.randint(12, (), generator=generator))
     assert (top, left) != (0, 0)
-    expected_low = resize_centered(native[top : top + 6, left : left + 8], (48, 64), "bicubic").clip(0, 1)
+    expected_low = resize_centered(native[top : top + 6, left : left + 8], (48, 64), mode).clip(0, 1)
     expected_low = torch.from_numpy((expected_low * 255).round() / 255).permute(2, 0, 1)
     high_crop = pixels[top * 8 : top * 8 + 48, left * 8 : left * 8 + 64]
     expected_high = torch.from_numpy(high_crop).permute(2, 0, 1).float() / 255
