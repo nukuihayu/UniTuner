@@ -344,6 +344,7 @@ def degrade_bsrgan_plus_native(
     blur_sigma = settings.blur_sigma if "blur_sigma" in settings.model_fields_set else (0.2, 2.0 + 0.2 * scale)
     shape = image.shape[:2]
     native = tuple(max(1, size // scale) for size in shape)
+    minimum_grid = tuple(min(size, math.ceil(target * 1.25)) for size, target in zip(shape, native, strict=True))
     streams = [np.random.default_rng(child) for child in np.random.SeedSequence([seed, 0x504C]).spawn(15)]
     order_rng, delivery_rng, *operation_rngs = streams
     noise_kinds = ("gaussian", "poisson", "speckle", "isp")
@@ -375,7 +376,9 @@ def degrade_bsrgan_plus_native(
         if op in optional and rng.random() >= optional[op]:
             continue
         if op == "blur":
-            sigma = _sample(blur_sigma, rng)
+            # Bound each blur in units of the final LQ pixel grid.
+            pixels_per_native = min(size / target for size, target in zip(image.shape[:2], native, strict=True))
+            sigma = min(_sample(blur_sigma, rng), 0.55 * pixels_per_native)
             axis = cv2.getGaussianKernel(2 * math.ceil(3 * sigma) + 1, sigma)
             image = cv2.sepFilter2D(image, -1, axis, axis, borderType=cv2.BORDER_REFLECT_101).clip(0, 1)
             record(op, stage=stage, sigma=sigma)
@@ -390,7 +393,10 @@ def degrade_bsrgan_plus_native(
             else:
                 factor = 1.0
             source_grid = image.shape[:2]
-            grid = scaled_shape(source_grid, factor)
+            grid = tuple(
+                max(size, minimum)
+                for size, minimum in zip(scaled_shape(source_grid, factor), minimum_grid, strict=True)
+            )
             mode = str(rng.choice(_REAL_ESRGAN_RESIZE_MODES))
             image = resize_centered(image, grid, mode).clip(0, 1)
             record(op, stage=stage, mode=mode, factor=factor, source_shape=list(source_grid))
@@ -417,13 +423,7 @@ def degrade_bsrgan_plus_native(
             else:
                 image = _linear_camera_noise(image, rng)
             record("noise", stage=stage, kind=op)
-    # A strong pair of intermediate downscales can end below the native LQ grid.
-    delivery_modes = (
-        _RESIZE_MODES
-        if any(current < target for current, target in zip(image.shape[:2], native, strict=True))
-        else _REAL_ESRGAN_RESIZE_MODES
-    )
-    delivery_mode = str(delivery_rng.choice(delivery_modes))
+    delivery_mode = str(delivery_rng.choice(_REAL_ESRGAN_RESIZE_MODES))
     image = resize_centered(image, native, delivery_mode).clip(0, 1)
     record("delivery_resize", mode=delivery_mode)
     quality = round(_sample(jpeg_quality, delivery_rng))

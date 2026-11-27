@@ -600,8 +600,9 @@ def test_bsrgan_plus_intermediate_resize_uses_current_integer_grid(scale):
     )
     high = torch.full((3, 96, 112), 0.5)
     factors_by_stage = {1: set(), 2: set()}
-    saw_below_native = False
+    saw_clamped_resize = False
     native = [96 // scale, 112 // scale]
+    minimum = [(5 * value + 3) // 4 for value in native]
     for seed in range(48):
         trace = []
         low, target = degrade_pair(high, settings, seed, trace=trace)
@@ -609,18 +610,20 @@ def test_bsrgan_plus_intermediate_resize_uses_current_integer_grid(scale):
         assert trace[-3]["shape"] == native and trace[-3]["final"]
         assert trace[-1]["shape"] == [96, 112] and trace[-1]["mode"] == "bicubic"
         for i, event in enumerate(trace[:-4]):
+            if event["op"] == "blur":
+                pixels_per_native = min(size / target for size, target in zip(event["shape"], native, strict=True))
+                assert event["sigma"] <= 0.55 * pixels_per_native
             if event["op"] != "resize":
                 continue
             factor = event["factor"]
             assert 0.5 / scale <= factor <= 2.0
             assert event["source_shape"] == trace[i - 1]["shape"]
-            assert event["shape"] == list(scaled_shape(tuple(event["source_shape"]), factor))
+            requested = scaled_shape(tuple(event["source_shape"]), factor)
+            assert event["shape"] == [max(size, floor) for size, floor in zip(requested, minimum, strict=True)]
+            saw_clamped_resize |= list(requested) != event["shape"]
             factors_by_stage[event["stage"]].add("down" if factor < 1 else "up" if factor > 1 else "keep")
-        if any(size < expected for size, expected in zip(trace[-5]["shape"], native, strict=True)):
-            saw_below_native = True
-            assert trace[-4]["mode"] in {"bilinear", "bicubic"}
     assert all(directions == {"down", "up", "keep"} for directions in factors_by_stage.values())
-    assert saw_below_native
+    assert saw_clamped_resize
 
 
 @pytest.mark.parametrize("flip_probability", [0.0, 1.0])
