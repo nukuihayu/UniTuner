@@ -588,3 +588,71 @@ def test_bsrgan_plus_delivery_modes_and_quality_bounds():
         levels = [event["sigma"] for event in trace if event.get("kind") == "gaussian"]
         assert len(levels) == 2 and all(2 <= level <= 25 for level in levels)
     assert modes == {"bilinear", "bicubic", "area"}
+
+
+@pytest.mark.parametrize("scale", [4, 8])
+def test_bsrgan_plus_intermediate_resize_uses_current_integer_grid(scale):
+    from unituner.data.degradation.config import BSRGANPlusConfig, ExtremeDegradationConfig
+    from unituner.data.degradation.resize import scaled_shape
+
+    settings = DegradationConfig(
+        extreme=ExtremeDegradationConfig(probability=1.0, scale=scale, intermediate_scale=2, plus=BSRGANPlusConfig())
+    )
+    high = torch.full((3, 96, 112), 0.5)
+    factors_by_stage = {1: set(), 2: set()}
+    saw_below_native = False
+    native = [96 // scale, 112 // scale]
+    for seed in range(48):
+        trace = []
+        low, target = degrade_pair(high, settings, seed, trace=trace)
+        assert low.shape == high.shape and torch.equal(target, high)
+        assert trace[-3]["shape"] == native and trace[-3]["final"]
+        assert trace[-1]["shape"] == [96, 112] and trace[-1]["mode"] == "bicubic"
+        for i, event in enumerate(trace[:-4]):
+            if event["op"] != "resize":
+                continue
+            factor = event["factor"]
+            assert 0.5 / scale <= factor <= 2.0
+            assert event["source_shape"] == trace[i - 1]["shape"]
+            assert event["shape"] == list(scaled_shape(tuple(event["source_shape"]), factor))
+            factors_by_stage[event["stage"]].add("down" if factor < 1 else "up" if factor > 1 else "keep")
+        if any(size < expected for size, expected in zip(trace[-5]["shape"], native, strict=True)):
+            saw_below_native = True
+            assert trace[-4]["mode"] in {"bilinear", "bicubic"}
+    assert all(directions == {"down", "up", "keep"} for directions in factors_by_stage.values())
+    assert saw_below_native
+
+
+@pytest.mark.parametrize("flip_probability", [0.0, 1.0])
+def test_random_plus_patch_crops_after_full_image_jpeg(tmp_path, flip_probability):
+    from PIL import Image
+
+    from unituner.data.degradation.config import BSRGANPlusConfig, ExtremeDegradationConfig
+    from unituner.data.degradation.pipeline import degrade_bsrgan_plus_native
+    from unituner.data.degradation.resize import resize_centered
+    from unituner.data.media.restoration import read_aligned_images
+
+    pixels = np.random.default_rng(12).integers(0, 256, (104, 152, 3), dtype=np.uint8)
+    path = tmp_path / "hq.png"
+    Image.fromarray(pixels).save(path)
+    extreme = ExtremeDegradationConfig(probability=1.0, scale=8, plus=BSRGANPlusConfig())
+    settings = DegradationConfig(enabled=True, extreme=extreme)
+    seed = 22
+    low, high = read_aligned_images(
+        None, path, resolution=(64, 48), seed=seed, flip_probability=flip_probability, degradation=settings
+    )
+    trace = []
+    native = degrade_bsrgan_plus_native(pixels.astype(np.float32) / 255, extreme, 8, seed, trace)
+    assert trace[-2]["final"] and trace[-2]["shape"] == [13, 19]
+    generator = torch.Generator().manual_seed(seed)
+    top = int(torch.randint(8, (), generator=generator))
+    left = int(torch.randint(12, (), generator=generator))
+    assert (top, left) != (0, 0)
+    expected_low = resize_centered(native[top : top + 6, left : left + 8], (48, 64), "bicubic").clip(0, 1)
+    expected_low = torch.from_numpy((expected_low * 255).round() / 255).permute(2, 0, 1)
+    high_crop = pixels[top * 8 : top * 8 + 48, left * 8 : left * 8 + 64]
+    expected_high = torch.from_numpy(high_crop).permute(2, 0, 1).float() / 255
+    if flip_probability == 1.0:
+        expected_low, expected_high = expected_low.flip(-1), expected_high.flip(-1)
+    assert torch.equal(low, expected_low * 2 - 1)
+    assert torch.equal(high, expected_high * 2 - 1)

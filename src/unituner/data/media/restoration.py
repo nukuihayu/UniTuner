@@ -11,8 +11,9 @@ from PIL import Image, ImageOps
 from torch import Tensor
 
 from unituner.data.datasets.restoration import AlignedImagePair
-from unituner.data.degradation.config import DegradationConfig
-from unituner.data.degradation.pipeline import degrade_pair
+from unituner.data.degradation.config import DegradationConfig, ExtremeDegradationConfig
+from unituner.data.degradation.pipeline import degrade_bsrgan_plus_native, degrade_pair, select_extreme_scale
+from unituner.data.degradation.resize import resize_centered
 
 
 def _read_rgb(path: Path) -> NDArray[np.uint8]:
@@ -71,6 +72,51 @@ def read_aligned_images(
     )
 
 
+def _tile_starts(length: int, size: int) -> list[int]:
+    values = list(range(0, length - size + 1, size))
+    if values[-1] != length - size:
+        values.append(length - size)
+    return values
+
+
+def _read_bsrgan_plus_patch(
+    source: NDArray[np.uint8],
+    high: NDArray[np.uint8],
+    settings: ExtremeDegradationConfig,
+    scale: int,
+    *,
+    crop_shape: tuple[int, int],
+    seed: int,
+    flip_probability: float,
+) -> tuple[Tensor, Tensor]:
+    height, width = crop_shape
+    pad_y, pad_x = -high.shape[0] % scale, -high.shape[1] % scale
+    if pad_y or pad_x:
+        padding = ((0, pad_y), (0, pad_x), (0, 0))
+        padded_high = np.pad(high, padding, mode="reflect")
+        source = padded_high if source is high else np.pad(source, padding, mode="reflect")
+        high = padded_high
+    source_float = source.astype(np.float32) / np.float32(255)
+    native = degrade_bsrgan_plus_native(source_float, settings, scale, seed, trace=None)
+    del source_float
+    low_height = (height + scale - 1) // scale
+    low_width = (width + scale - 1) // scale
+    generator = torch.Generator().manual_seed(seed)
+    top = int(torch.randint(native.shape[0] - low_height + 1, (), generator=generator))
+    left = int(torch.randint(native.shape[1] - low_width + 1, (), generator=generator))
+    native_crop = native[top : top + low_height, left : left + low_width]
+    aligned = resize_centered(native_crop, (low_height * scale, low_width * scale), "bicubic")
+    low_pixels = aligned[:height, :width].clip(0, 1)
+    low_pixels = (low_pixels * 255).round() / 255
+    high_top, high_left = top * scale, left * scale
+    high_pixels = high[high_top : high_top + height, high_left : high_left + width]
+    low_tensor = torch.from_numpy(low_pixels).permute(2, 0, 1)
+    high_tensor = torch.from_numpy(high_pixels.copy()).permute(2, 0, 1).float() / 255
+    if float(torch.rand((), generator=generator)) < flip_probability:
+        low_tensor, high_tensor = low_tensor.flip(-1), high_tensor.flip(-1)
+    return low_tensor * 2 - 1, high_tensor * 2 - 1
+
+
 def iter_aligned_images(
     low_path: Path | None,
     high_path: Path,
@@ -84,8 +130,8 @@ def iter_aligned_images(
     """Decode once, then yield a training crop or row-major full-resolution tiles.
 
     Tiles touch the final edge with overlap when necessary; small images use
-    reflection padding. Degradation runs after cropping, as in training. Every
-    tile has independent local augmentation randomness; no global RNG is used.
+    reflection padding. Random BSRGAN Plus patches crop native LQ after final
+    JPEG. Tile calibration and other recipes degrade the HQ crop.
     """
     if sampling not in ("random", "tiles"):
         raise ValueError("Calibration sampling requires random or tiles")
@@ -104,6 +150,23 @@ def iter_aligned_images(
     if padding[0][1] or padding[1][1]:
         high = np.pad(high, padding, mode="reflect")
         low = high if synthetic else np.pad(low, padding, mode="reflect")
+    if synthetic:
+        if degradation is None or not degradation.enabled:
+            raise ValueError("Missing low-quality image requires enabled synthetic degradation")
+        extreme = degradation.extreme
+        if sampling == "random" and extreme is not None and extreme.plus is not None:
+            scale = select_extreme_scale(extreme, seed)
+            if scale is not None:
+                yield _read_bsrgan_plus_patch(
+                    high,
+                    high,
+                    extreme,
+                    scale,
+                    crop_shape=(height, width),
+                    seed=seed,
+                    flip_probability=flip_probability,
+                )
+                return
     generator = torch.Generator().manual_seed(seed)
     if sampling == "random":
         if high.shape[:2] == (height, width):
@@ -113,14 +176,9 @@ def iter_aligned_images(
             left = int(torch.randint(high.shape[1] - width + 1, (), generator=generator))
         positions = [(top, left)]
     else:
-
-        def starts(length: int, size: int) -> list[int]:
-            values = list(range(0, length - size + 1, size))
-            if values[-1] != length - size:
-                values.append(length - size)
-            return values
-
-        positions = [(top, left) for top in starts(high.shape[0], height) for left in starts(high.shape[1], width)]
+        positions = [
+            (top, left) for top in _tile_starts(high.shape[0], height) for left in _tile_starts(high.shape[1], width)
+        ]
     for index, (top, left) in enumerate(positions):
         if sampling == "tiles":
             generator.manual_seed(seed + index * 1_000_003)

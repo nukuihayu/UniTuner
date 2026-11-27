@@ -333,17 +333,17 @@ def _linear_camera_noise(image: Pixels, rng: np.random.Generator) -> Pixels:
     return np.where(rendered <= 0.0031308, 12.92 * rendered, 1.055 * rendered ** (1 / 2.4) - 0.055)
 
 
-def _degrade_bsrgan_plus(
+def degrade_bsrgan_plus_native(
     image: Pixels, settings: ExtremeDegradationConfig, scale: int, seed: int, trace: list[dict] | None
 ) -> Pixels:
-    """Run two KAIR-inspired stages followed by delivery resize and JPEG."""
+    """Run the Plus recipe through final JPEG and return the native LQ grid."""
     plus = settings.plus
     assert plus is not None
     gaussian_sigma = settings.gaussian_sigma if "gaussian_sigma" in settings.model_fields_set else (2.0, 25.0)
     jpeg_quality = settings.jpeg_quality if "jpeg_quality" in settings.model_fields_set else (50.0, 90.0)
+    blur_sigma = settings.blur_sigma if "blur_sigma" in settings.model_fields_set else (0.2, 2.0 + 0.2 * scale)
     shape = image.shape[:2]
     native = tuple(max(1, size // scale) for size in shape)
-    minimum_grid = tuple(min(size, math.ceil(target * 1.25)) for size, target in zip(shape, native, strict=True))
     streams = [np.random.default_rng(child) for child in np.random.SeedSequence([seed, 0x504C]).spawn(15)]
     order_rng, delivery_rng, *operation_rngs = streams
     noise_kinds = ("gaussian", "poisson", "speckle", "isp")
@@ -375,19 +375,25 @@ def _degrade_bsrgan_plus(
         if op in optional and rng.random() >= optional[op]:
             continue
         if op == "blur":
-            sigma = _sample(settings.blur_sigma, rng)
+            sigma = _sample(blur_sigma, rng)
             axis = cv2.getGaussianKernel(2 * math.ceil(3 * sigma) + 1, sigma)
             image = cv2.sepFilter2D(image, -1, axis, axis, borderType=cv2.BORDER_REFLECT_101).clip(0, 1)
             record(op, stage=stage, sigma=sigma)
         elif op == "resize":
-            factor = float(rng.uniform(0.7, 1.3)) / math.sqrt(settings.intermediate_scale)
-            grid = tuple(
-                max(size, minimum)
-                for size, minimum in zip(scaled_shape(image.shape[:2], factor), minimum_grid, strict=True)
-            )
+            # Each slot owns its random stream, independent of its place in the shuffled chain.
+            draw = rng.random()
+            if draw < 0.7:
+                lower = 0.5 / scale
+                factor = lower + (1.0 - lower) * (draw / 0.7)
+            elif draw < 0.9:
+                factor = 1.0 + (draw - 0.7) / 0.2
+            else:
+                factor = 1.0
+            source_grid = image.shape[:2]
+            grid = scaled_shape(source_grid, factor)
             mode = str(rng.choice(_REAL_ESRGAN_RESIZE_MODES))
             image = resize_centered(image, grid, mode).clip(0, 1)
-            record(op, stage=stage, mode=mode)
+            record(op, stage=stage, mode=mode, factor=factor, source_shape=list(source_grid))
         elif op == "jpeg":
             quality = round(_sample(jpeg_quality, rng))
             image = _jpeg(image, quality)
@@ -411,16 +417,26 @@ def _degrade_bsrgan_plus(
             else:
                 image = _linear_camera_noise(image, rng)
             record("noise", stage=stage, kind=op)
-    delivery_mode = str(delivery_rng.choice(_REAL_ESRGAN_RESIZE_MODES))
+    # A strong pair of intermediate downscales can end below the native LQ grid.
+    delivery_modes = (
+        _RESIZE_MODES
+        if any(current < target for current, target in zip(image.shape[:2], native, strict=True))
+        else _REAL_ESRGAN_RESIZE_MODES
+    )
+    delivery_mode = str(delivery_rng.choice(delivery_modes))
     image = resize_centered(image, native, delivery_mode).clip(0, 1)
     record("delivery_resize", mode=delivery_mode)
     quality = round(_sample(jpeg_quality, delivery_rng))
     image = _jpeg(image, quality)
     record("compression", codec="jpeg", quality=quality, final=True)
     record("native_lq")
-    image = resize_centered(image, shape, "bicubic").clip(0, 1)
-    record("alignment", mode="bicubic")
     return image
+
+
+def select_extreme_scale(settings: ExtremeDegradationConfig, seed: int) -> int | None:
+    """Select the native delivery scale using the recipe's dedicated random stream."""
+    rng = np.random.default_rng(np.random.SeedSequence([seed, 0x4550]))
+    return settings.scale if rng.random() < settings.probability else settings.secondary_scale
 
 
 @torch.autocast("cpu", enabled=False)
@@ -445,12 +461,16 @@ def degrade_pair(
         raise ValueError("Degradation requires CPU float32 CHW RGB [0,1], dimensions >=32")
     extreme = settings.extreme
     if extreme is not None:
-        scale_rng = np.random.default_rng(np.random.SeedSequence([seed, 0x4550]))
-        extreme_scale = extreme.scale if scale_rng.random() < extreme.probability else extreme.secondary_scale
+        extreme_scale = select_extreme_scale(extreme, seed)
         if extreme_scale is not None:
             image = high.detach().permute(1, 2, 0).numpy()
-            degrade = _degrade_bsrgan_plus if extreme.plus is not None else _degrade_extreme
-            low = degrade(image, extreme, extreme_scale, seed, trace)
+            if extreme.plus is None:
+                low = _degrade_extreme(image, extreme, extreme_scale, seed, trace)
+            else:
+                low = degrade_bsrgan_plus_native(image, extreme, extreme_scale, seed, trace)
+                low = resize_centered(low, image.shape[:2], "bicubic").clip(0, 1)
+                if trace is not None:
+                    trace.append({"op": "alignment", "shape": list(low.shape[:2]), "mode": "bicubic"})
             low = (low * 255).round() / 255
             return torch.from_numpy(low).permute(2, 0, 1).contiguous(), high.clone()
     rng = np.random.default_rng(seed)
