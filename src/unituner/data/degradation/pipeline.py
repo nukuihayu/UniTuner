@@ -32,6 +32,7 @@ _KERNEL_MID = 25
 _REAL_ESRGAN_RESIZE_MODES = ("area", "bilinear", "bicubic")
 _WIDE_KERNEL = (_KERNEL_SIZES, _KERNEL_MAX, _KERNEL_MID)
 _SMALL_KERNEL = (tuple(range(7, 22, 2)), 21, 13)
+_JPEG_DECODE_RGB = getattr(cv2, "IMREAD_COLOR_RGB", None)
 _JPEG_BYTE_TO_FLOAT = np.arange(256, dtype=np.float32) / 255
 
 
@@ -271,10 +272,12 @@ def _jpeg(image: Pixels, quality: int) -> Pixels:
     success, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not success:
         raise RuntimeError("OpenCV failed to encode JPEG degradation")
-    decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR if _JPEG_DECODE_RGB is None else _JPEG_DECODE_RGB)
     if decoded is None:
         raise RuntimeError("OpenCV failed to decode JPEG degradation")
-    return cv2.LUT(cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB), _JPEG_BYTE_TO_FLOAT)
+    if _JPEG_DECODE_RGB is None:
+        decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+    return cv2.LUT(decoded, _JPEG_BYTE_TO_FLOAT)
 
 
 def _degrade_extreme(
@@ -328,14 +331,30 @@ def _degrade_extreme(
 
 def _linear_camera_noise(image: Pixels, rng: np.random.Generator) -> Pixels:
     """Apply shot and read noise in a linear sensor approximation."""
-    linear = np.where(image <= 0.04045, image / 12.92, ((image + 0.055) / 1.055) ** 2.4)
+    shadow = image <= 0.04045
+    sensor = image + 0.055
+    sensor /= 1.055
+    np.power(sensor, 2.4, out=sensor, where=~shadow)
+    np.divide(image, 12.92, out=sensor, where=shadow)
     gain = np.array([rng.uniform(1, 1.8), 1.0, rng.uniform(1, 1.8)], dtype=np.float32)
-    sensor = linear / gain
+    sensor /= gain
     shot = float(rng.uniform(0.0005, 0.006))
     read = float(rng.uniform(0.00001, 0.0002))
-    noise = rng.standard_normal(image.shape, dtype=np.float32) * np.sqrt(sensor * shot + read)
-    rendered = ((sensor + noise) * gain).clip(0, 1)
-    return np.where(rendered <= 0.0031308, 12.92 * rendered, 1.055 * rendered ** (1 / 2.4) - 0.055)
+    deviation = sensor * shot
+    deviation += read
+    np.sqrt(deviation, out=deviation)
+    noise = rng.standard_normal(image.shape, dtype=np.float32)
+    noise *= deviation
+    sensor += noise
+    sensor *= gain
+    sensor.clip(0, 1, out=sensor)
+
+    shadow = sensor <= 0.0031308
+    np.power(sensor, 1 / 2.4, out=sensor, where=~shadow)
+    np.multiply(1.055, sensor, out=sensor, where=~shadow)
+    np.subtract(sensor, 0.055, out=sensor, where=~shadow)
+    np.multiply(12.92, sensor, out=sensor, where=shadow)
+    return sensor
 
 
 def degrade_bsrgan_plus_native(
@@ -385,7 +404,8 @@ def degrade_bsrgan_plus_native(
             pixels_per_native = min(size / target for size, target in zip(image.shape[:2], native, strict=True))
             sigma = min(_sample(blur_sigma, rng), 0.55 * pixels_per_native)
             axis = cv2.getGaussianKernel(2 * math.ceil(3 * sigma) + 1, sigma)
-            image = cv2.sepFilter2D(image, -1, axis, axis, borderType=cv2.BORDER_REFLECT_101).clip(0, 1)
+            image = cv2.sepFilter2D(image, -1, axis, axis, borderType=cv2.BORDER_REFLECT_101)
+            image.clip(0, 1, out=image)
             record(op, stage=stage, sigma=sigma)
         elif op == "resize":
             # Each slot owns its random stream, independent of its place in the shuffled chain.
@@ -416,15 +436,28 @@ def degrade_bsrgan_plus_native(
                 rho = _sample(settings.rgb_correlation, rng)
                 common = rng.standard_normal((*image.shape[:2], 1), dtype=np.float32)
                 independent = rng.standard_normal(image.shape, dtype=np.float32)
-                image = (image + sigma * (math.sqrt(rho) * common + math.sqrt(1 - rho) * independent)).clip(0, 1)
+                common *= math.sqrt(rho)
+                independent *= math.sqrt(1 - rho)
+                np.add(common, independent, out=independent)
+                independent *= sigma
+                np.add(image, independent, out=independent)
+                independent.clip(0, 1, out=independent)
+                image = independent
                 record("noise", stage=stage, kind=op, sigma=level)
                 continue
             if op == "poisson":
                 levels = float(rng.uniform(128, 1024))
-                image = (rng.poisson(image * levels).astype(np.float32) / levels).clip(0, 1)
+                image = rng.poisson(image * levels).astype(np.float32)
+                image /= levels
+                image.clip(0, 1, out=image)
             elif op == "speckle":
                 sigma = float(rng.uniform(0.01, 0.06))
-                image = (image * (1 + rng.standard_normal(image.shape, dtype=np.float32) * sigma)).clip(0, 1)
+                gain = rng.standard_normal(image.shape, dtype=np.float32)
+                gain *= sigma
+                gain += 1
+                np.multiply(image, gain, out=gain)
+                gain.clip(0, 1, out=gain)
+                image = gain
             else:
                 image = _linear_camera_noise(image, rng)
             record("noise", stage=stage, kind=op)

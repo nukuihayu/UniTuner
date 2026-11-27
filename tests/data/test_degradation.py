@@ -53,6 +53,27 @@ def test_jpeg_round_trip_matches_legacy_quantization_and_rgb_order(quality):
     np.testing.assert_array_equal(output, expected)
 
 
+def test_bsrgan_plus_camera_noise_preserves_srgb_values_and_input():
+    from unituner.data.degradation.pipeline import _linear_camera_noise
+
+    values = np.array([0, 0.003, 0.039, 0.04045, 0.041, 0.5, 0.99, 1], dtype=np.float32)
+    pixels = np.resize(values, (8, 9, 3))[:, ::-1]
+    original = pixels.copy()
+    reference_rng = np.random.default_rng(45)
+    actual_rng = np.random.default_rng(45)
+    linear = np.where(pixels <= 0.04045, pixels / 12.92, ((pixels + 0.055) / 1.055) ** 2.4)
+    gain = np.array([reference_rng.uniform(1, 1.8), 1.0, reference_rng.uniform(1, 1.8)], dtype=np.float32)
+    sensor = linear / gain
+    shot = float(reference_rng.uniform(0.0005, 0.006))
+    read = float(reference_rng.uniform(0.00001, 0.0002))
+    noise = reference_rng.standard_normal(pixels.shape, dtype=np.float32) * np.sqrt(sensor * shot + read)
+    rendered = ((sensor + noise) * gain).clip(0, 1)
+    expected = np.where(rendered <= 0.0031308, 12.92 * rendered, 1.055 * rendered ** (1 / 2.4) - 0.055)
+    np.testing.assert_array_equal(_linear_camera_noise(pixels, actual_rng), expected)
+    np.testing.assert_array_equal(pixels, original)
+    assert actual_rng.random() == reference_rng.random()
+
+
 @pytest.mark.parametrize("scale", [1.0, 4.0, 8.0, 16.0, (4.0, 8.0)])
 @pytest.mark.parametrize("shape", [(32, 48), (128, 192)])
 def test_finite_deterministic_output_immutable_hq_and_local_rng(scale, shape):
