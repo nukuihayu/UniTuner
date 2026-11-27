@@ -339,6 +339,8 @@ def _degrade_bsrgan_plus(
     """Run two KAIR-inspired stages followed by delivery resize and JPEG."""
     plus = settings.plus
     assert plus is not None
+    gaussian_sigma = settings.gaussian_sigma if "gaussian_sigma" in settings.model_fields_set else (2.0, 25.0)
+    jpeg_quality = settings.jpeg_quality if "jpeg_quality" in settings.model_fields_set else (50.0, 90.0)
     shape = image.shape[:2]
     native = tuple(max(1, size // scale) for size in shape)
     minimum_grid = tuple(min(size, math.ceil(target * 1.25)) for size, target in zip(shape, native, strict=True))
@@ -387,17 +389,20 @@ def _degrade_bsrgan_plus(
             image = resize_centered(image, grid, mode).clip(0, 1)
             record(op, stage=stage, mode=mode)
         elif op == "jpeg":
-            quality = round(_sample(settings.jpeg_quality, rng))
+            quality = round(_sample(jpeg_quality, rng))
             image = _jpeg(image, quality)
             record("compression", stage=stage, codec="jpeg", quality=quality)
         else:
             if op == "gaussian":
-                sigma = _sample(settings.gaussian_sigma, rng) / 255
+                level = _sample(gaussian_sigma, rng)
+                sigma = level / 255
                 rho = _sample(settings.rgb_correlation, rng)
                 common = rng.standard_normal((*image.shape[:2], 1), dtype=np.float32)
                 independent = rng.standard_normal(image.shape, dtype=np.float32)
                 image = (image + sigma * (math.sqrt(rho) * common + math.sqrt(1 - rho) * independent)).clip(0, 1)
-            elif op == "poisson":
+                record("noise", stage=stage, kind=op, sigma=level)
+                continue
+            if op == "poisson":
                 levels = float(rng.uniform(128, 1024))
                 image = (rng.poisson(image * levels).astype(np.float32) / levels).clip(0, 1)
             elif op == "speckle":
@@ -406,9 +411,10 @@ def _degrade_bsrgan_plus(
             else:
                 image = _linear_camera_noise(image, rng)
             record("noise", stage=stage, kind=op)
-    image = resize_centered(image, native, settings.resize_mode).clip(0, 1)
-    record("delivery_resize", mode=settings.resize_mode)
-    quality = round(_sample(settings.jpeg_quality, delivery_rng))
+    delivery_mode = str(delivery_rng.choice(_REAL_ESRGAN_RESIZE_MODES))
+    image = resize_centered(image, native, delivery_mode).clip(0, 1)
+    record("delivery_resize", mode=delivery_mode)
+    quality = round(_sample(jpeg_quality, delivery_rng))
     image = _jpeg(image, quality)
     record("compression", codec="jpeg", quality=quality, final=True)
     record("native_lq")

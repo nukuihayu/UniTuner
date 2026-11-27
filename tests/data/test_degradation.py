@@ -572,3 +572,19 @@ def test_bsrgan_plus_order_final_jpeg_and_unchanged_target(global_probability, m
         ]
     else:
         assert [event["stage"] for event in trace[1:-4]] != [1] * 7 + [2] * 6
+
+
+def test_bsrgan_plus_delivery_modes_and_quality_bounds():
+    from unituner.data.degradation.config import BSRGANPlusConfig, ExtremeDegradationConfig
+
+    settings = DegradationConfig(extreme=ExtremeDegradationConfig(probability=1.0, scale=8, plus=BSRGANPlusConfig()))
+    high = torch.full((3, 64, 64), 0.5)
+    modes = set()
+    for seed in range(24):
+        trace = []
+        degrade_pair(high, settings, seed, trace=trace)
+        modes.add(trace[-4]["mode"])
+        assert all(50 <= event["quality"] <= 90 for event in trace if event["op"] == "compression")
+        levels = [event["sigma"] for event in trace if event.get("kind") == "gaussian"]
+        assert len(levels) == 2 and all(2 <= level <= 25 for level in levels)
+    assert modes == {"bilinear", "bicubic", "area"}
