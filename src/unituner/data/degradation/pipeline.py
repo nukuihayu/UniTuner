@@ -336,7 +336,7 @@ def _linear_camera_noise(image: Pixels, rng: np.random.Generator) -> Pixels:
 def degrade_bsrgan_plus_native(
     image: Pixels, settings: ExtremeDegradationConfig, scale: int, seed: int, trace: list[dict] | None
 ) -> Pixels:
-    """Run the Plus recipe through final JPEG and return the native LQ grid."""
+    """Run the Plus recipe with final JPEG before the native LQ resize."""
     plus = settings.plus
     assert plus is not None
     gaussian_sigma = settings.gaussian_sigma if "gaussian_sigma" in settings.model_fields_set else (2.0, 25.0)
@@ -424,11 +424,11 @@ def degrade_bsrgan_plus_native(
                 image = _linear_camera_noise(image, rng)
             record("noise", stage=stage, kind=op)
     delivery_mode = str(delivery_rng.choice(_REAL_ESRGAN_RESIZE_MODES))
-    image = resize_centered(image, native, delivery_mode).clip(0, 1)
-    record("delivery_resize", mode=delivery_mode)
     quality = round(_sample(jpeg_quality, delivery_rng))
     image = _jpeg(image, quality)
     record("compression", codec="jpeg", quality=quality, final=True)
+    image = resize_centered(image, native, delivery_mode).clip(0, 1)
+    record("delivery_resize", mode=delivery_mode)
     record("native_lq")
     return image
 

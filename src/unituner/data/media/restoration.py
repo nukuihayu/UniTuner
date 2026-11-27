@@ -130,8 +130,8 @@ def iter_aligned_images(
     """Decode once, then yield a training crop or row-major full-resolution tiles.
 
     Tiles touch the final edge with overlap when necessary; small images use
-    reflection padding. Random BSRGAN Plus patches crop native LQ after final
-    JPEG. Tile calibration and other recipes degrade the HQ crop.
+    reflection padding. Random BSRGAN Plus patches crop native LQ after JPEG
+    and delivery resizing. Tile calibration and other recipes degrade the HQ crop.
     """
     if sampling not in ("random", "tiles"):
         raise ValueError("Calibration sampling requires random or tiles")

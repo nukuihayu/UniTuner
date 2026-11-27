@@ -545,9 +545,12 @@ def test_bsrgan_plus_order_final_jpeg_and_unchanged_target(global_probability, m
     assert low.shape == high.shape and torch.isfinite(low).all() and torch.equal(target, high)
     assert torch.equal(low, degrade_pair(high, settings, 13)[0])
     assert trace[0]["recipe"] == "bsrgan_plus" and trace[0]["shuffle"] == mode
-    assert [event["op"] for event in trace[-4:]] == ["delivery_resize", "compression", "native_lq", "alignment"]
-    assert trace[-3]["final"] and trace[-3]["codec"] == "jpeg"
-    assert all(event["shape"] == [axis // scale for axis in size] for event in trace[-4:-1])
+    assert [event["op"] for event in trace[-4:]] == ["compression", "delivery_resize", "native_lq", "alignment"]
+    jpeg = trace[-4]
+    assert jpeg["final"] and jpeg["codec"] == "jpeg" and jpeg["shape"] == trace[-5]["shape"]
+    native = [axis // scale for axis in size]
+    assert all(actual > target for actual, target in zip(jpeg["shape"], native, strict=True))
+    assert all(event["shape"] == native for event in trace[-3:-1])
     assert trace[-1]["mode"] == "bicubic"
     for stage in (1, 2):
         events = [event for event in trace[1:-4] if event["stage"] == stage]
@@ -583,7 +586,7 @@ def test_bsrgan_plus_delivery_modes_and_quality_bounds():
     for seed in range(24):
         trace = []
         degrade_pair(high, settings, seed, trace=trace)
-        modes.add(trace[-4]["mode"])
+        modes.add(trace[-3]["mode"])
         assert all(50 <= event["quality"] <= 90 for event in trace if event["op"] == "compression")
         levels = [event["sigma"] for event in trace if event.get("kind") == "gaussian"]
         assert len(levels) == 2 and all(2 <= level <= 25 for level in levels)
@@ -607,7 +610,9 @@ def test_bsrgan_plus_intermediate_resize_uses_current_integer_grid(scale):
         trace = []
         low, target = degrade_pair(high, settings, seed, trace=trace)
         assert low.shape == high.shape and torch.equal(target, high)
-        assert trace[-3]["shape"] == native and trace[-3]["final"]
+        assert trace[-4]["shape"] == trace[-5]["shape"] and trace[-4]["final"]
+        assert all(actual >= floor for actual, floor in zip(trace[-4]["shape"], minimum, strict=True))
+        assert trace[-3]["shape"] == native
         assert trace[-1]["shape"] == [96, 112] and trace[-1]["mode"] == "bicubic"
         for i, event in enumerate(trace[:-4]):
             if event["op"] == "blur":
@@ -646,7 +651,8 @@ def test_random_plus_patch_crops_after_full_image_jpeg(tmp_path, flip_probabilit
     )
     trace = []
     native = degrade_bsrgan_plus_native(pixels.astype(np.float32) / 255, extreme, 8, seed, trace)
-    assert trace[-2]["final"] and trace[-2]["shape"] == [13, 19]
+    assert trace[-3]["final"] and trace[-3]["shape"] == trace[-4]["shape"]
+    assert trace[-2]["op"] == "delivery_resize" and trace[-2]["shape"] == [13, 19]
     generator = torch.Generator().manual_seed(seed)
     top = int(torch.randint(8, (), generator=generator))
     left = int(torch.randint(12, (), generator=generator))
