@@ -34,6 +34,25 @@ from unituner.data.degradation.pipeline import (
 )
 
 
+@pytest.mark.parametrize("quality", [50, 90])
+def test_jpeg_round_trip_matches_legacy_quantization_and_rgb_order(quality):
+    import cv2
+
+    from unituner.data.degradation.pipeline import _jpeg
+
+    ties = (np.arange(255, dtype=np.float32) + 0.5) / 255
+    values = np.concatenate((np.nextafter(ties, 0), ties, np.nextafter(ties, 1)))
+    image = values.reshape(15, 17, 3)[:, ::-1]
+    bgr = np.ascontiguousarray((image[..., ::-1] * 255).round().astype(np.uint8))
+    success, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    assert success
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    expected = decoded[..., ::-1].astype(np.float32) / 255
+    output = _jpeg(image, quality)
+    assert output.flags.c_contiguous
+    np.testing.assert_array_equal(output, expected)
+
+
 @pytest.mark.parametrize("scale", [1.0, 4.0, 8.0, 16.0, (4.0, 8.0)])
 @pytest.mark.parametrize("shape", [(32, 48), (128, 192)])
 def test_finite_deterministic_output_immutable_hq_and_local_rng(scale, shape):

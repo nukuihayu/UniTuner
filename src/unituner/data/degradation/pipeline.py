@@ -32,6 +32,7 @@ _KERNEL_MID = 25
 _REAL_ESRGAN_RESIZE_MODES = ("area", "bilinear", "bicubic")
 _WIDE_KERNEL = (_KERNEL_SIZES, _KERNEL_MAX, _KERNEL_MID)
 _SMALL_KERNEL = (tuple(range(7, 22, 2)), 21, 13)
+_JPEG_BYTE_TO_FLOAT = np.arange(256, dtype=np.float32) / 255
 
 
 _UPSTREAM_RECIPE = "adabridge_dnf_omgsr"
@@ -262,14 +263,18 @@ def _compress(
 
 def _jpeg(image: Pixels, quality: int) -> Pixels:
     """Round-trip RGB through an actual JPEG bitstream."""
-    bgr = np.ascontiguousarray((image[..., ::-1] * 255).round().astype(np.uint8))
+    scaled = np.multiply(image, 255, order="C")
+    np.rint(scaled, out=scaled)
+    rgb = scaled.astype(np.uint8)
+    del scaled
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     success, encoded = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not success:
         raise RuntimeError("OpenCV failed to encode JPEG degradation")
     decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if decoded is None:
         raise RuntimeError("OpenCV failed to decode JPEG degradation")
-    return (decoded[..., ::-1].astype(np.float32) / 255).copy()
+    return cv2.LUT(cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB), _JPEG_BYTE_TO_FLOAT)
 
 
 def _degrade_extreme(
